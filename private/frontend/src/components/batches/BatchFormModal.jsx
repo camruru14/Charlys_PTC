@@ -1,6 +1,7 @@
 import Modal from "../ui/Modal";
 import { Field, SelectField } from "../ui/Field";
 import { todayInput } from "../../hooks/useBatchForm";
+import { blockNegativeKey } from "../../lib/numberInput";
 
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
@@ -13,7 +14,8 @@ const STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
 */
 function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
   const target = Number(form.targetQuantity) || 0;
-  const wastePct = target > 0 ? Math.round((Number(form.wasteQuantity) || 0) / target * 100) : 0;
+  const hasProduced = form.producedQuantity !== "";
+  const wastePct = hasProduced && target > 0 ? Math.round((Number(form.wasteQuantity) || 0) / target * 100) : 0;
 
   return (
     <Modal
@@ -40,14 +42,14 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={LINES} />
         <Field label="Fecha" name="startDate" type="date" value={form.startDate} onChange={handleChange} max={todayInput()} />
-        <Field label="Cantidad meta" name="targetQuantity" type="number" value={form.targetQuantity} onChange={handleChange} required />
-        <Field label="Cantidad producida" name="producedQuantity" type="number" value={form.producedQuantity} onChange={handleChange} />
+        <Field label="Cantidad meta" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} required />
+        <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
         {/* Residuos = Cantidad meta - Cantidad producida (se calcula solo) */}
         <div>
           <span className="mb-1.5 block text-sm font-medium text-slate-700">Residuos</span>
           <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-slate-800">{form.wasteQuantity || 0}</span>
-            <span className="text-xs text-slate-400">{wastePct}%</span>
+            <span className="text-sm font-semibold text-slate-800">{hasProduced ? form.wasteQuantity || 0 : "—"}</span>
+            <span className="text-xs text-slate-400">{hasProduced ? `${wastePct}%` : "Pendiente"}</span>
           </div>
         </div>
         <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />

@@ -12,11 +12,18 @@ import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import TransactionToolbar from "../components/transactions/TransactionToolbar";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { defaultTransactionFilters, filterTransactions, txDate } from "../lib/transactionFilters";
+import { todayInput } from "../hooks/useBatchForm";
+import { blockNegativeKey } from "../lib/numberInput";
+import { blockSymbolKey, stripSymbols } from "../lib/textInput";
 import { IconFinance, IconPlus } from "../lib/icons";
 
 const TYPES = ["Ingreso", "Gasto"];
-const STATUSES = ["Pendiente", "Pagado", "Completado"];
-const CATEGORIES = ["Ventas", "Materia Prima", "Planilla", "Servicios", "Otros"];
+// Los estados disponibles dependen del tipo de transacción.
+const STATUSES_BY_TYPE = {
+  Ingreso: ["Pendiente", "Completado"],
+  Gasto: ["Pendiente", "Pagado"],
+};
+const CATEGORIES = ["Materia Prima", "Logística", "Mantenimiento", "Planilla", "Servicios", "Ventas", "Otros"];
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 const emptyForm = {
@@ -24,9 +31,15 @@ const emptyForm = {
   amount: "", status: "Completado", date: "",
 };
 
-// N° de transacción autogenerado (prefijo TRAN)
-function newRef() {
-  return "TRAN-" + String(Date.now()).slice(-5);
+// Vista previa del próximo N° de transacción (el backend genera el definitivo al guardar)
+function previewReference(list) {
+  const prefix = `TRAN-${new Date().getFullYear()}-`;
+  const lastNumber = list.reduce((max, t) => {
+    if (!t.reference?.startsWith(prefix)) return max;
+    const n = parseInt(t.reference.slice(prefix.length), 10);
+    return Number.isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
 }
 
 // Meses (año/mes) comprendidos en el rango seleccionado (máx. 12 columnas).
@@ -46,6 +59,7 @@ function Finanzas() {
   const range = useDateRange();
   const { data, loading, error, refetch } = useFetch("/transactions");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState(defaultTransactionFilters);
@@ -107,10 +121,36 @@ function Finanzas() {
     });
   }, [rangeList, range]);
 
-  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => {
+      const next = { ...f, [name]: name === "concept" ? stripSymbols(value) : value };
+      // Al cambiar el tipo, si el estado actual ya no es válido para ese tipo, se ajusta.
+      if (name === "type") {
+        const allowed = STATUSES_BY_TYPE[value] || STATUSES_BY_TYPE.Ingreso;
+        if (!allowed.includes(next.status)) next.status = allowed[0];
+      }
+      return next;
+    });
+  };
 
   function openCreate() {
-    setForm({ ...emptyForm, reference: newRef() });
+    setEditingId(null);
+    setForm({ ...emptyForm, reference: previewReference(raw), date: todayInput() });
+    setModalOpen(true);
+  }
+
+  function openEdit(t) {
+    setEditingId(t._id);
+    setForm({
+      reference: t.reference || "",
+      concept: t.concept || "",
+      type: t.type || "Ingreso",
+      category: t.category || "Ventas",
+      amount: t.amount ?? "",
+      status: t.status || "Completado",
+      date: t.date ? new Date(t.date).toISOString().slice(0, 10) : "",
+    });
     setModalOpen(true);
   }
 
@@ -119,8 +159,13 @@ function Finanzas() {
     setSaving(true);
     const payload = { ...form, amount: Number(form.amount) || 0, date: form.date || undefined };
     try {
-      await api.post("/transactions", payload);
-      toast.success("Transacción registrada");
+      if (editingId) {
+        await api.put(`/transactions/${editingId}`, payload);
+        toast.success("Transacción actualizada");
+      } else {
+        const res = await api.post("/transactions", payload);
+        toast.success(res?.reference ? `Transacción ${res.reference} registrada` : "Transacción registrada");
+      }
       setModalOpen(false);
       refetch();
     } catch (err) {
@@ -180,7 +225,7 @@ function Finanzas() {
         <TransactionToolbar list={raw} filters={filters} setFilters={setFilters} compact />
         <AsyncState loading={loading} error={error}>
           <div className="max-h-96 overflow-y-auto">
-            <TransactionTable transactions={tableList} onDelete={handleDelete} />
+            <TransactionTable transactions={tableList} onEdit={openEdit} onDelete={handleDelete} />
           </div>
         </AsyncState>
         <p className="mt-3 text-xs text-slate-400">{tableList.length} transacción(es) en el rango y filtros seleccionados.</p>
@@ -189,7 +234,7 @@ function Finanzas() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Nueva transacción"
+        title={editingId ? "Editar transacción" : "Nueva transacción"}
         size="lg"
         footer={
           <>
@@ -204,14 +249,13 @@ function Finanzas() {
             <span className="mb-1.5 block text-sm font-medium text-slate-700">N° de transacción</span>
             <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
               <span className="text-sm font-semibold text-slate-800">{form.reference}</span>
-              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">autogenerado</span>
             </div>
           </div>
-          <Field label="Concepto" name="concept" value={form.concept} onChange={handleChange} required />
+          <Field label="Concepto" name="concept" onKeyDown={blockSymbolKey} value={form.concept} onChange={handleChange} required />
           <SelectField label="Tipo" name="type" value={form.type} onChange={handleChange} options={TYPES} required />
           <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} />
-          <Field label="Monto ($)" name="amount" type="number" step="0.01" value={form.amount} onChange={handleChange} required />
-          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
+          <Field label="Monto ($)" name="amount" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} value={form.amount} onChange={handleChange} required />
+          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES_BY_TYPE[form.type] || STATUSES_BY_TYPE.Ingreso} />
           <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} />
         </form>
       </Modal>

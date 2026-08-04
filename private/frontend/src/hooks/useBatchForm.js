@@ -88,14 +88,20 @@ export function useBatchForm(list, refetch) {
 
   // Residuos = Cantidad meta - Cantidad producida (0 si se produjo lo esperado o más).
   // Se recalcula solo, así el % de residuos que guarda el backend sale automático.
+  // Mientras no se haya ingresado lo producido, todavía no hay con qué calcularlo.
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((f) => {
       const next = { ...f, [name]: value };
       if (name === "targetQuantity" || name === "producedQuantity") {
-        const target = Number(name === "targetQuantity" ? value : f.targetQuantity) || 0;
-        const produced = Number(name === "producedQuantity" ? value : f.producedQuantity) || 0;
-        next.wasteQuantity = target > produced ? String(target - produced) : "0";
+        const producedRaw = name === "producedQuantity" ? value : f.producedQuantity;
+        if (producedRaw === "") {
+          next.wasteQuantity = "";
+        } else {
+          const target = Number(name === "targetQuantity" ? value : f.targetQuantity) || 0;
+          const produced = Number(producedRaw) || 0;
+          next.wasteQuantity = target > produced ? String(target - produced) : "0";
+        }
       }
       return next;
     });

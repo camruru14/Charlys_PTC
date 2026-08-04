@@ -3,9 +3,10 @@ import { txDate } from "../../lib/transactionFilters";
 
 /*
   Tabla de transacciones con los campos: Fecha, Concepto, Categoría, Monto y Estado.
-  Si se pasa onDelete, muestra una columna de acciones para eliminar.
+  Si se pasa onEdit y/u onDelete, muestra una columna de acciones para editar/eliminar.
 */
-function TransactionTable({ transactions = [], onDelete }) {
+function TransactionTable({ transactions = [], onEdit, onDelete }) {
+  const showActions = Boolean(onEdit || onDelete);
   if (transactions.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center text-sm font-medium text-slate-500">
@@ -31,7 +32,7 @@ function TransactionTable({ transactions = [], onDelete }) {
             <th className="pb-3 pr-4 font-semibold">Categoría</th>
             <th className="pb-3 pr-4 font-semibold">Monto</th>
             <th className="pb-3 font-semibold">Estado</th>
-            {onDelete ? <th className="pb-3 font-semibold text-right">Acciones</th> : null}
+            {showActions ? <th className="pb-3 font-semibold text-right">Acciones</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -41,18 +42,30 @@ function TransactionTable({ transactions = [], onDelete }) {
               <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(t)}</td>
               <td className="py-3 pr-4 font-medium text-slate-700">{t.concept}</td>
               <td className="py-3 pr-4">{t.category || "—"}</td>
-              <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-slate-700"}`}>
+              <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-red-600"}`}>
                 {t.type === "Ingreso" ? "+" : "-"}${Number(t.amount || 0).toFixed(2)}
               </td>
-              <td className="py-3"><StatusPill status={t.status} /></td>
-              {onDelete ? (
+              <td className="py-3"><StatusPill status={t.status} tone={t.status === "Pagado" ? "blue" : undefined} /></td>
+              {showActions ? (
                 <td className="py-3 text-right">
-                  <button
-                    onClick={() => onDelete(t)}
-                    className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
-                  >
-                    Eliminar
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    {onEdit ? (
+                      <button
+                        onClick={() => onEdit(t)}
+                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                    {onDelete ? (
+                      <button
+                        onClick={() => onDelete(t)}
+                        className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
+                      >
+                        Eliminar
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               ) : null}
             </tr>

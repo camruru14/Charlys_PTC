@@ -3,7 +3,7 @@ const productionBatchesController = {};
 import batchModel from "../models/ProductionBatch.js";
 
 // Genera el siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...)
-async function generateBatchNumber() {
+export async function generateBatchNumber() {
   const prefix = `LOTE-${new Date().getFullYear()}-`;
   const last = await batchModel
     .findOne({ batchNumber: { $regex: `^${prefix}` } })

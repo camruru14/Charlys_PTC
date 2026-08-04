@@ -8,6 +8,7 @@ import { validateAuthCookie } from "./src/middlewares/authMiddleware.js";
 import authRoutes from "./src/routes/auth.js";
 import ordersRoutes from "./src/routes/orders.js";
 import productionBatchesRoutes from "./src/routes/productionBatches.js";
+import dailyBatchesRoutes from "./src/routes/dailyBatches.js";
 import employeesRoutes from "./src/routes/employees.js";
 import inventoryRoutes from "./src/routes/inventory.js";
 import transactionsRoutes from "./src/routes/transactions.js";
@@ -42,6 +43,13 @@ app.use(
   "/api/productionBatches",
   validateAuthCookie(["admin", "gerente", "operario"]),
   productionBatchesRoutes,
+);
+
+// Lotes Diarios (programación previa de Lotes de fabricación)
+app.use(
+  "/api/dailyBatches",
+  validateAuthCookie(["admin", "gerente", "operario"]),
+  dailyBatchesRoutes,
 );
 
 // Empleados (RRHH)

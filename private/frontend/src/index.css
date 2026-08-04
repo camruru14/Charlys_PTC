@@ -44,6 +44,14 @@ body {
   border-radius: 9999px;
 }
 
+/* Los <button> no traen cursor "manita" por defecto del navegador (a diferencia
+   de los <a>, que sí); lo forzamos para que el header y el contenido principal
+   se sientan igual de clicables que el sidebar. */
+button:not(:disabled),
+[role="button"] {
+  cursor: pointer;
+}
+
 /* Sin flechas de spinbutton en los inputs numéricos dentro de modales */
 .app-modal input[type="number"] {
   -moz-appearance: textfield;
