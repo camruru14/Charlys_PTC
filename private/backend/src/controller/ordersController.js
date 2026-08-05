@@ -2,6 +2,19 @@ const ordersController = {};
 
 import orderModel from "../models/Order.js";
 
+// Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...)
+async function generateOrderNumber() {
+  const prefix = `ORD-${new Date().getFullYear()}-`;
+  const last = await orderModel
+    .findOne({ orderNumber: { $regex: `^${prefix}` } })
+    .sort({ orderNumber: -1 });
+
+  const lastNumber = last ? parseInt(last.orderNumber.slice(prefix.length), 10) : 0;
+  const next = (Number.isNaN(lastNumber) ? 0 : lastNumber) + 1;
+
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+
 // SELECT - todos los pedidos
 ordersController.getOrders = async (req, res) => {
   const orders = await orderModel
@@ -22,8 +35,9 @@ ordersController.getOrder = async (req, res) => {
 
 // INSERT
 ordersController.insertOrder = async (req, res) => {
-  const { orderNumber, customer, items, total, status, paymentStatus, notes } =
-    req.body;
+  const { customer, items, total, status, paymentStatus, notes } = req.body;
+
+  const orderNumber = await generateOrderNumber();
 
   const newOrder = new orderModel({
     orderNumber,
@@ -37,7 +51,7 @@ ordersController.insertOrder = async (req, res) => {
 
   await newOrder.save();
 
-  res.json({ message: "Order saved" });
+  res.json({ message: "Order saved", orderNumber });
 };
 
 // ACTUALIZAR (datos generales del pedido)
@@ -45,11 +59,15 @@ ordersController.updateOrder = async (req, res) => {
   const { customer, items, total, status, paymentStatus, batch, notes } =
     req.body;
 
-  await orderModel.findByIdAndUpdate(
-    req.params.id,
-    { customer, items, total, status, paymentStatus, batch, notes },
-    { new: true },
-  );
+  // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
+  // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
+  // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
+  const update = { $set: { customer, items, total, status, paymentStatus, batch, notes } };
+  if (status !== "En Tránsito" && status !== "Entregado") {
+    update.$unset = { delivery: "" };
+  }
+
+  await orderModel.findByIdAndUpdate(req.params.id, update, { new: true });
 
   res.json({ message: "Order updated" });
 };
@@ -58,11 +76,15 @@ ordersController.updateOrder = async (req, res) => {
 ordersController.updateStatus = async (req, res) => {
   const { status } = req.body;
 
-  await orderModel.findByIdAndUpdate(
-    req.params.id,
-    { status },
-    { new: true },
-  );
+  // Si el pedido sale del flujo de despacho activo (deja de estar "En Tránsito" o "Entregado"),
+  // se limpia la asignación de logística previa: motorista, vehículo, etc. Así, si más adelante
+  // vuelve a "En Tránsito", aparece sin asignar en vez de arrastrar al motorista anterior.
+  const update = { $set: { status } };
+  if (status !== "En Tránsito" && status !== "Entregado") {
+    update.$unset = { delivery: "" };
+  }
+
+  await orderModel.findByIdAndUpdate(req.params.id, update, { new: true });
 
   res.json({ message: "Order status updated" });
 };

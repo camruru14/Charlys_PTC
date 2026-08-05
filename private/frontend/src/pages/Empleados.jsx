@@ -12,6 +12,13 @@ import { IconUsers, IconCheck, IconPlus } from "../lib/icons";
 const ROLES = ["admin", "gerente", "operario", "motorista"];
 const DEPARTMENTS = ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"];
 
+// DUI se guarda como 9 dígitos; se muestra con guion antes del último dígito (8-1)
+function formatDui(dui) {
+  const digits = String(dui || "").replace(/\D/g, "");
+  if (digits.length !== 9) return dui || "—";
+  return `${digits.slice(0, 8)}-${digits.slice(8)}`;
+}
+
 const emptyForm = {
   name: "", lastName: "", dui: "", phone: "", email: "", password: "",
   role: "operario", position: "", department: "Fabricación", hourlyRate: "", isActive: true,
@@ -53,6 +60,10 @@ function Empleados() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === "dui") {
+      setForm((f) => ({ ...f, dui: value.replace(/\D/g, "").slice(0, 9) }));
+      return;
+    }
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
@@ -108,10 +119,11 @@ function Empleados() {
       >
         <AsyncState loading={loading} error={error} empty={!loading && list.length === 0} emptyText="No hay empleados.">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-slate-400">
                   <th className="pb-3 pr-4 font-semibold">Nombre</th>
+                  <th className="pb-3 pr-4 font-semibold">DUI</th>
                   <th className="pb-3 pr-4 font-semibold">Puesto</th>
                   <th className="pb-3 pr-4 font-semibold">Área</th>
                   <th className="pb-3 pr-4 font-semibold">Rol</th>
@@ -126,6 +138,7 @@ function Empleados() {
                       <p className="font-semibold text-slate-800">{emp.name} {emp.lastName}</p>
                       <p className="text-xs text-slate-400">{emp.email}</p>
                     </td>
+                    <td className="py-3 pr-4 tabular-nums">{formatDui(emp.dui)}</td>
                     <td className="py-3 pr-4">{emp.position || "—"}</td>
                     <td className="py-3 pr-4">{emp.department || "—"}</td>
                     <td className="py-3 pr-4 capitalize">{emp.role}</td>
@@ -159,7 +172,17 @@ function Empleados() {
         <form id="emp-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Nombre" name="name" value={form.name} onChange={handleChange} required />
           <Field label="Apellido" name="lastName" value={form.lastName} onChange={handleChange} required />
-          <Field label="DUI" name="dui" value={form.dui} onChange={handleChange} />
+          <Field
+            label="DUI"
+            name="dui"
+            value={form.dui}
+            onChange={handleChange}
+            inputMode="numeric"
+            pattern="\d{9}"
+            maxLength={9}
+            placeholder="123456789"
+            title="El DUI debe tener 9 números"
+          />
           <Field label="Teléfono" name="phone" value={form.phone} onChange={handleChange} />
           <Field label="Correo" name="email" type="email" value={form.email} onChange={handleChange} required />
           <Field label={editingId ? "Contraseña (dejar vacío = sin cambio)" : "Contraseña"} name="password" type="password" value={form.password} onChange={handleChange} required={!editingId} />

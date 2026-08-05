@@ -11,18 +11,13 @@ import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import TransactionToolbar from "../components/transactions/TransactionToolbar";
 import TransactionTable from "../components/transactions/TransactionTable";
-import { defaultTransactionFilters, filterTransactions, txDate } from "../lib/transactionFilters";
+import { defaultTransactionFilters, filterTransactions, txDate, txDateParts } from "../lib/transactionFilters";
 import { todayInput } from "../hooks/useBatchForm";
 import { blockNegativeKey } from "../lib/numberInput";
-import { blockSymbolKey, stripSymbols } from "../lib/textInput";
 import { IconFinance, IconPlus } from "../lib/icons";
 
 const TYPES = ["Ingreso", "Gasto"];
-// Los estados disponibles dependen del tipo de transacción.
-const STATUSES_BY_TYPE = {
-  Ingreso: ["Pendiente", "Completado"],
-  Gasto: ["Pendiente", "Pagado"],
-};
+const STATUSES = ["Pendiente", "Completado"];
 const CATEGORIES = ["Materia Prima", "Logística", "Mantenimiento", "Planilla", "Servicios", "Ventas", "Otros"];
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -42,17 +37,42 @@ function previewReference(list) {
   return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
 }
 
-// Meses (año/mes) comprendidos en el rango seleccionado (máx. 12 columnas).
+// Meses (año/mes) comprendidos en el rango seleccionado. Sin tope: si hay más de
+// 12, la card los muestra igual y se navegan con scroll horizontal (ver BarChart).
 function monthsInRange(from, to) {
   const res = [];
   const d = new Date(from.getFullYear(), from.getMonth(), 1);
   const end = new Date(to.getFullYear(), to.getMonth(), 1);
-  while (d <= end && res.length < 12) {
+  while (d <= end) {
     res.push({ y: d.getFullYear(), m: d.getMonth() });
     d.setMonth(d.getMonth() + 1);
   }
   return res;
 }
+
+// Días (año/mes/día) comprendidos en el rango seleccionado (máx. 31 columnas).
+function daysInRange(from, to) {
+  const res = [];
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  while (d <= end && res.length < 31) {
+    res.push({ y: d.getFullYear(), m: d.getMonth(), day: d.getDate() });
+    d.setDate(d.getDate() + 1);
+  }
+  return res;
+}
+
+// Umbral para decidir la granularidad de la gráfica. El preset "Últimos 7 días"
+// abarca ~8 días (incluye hoy completo) y "Últimos 30 días" ~31 días, así que 10
+// separa claramente ambos casos: 7 días se grafica día a día, 30 días por mes.
+const DAILY_CHART_MAX_SPAN_DAYS = 10;
+
+// Cantidad exacta de meses a graficar para los presets de meses fijos. Con
+// rango en días (ej. daysAgo(365)) el rango toca 13 meses calendario (el mes de
+// inicio y el de fin quedan parciales), así que para estos presets se ancla el
+// rango a meses calendario completos y se fuerza a que la card muestre
+// exactamente esa cantidad de columnas, sin scroll.
+const PRESET_MONTHS = { "3m": 3, "6m": 6, "365d": 12 };
 
 function Finanzas() {
   const navigate = useNavigate();
@@ -91,27 +111,62 @@ function Finanzas() {
     return { income, expense, net: income - expense };
   }, [rangeList]);
 
-  // Ingresos vs Gastos por mes, según el rango seleccionado
-  // ("Todo" = sin rango => usa los últimos 12 meses con movimientos)
-  const monthly = useMemo(() => {
+  // Ingresos vs Gastos, según el rango seleccionado.
+  // Rangos cortos (ej. "Últimos 7/30 días") se muestran día a día, con exactamente
+  // esos días; rangos más largos (3/6/12 meses, personalizado largo o "Todo") se
+  // agrupan por mes como antes.
+  const chart = useMemo(() => {
     let effFrom = range.from;
     let effTo = range.to;
     if (!effFrom || !effTo) {
-      const dates = rangeList
-        .map((t) => new Date(txDate(t)))
-        .filter((d) => !Number.isNaN(d.getTime()));
-      if (dates.length === 0) return [];
-      effTo = new Date(Math.max(...dates));
-      effFrom = new Date(effTo.getFullYear(), effTo.getMonth() - 11, 1);
+      // "Todo": se usa el rango completo de fechas con movimientos (no solo los
+      // últimos 12 meses), para no ocultar transacciones más antiguas. Si son más
+      // de 12 meses, la card los muestra igual con scroll horizontal.
+      // Se usa txDateParts (no getFullYear/getMonth directo) para no correr la
+      // fecha un día -y potencialmente de mes- en husos detrás de UTC.
+      const parts = rangeList.map((t) => txDateParts(t)).filter(Boolean);
+      if (parts.length === 0) return { data: [], isDaily: false };
+      const latest = parts.reduce((a, b) => (b.time > a.time ? b : a));
+      const earliest = parts.reduce((a, b) => (b.time < a.time ? b : a));
+      effTo = new Date(latest.y, latest.m, latest.day, 23, 59, 59, 999);
+      effFrom = new Date(earliest.y, earliest.m, 1);
+    } else if (PRESET_MONTHS[range.preset]) {
+      const n = PRESET_MONTHS[range.preset];
+      const anchorY = effTo.getFullYear();
+      const anchorM = effTo.getMonth();
+      effTo = new Date(anchorY, anchorM, 1);
+      effFrom = new Date(anchorY, anchorM - (n - 1), 1);
     }
+
+    const spanDays = Math.round((effTo - effFrom) / 86400000);
+    const isDaily = spanDays <= DAILY_CHART_MAX_SPAN_DAYS;
+
+    if (isDaily) {
+      const buckets = daysInRange(effFrom, effTo);
+      const data = buckets.map((bucket) => {
+        let income = 0;
+        let expense = 0;
+        for (const t of rangeList) {
+          const parts = txDateParts(t);
+          if (parts && parts.y === bucket.y && parts.m === bucket.m && parts.day === bucket.day) {
+            if (t.type === "Ingreso") income += t.amount;
+            else expense += t.amount;
+          }
+        }
+        const label = `${String(bucket.day).padStart(2, "0")} ${MONTHS[bucket.m]}`;
+        return { label, values: [income, expense] };
+      });
+      return { data, isDaily: true };
+    }
+
     const buckets = monthsInRange(effFrom, effTo);
     const spansYears = new Set(buckets.map((b) => b.y)).size > 1;
-    return buckets.map((bucket) => {
+    const data = buckets.map((bucket) => {
       let income = 0;
       let expense = 0;
       for (const t of rangeList) {
-        const d = new Date(txDate(t));
-        if (d.getFullYear() === bucket.y && d.getMonth() === bucket.m) {
+        const parts = txDateParts(t);
+        if (parts && parts.y === bucket.y && parts.m === bucket.m) {
           if (t.type === "Ingreso") income += t.amount;
           else expense += t.amount;
         }
@@ -119,19 +174,12 @@ function Finanzas() {
       const label = spansYears ? `${MONTHS[bucket.m]} ${String(bucket.y).slice(-2)}` : MONTHS[bucket.m];
       return { label, values: [income, expense] };
     });
+    return { data, isDaily: false };
   }, [rangeList, range]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((f) => {
-      const next = { ...f, [name]: name === "concept" ? stripSymbols(value) : value };
-      // Al cambiar el tipo, si el estado actual ya no es válido para ese tipo, se ajusta.
-      if (name === "type") {
-        const allowed = STATUSES_BY_TYPE[value] || STATUSES_BY_TYPE.Ingreso;
-        if (!allowed.includes(next.status)) next.status = allowed[0];
-      }
-      return next;
-    });
+    setForm((f) => ({ ...f, [name]: value }));
   };
 
   function openCreate() {
@@ -197,11 +245,11 @@ function Finanzas() {
         <KpiCard label="Flujo de caja" value={fmt(kpis.net)} icon={IconFinance} trend={{ tone: "blue", label: "neto" }} />
       </div>
 
-      {/* Ingresos vs Gastos por mes (según el rango de fechas) */}
-      <SectionCard title="Ingresos vs. Gastos por mes">
-        <AsyncState loading={loading} error={error} empty={!loading && monthly.length === 0} emptyText="Sin movimientos en el rango.">
+      {/* Ingresos vs Gastos, por día o por mes según el rango de fechas */}
+      <SectionCard title={`Ingresos vs. Gastos por ${chart.isDaily ? "día" : "mes"}`}>
+        <AsyncState loading={loading} error={error} empty={!loading && chart.data.length === 0} emptyText="Sin movimientos en el rango.">
           <BarChart
-            data={monthly}
+            data={chart.data}
             series={[{ name: "Ingresos", color: "#2563eb" }, { name: "Gastos", color: "#ef4444" }]}
             formatValue={fmt}
           />
@@ -251,11 +299,11 @@ function Finanzas() {
               <span className="text-sm font-semibold text-slate-800">{form.reference}</span>
             </div>
           </div>
-          <Field label="Concepto" name="concept" onKeyDown={blockSymbolKey} value={form.concept} onChange={handleChange} required />
+          <Field label="Concepto" name="concept" value={form.concept} onChange={handleChange} required />
           <SelectField label="Tipo" name="type" value={form.type} onChange={handleChange} options={TYPES} required />
           <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} />
           <Field label="Monto ($)" name="amount" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} value={form.amount} onChange={handleChange} required />
-          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES_BY_TYPE[form.type] || STATUSES_BY_TYPE.Ingreso} />
+          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
           <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} />
         </form>
       </Modal>

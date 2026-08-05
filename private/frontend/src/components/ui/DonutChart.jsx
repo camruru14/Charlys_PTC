@@ -25,6 +25,8 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
           {data.map((d, i) => {
             const fraction = d.value / total;
             const dash = fraction * circumference;
+            // Con value 0, un trazo de largo 0 + strokeLinecap="round" dibuja un punto fantasma; se omite.
+            if (dash <= 0) return null;
             const circle = (
               <circle
                 key={i}

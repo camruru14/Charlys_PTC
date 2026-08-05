@@ -13,7 +13,7 @@ function toInput(date) {
 
 /*
   Botón + popover para elegir el rango de fechas.
-  Ofrece presets (7/30/90 días) y un rango personalizado (desde/hasta).
+  Ofrece presets (7/30 días, 3/6/12 meses) y un rango personalizado (desde/hasta).
   Escribe en el DateRangeContext global.
 */
 function DateRangePicker() {

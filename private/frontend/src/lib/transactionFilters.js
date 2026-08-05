@@ -17,6 +17,21 @@ export function txDate(t) {
   return t.date || t.createdAt;
 }
 
+// Componentes de fecha (año/mes/día) de una transacción, para agrupar por
+// día/mes (ej. gráficas de Finanzas) sin correrla un día en husos detrás de UTC.
+// "date" se guarda como medianoche UTC (fecha sin hora), así que se lee en UTC.
+// "createdAt" (fallback) sí es un instante real, por eso ese se lee en hora local.
+export function txDateParts(t) {
+  const raw = txDate(t);
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  if (t.date) {
+    return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(), time: d.getTime() };
+  }
+  return { y: d.getFullYear(), m: d.getMonth(), day: d.getDate(), time: d.getTime() };
+}
+
 // Opciones únicas presentes (para los desplegables de filtro).
 export function transactionFilterOptions(list = []) {
   const uniq = (key) => [...new Set(list.map((t) => t[key]).filter(Boolean))].sort();

@@ -13,7 +13,7 @@ const transactionSchema = new Schema(
     amount: { type: Number, required: true, min: 0 },
     status: {
       type: String,
-      enum: ["Pendiente", "Pagado", "Completado"],
+      enum: ["Pendiente", "Completado"],
       default: "Completado",
     },
     date: { type: Date, default: Date.now },

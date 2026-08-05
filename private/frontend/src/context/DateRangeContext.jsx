@@ -14,6 +14,13 @@ function daysAgo(n) {
   return d;
 }
 
+function monthsAgo(n) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setMonth(d.getMonth() - n);
+  return d;
+}
+
 function endOfToday() {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
@@ -24,7 +31,8 @@ const PRESETS = {
   all: { label: "Todo" },
   "7d": { days: 7, label: "Últimos 7 días" },
   "30d": { days: 30, label: "Últimos 30 días" },
-  "90d": { days: 90, label: "Últimos 90 días" },
+  "3m": { months: 3, label: "Últimos 3 meses" },
+  "6m": { months: 6, label: "Últimos 6 meses" },
   "365d": { days: 365, label: "Últimos 12 meses" },
 };
 
@@ -56,7 +64,8 @@ export function DateRangeProvider({ children }) {
           setRange({ from: null, to: null, preset });
           return;
         }
-        setRange({ from: daysAgo(p.days), to: endOfToday(), preset });
+        const from = p.months ? monthsAgo(p.months) : daysAgo(p.days);
+        setRange({ from, to: endOfToday(), preset });
       },
       // from/to son objetos Date (inicio y fin de día).
       setCustom: (from, to) => setRange({ from, to, preset: null }),

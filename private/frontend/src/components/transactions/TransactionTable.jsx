@@ -15,10 +15,16 @@ function TransactionTable({ transactions = [], onEdit, onDelete }) {
     );
   }
 
+  // date se guarda como medianoche UTC del día elegido (fecha sin hora), así que
+  // se lee en UTC para no correrla un día en husos detrás de UTC (p. ej. El Salvador).
+  // createdAt sí es un instante real, por eso ese se lee en la zona local.
   const fmtDate = (t) => {
-    const d = new Date(txDate(t));
+    const raw = txDate(t);
+    const d = new Date(raw);
     if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString("es-SV", { day: "2-digit", month: "short", year: "numeric" });
+    const opts = { day: "2-digit", month: "short", year: "numeric" };
+    if (t.date) opts.timeZone = "UTC";
+    return d.toLocaleDateString("es-SV", opts);
   };
 
   return (
@@ -31,7 +37,7 @@ function TransactionTable({ transactions = [], onEdit, onDelete }) {
             <th className="pb-3 pr-4 font-semibold">Concepto</th>
             <th className="pb-3 pr-4 font-semibold">Categoría</th>
             <th className="pb-3 pr-4 font-semibold">Monto</th>
-            <th className="pb-3 font-semibold">Estado</th>
+            <th className="pb-3 pr-6 font-semibold">Estado</th>
             {showActions ? <th className="pb-3 font-semibold text-right">Acciones</th> : null}
           </tr>
         </thead>
@@ -45,7 +51,7 @@ function TransactionTable({ transactions = [], onEdit, onDelete }) {
               <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-red-600"}`}>
                 {t.type === "Ingreso" ? "+" : "-"}${Number(t.amount || 0).toFixed(2)}
               </td>
-              <td className="py-3"><StatusPill status={t.status} tone={t.status === "Pagado" ? "blue" : undefined} /></td>
+              <td className="py-3 pr-6"><StatusPill status={t.status} tone={t.status === "Pagado" ? "blue" : undefined} /></td>
               {showActions ? (
                 <td className="py-3 text-right">
                   <div className="flex justify-end gap-2">
