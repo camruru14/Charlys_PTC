@@ -1,4 +1,4 @@
-# 🏭 PlastiGest: Industrias Charly
+# 🏭 Industrias Charly
 
 > **Transformando la materia prima en eficiencia operativa.** ⚙️
 
