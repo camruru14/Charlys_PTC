@@ -23,6 +23,10 @@ function Logistica() {
   const [editForm, setEditForm] = useState({ driver: "", vehicle: "", address: "", dispatchStatus: "Saliendo" });
   const [saving, setSaving] = useState(false);
 
+  const [filterDriver, setFilterDriver] = useState("");
+  const [filterVehicle, setFilterVehicle] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
   const list = Array.isArray(orders) ? orders : [];
   const drivers = (Array.isArray(employees) ? employees : []).filter((e) => e.role === "motorista");
 
@@ -64,6 +68,51 @@ function Logistica() {
     const punctuality = total ? Math.round(((total - delayed) / total) * 100) : 100;
     return { inTransit, onTime, delayed, punctuality, drivers: drivers.length };
   }, [list, drivers.length]);
+
+  // Opciones de filtro derivadas de los pedidos en despacho, para no mostrar
+  // motoristas/vehículos/estados que no aparecen en la lista.
+  const shippingDrivers = useMemo(() => {
+    const map = new Map();
+    shipping.forEach((o) => {
+      const d = o.delivery?.driver;
+      if (d && typeof d === "object" && d._id) map.set(d._id, d);
+    });
+    return Array.from(map.values());
+  }, [shipping]);
+
+  const shippingVehicles = useMemo(() => {
+    const set = new Set();
+    shipping.forEach((o) => {
+      if (o.delivery?.vehicle) set.add(o.delivery.vehicle);
+    });
+    return Array.from(set).sort();
+  }, [shipping]);
+
+  const shippingStatuses = useMemo(() => {
+    const set = new Set();
+    shipping.forEach((o) => set.add(o.delivery?.dispatchStatus || o.status));
+    return Array.from(set);
+  }, [shipping]);
+
+  const filteredShipping = useMemo(() => {
+    return shipping.filter((o) => {
+      if (filterDriver) {
+        const id = typeof o.delivery?.driver === "object" ? o.delivery?.driver?._id : o.delivery?.driver;
+        if (id !== filterDriver) return false;
+      }
+      if (filterVehicle && o.delivery?.vehicle !== filterVehicle) return false;
+      if (filterStatus && (o.delivery?.dispatchStatus || o.status) !== filterStatus) return false;
+      return true;
+    });
+  }, [shipping, filterDriver, filterVehicle, filterStatus]);
+
+  const hasActiveFilters = Boolean(filterDriver || filterVehicle || filterStatus);
+
+  function clearFilters() {
+    setFilterDriver("");
+    setFilterVehicle("");
+    setFilterStatus("");
+  }
 
   const statusMix = useMemo(() => {
     const onTime = shipping.filter((o) => o.delivery?.dispatchStatus === "A tiempo").length;
@@ -144,7 +193,52 @@ function Logistica() {
 
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
         <SectionCard title="Pedidos para despacho" className="xl:col-span-2">
-          <AsyncState loading={loading} error={error} empty={!loading && shipping.length === 0} emptyText="No hay pedidos para despachar.">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={filterDriver}
+              onChange={(e) => setFilterDriver(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="">Todos los motoristas</option>
+              {shippingDrivers.map((d) => (
+                <option key={d._id} value={d._id}>{d.name} {d.lastName}</option>
+              ))}
+            </select>
+            <select
+              value={filterVehicle}
+              onChange={(e) => setFilterVehicle(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="">Todos los vehículos</option>
+              {shippingVehicles.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="">Todos los estados</option>
+              {shippingStatuses.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {hasActiveFilters ? (
+              <button
+                onClick={clearFilters}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+              >
+                Limpiar filtros
+              </button>
+            ) : null}
+          </div>
+          <AsyncState
+            loading={loading}
+            error={error}
+            empty={!loading && filteredShipping.length === 0}
+            emptyText={hasActiveFilters ? "Ningún pedido coincide con los filtros." : "No hay pedidos para despachar."}
+          >
             <div className="max-h-96 overflow-y-auto">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">
@@ -159,7 +253,7 @@ function Logistica() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {shipping.map((o) => (
+                    {filteredShipping.map((o) => (
                       <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
                         <td className="py-3 pr-4 font-semibold text-slate-800">{o.orderNumber}</td>
                         <td className="py-3 pr-4">{o.delivery?.driver ? `${o.delivery.driver.name} ${o.delivery.driver.lastName}` : "— sin asignar"}</td>

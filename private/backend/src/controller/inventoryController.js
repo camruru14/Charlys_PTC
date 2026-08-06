@@ -43,7 +43,7 @@ inventoryController.updateItem = async (req, res) => {
   await inventoryModel.findByIdAndUpdate(
     req.params.id,
     { name, category, type, color, unit, stock, minStock, unitCost, location },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   res.json({ message: "Inventory item updated" });
@@ -53,6 +53,23 @@ inventoryController.updateItem = async (req, res) => {
 inventoryController.deleteItem = async (req, res) => {
   await inventoryModel.findByIdAndDelete(req.params.id);
   res.json({ message: "Inventory item deleted" });
+};
+
+// Enviar un artículo de "Lotes Reportados" a "Artículos en almacén": lo marca
+// como enviado, así pasa a contar también como stock de almacén sin dejar de
+// aparecer (ni borrarse) en Lotes Reportados.
+inventoryController.sendToWarehouse = async (req, res) => {
+  const item = await inventoryModel.findByIdAndUpdate(
+    req.params.id,
+    { sentToWarehouse: true },
+    { returnDocument: "after" },
+  );
+
+  if (!item) {
+    return res.status(404).json({ message: "Inventory item not found" });
+  }
+
+  res.json({ message: "Inventory item sent to warehouse" });
 };
 
 export default inventoryController;

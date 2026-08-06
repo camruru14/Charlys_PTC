@@ -52,12 +52,23 @@ export function previewBatchNumber(list) {
   Estado y acciones (crear/editar/eliminar/reportar) para lotes de fabricación.
   Reutilizado por la página de Fabricación y por el "Ver todo" editable de Fabricación.
 */
+// Bodegas disponibles para reportar producción a Inventario. Por ahora solo
+// existe una; cuando se den de alta más, solo hay que agregarlas aquí.
+export const WAREHOUSES = ["Bodega A-1"];
+
+const emptyReportForm = { producedQuantity: "", warehouse: WAREHOUSES[0] };
+
 export function useBatchForm(list, refetch) {
   const { data: employees } = useFetch("/employees");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyBatchForm);
   const [saving, setSaving] = useState(false);
+
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportForm, setReportForm] = useState(emptyReportForm);
+  const [reporting, setReporting] = useState(false);
 
   const operators = (Array.isArray(employees) ? employees : []).filter((e) =>
     ["operario", "gerente", "admin"].includes(e.role),
@@ -147,20 +158,35 @@ export function useBatchForm(list, refetch) {
     }
   }
 
-  async function handleReport(batch) {
-    const produced = window.prompt(`Producción a reportar para ${batch.batchNumber} (unidades):`, "0");
-    if (produced === null) return;
-    const waste = window.prompt("Residuos generados (unidades):", "0");
-    if (waste === null) return;
+  // Abre el modal de confirmación de "Reportar" (reemplaza los antiguos window.prompt).
+  // Las unidades a reportar se calculan solas: lo que falta para llegar a la
+  // meta del lote (Cantidad meta - lo ya producido), sin pedirlo a mano.
+  function openReport(batch) {
+    const remaining = Math.max((Number(batch.targetQuantity) || 0) - (Number(batch.producedQuantity) || 0), 0);
+    setReportTarget(batch);
+    setReportForm({ producedQuantity: String(remaining), warehouse: WAREHOUSES[0] });
+    setReportModalOpen(true);
+  }
+
+  const handleReportChange = (e) => setReportForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  // Confirma el reporte: acumula lo producido en el lote y, del lado del
+  // backend, agrega/actualiza el artículo correspondiente en Inventario.
+  async function submitReport(e) {
+    e.preventDefault();
+    setReporting(true);
     try {
-      await api.patch(`/productionBatches/${batch._id}/report`, {
-        producedQuantity: Number(produced) || 0,
-        wasteQuantity: Number(waste) || 0,
+      await api.patch(`/productionBatches/${reportTarget._id}/report`, {
+        producedQuantity: Number(reportForm.producedQuantity) || 0,
+        warehouse: reportForm.warehouse,
       });
-      toast.success("Producción reportada");
+      toast.success(`Lote ${reportTarget.batchNumber} reportado a Inventario`);
+      setReportModalOpen(false);
       refetch();
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setReporting(false);
     }
   }
 
@@ -176,6 +202,13 @@ export function useBatchForm(list, refetch) {
     handleChange,
     handleSubmit,
     handleDelete,
-    handleReport,
+    reportModalOpen,
+    setReportModalOpen,
+    reportTarget,
+    reportForm,
+    reporting,
+    openReport,
+    handleReportChange,
+    submitReport,
   };
 }

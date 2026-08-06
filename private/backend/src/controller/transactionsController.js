@@ -48,7 +48,7 @@ transactionsController.updateTransaction = async (req, res) => {
   await transactionModel.findByIdAndUpdate(
     req.params.id,
     { reference, concept, type, category, amount, status, date },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   res.json({ message: "Transaction updated" });

@@ -68,6 +68,12 @@ const productionBatchSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // Se llena solo cuando se usa el botón "Reportar" en Fabricación (endpoint
+    // /report). Sirve para distinguir producción reportada de producción
+    // simplemente capturada al crear/editar el lote a mano.
+    lastReportedAt: {
+      type: Date,
+    },
     status: {
       type: String,
       enum: ["Programado", "En Proceso", "Completado", "Detenido"],

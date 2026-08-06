@@ -1,6 +1,7 @@
 const productionBatchesController = {};
 
 import batchModel from "../models/ProductionBatch.js";
+import inventoryModel from "../models/InventoryItem.js";
 
 // Genera el siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...)
 export async function generateBatchNumber() {
@@ -113,7 +114,7 @@ productionBatchesController.updateBatch = async (req, res) => {
 
 // Registro manual de producción reportada por el empleado
 productionBatchesController.reportProduction = async (req, res) => {
-  const { producedQuantity, wasteQuantity } = req.body;
+  const { producedQuantity, wasteQuantity, warehouse } = req.body;
 
   const batch = await batchModel.findById(req.params.id);
 
@@ -124,12 +125,32 @@ productionBatchesController.reportProduction = async (req, res) => {
   // Acumulamos lo reportado sobre lo ya producido
   batch.producedQuantity += Number(producedQuantity || 0);
   batch.wasteQuantity += Number(wasteQuantity || 0);
+  batch.lastReportedAt = new Date();
 
   if (batch.status === "Programado") {
     batch.status = "En Proceso";
   }
 
   await batch.save();
+
+  // Reportar el lote también lo agrega/actualiza en Inventario como Producto
+  // Terminado. El artículo se llama "Producto - Color" (o solo "Producto" si
+  // el lote no tiene color). Un mismo lote (mismo batchNumber) actualiza
+  // siempre el mismo artículo en vez de crear uno nuevo en cada reporte.
+  const articleName = batch.color ? `${batch.product} - ${batch.color}` : batch.product;
+
+  await inventoryModel.findOneAndUpdate(
+    { batchNumber: batch.batchNumber },
+    {
+      name: articleName,
+      category: "Producto Terminado",
+      color: batch.color,
+      stock: batch.producedQuantity,
+      batchNumber: batch.batchNumber,
+      location: warehouse,
+    },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+  );
 
   res.json({ message: "Production reported", wastePercentage: batch.wastePercentage });
 };

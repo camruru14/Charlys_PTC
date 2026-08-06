@@ -91,7 +91,7 @@ employeesController.updateEmployee = async (req, res) => {
   }
 
   await employeeModel.findByIdAndUpdate(req.params.id, updateData, {
-    new: true,
+    returnDocument: "after",
   });
 
   res.json({ message: "Employee updated" });
@@ -110,7 +110,7 @@ employeesController.registerAttendance = async (req, res) => {
   await employeeModel.findByIdAndUpdate(
     req.params.id,
     { $push: { attendance: { date, checkIn, checkOut, workedHours, overtimeHours } } },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   res.json({ message: "Attendance registered" });

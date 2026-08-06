@@ -8,6 +8,7 @@ import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
 import BatchFormModal from "../components/batches/BatchFormModal";
+import ReportBatchModal from "../components/batches/ReportBatchModal";
 import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconFactory, IconAlert, IconCheck, IconPlus } from "../lib/icons";
@@ -38,7 +39,14 @@ function Fabricacion() {
     handleChange,
     handleSubmit,
     handleDelete,
-    handleReport,
+    reportModalOpen,
+    setReportModalOpen,
+    reportTarget,
+    reportForm,
+    reporting,
+    openReport,
+    handleReportChange,
+    submitReport,
   } = useBatchForm(list, refetch);
 
   const {
@@ -169,7 +177,13 @@ function Fabricacion() {
                       <td className="py-3 pr-4"><StatusPill status={b.status} /></td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
-                          <button onClick={() => handleReport(b)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Reportar</button>
+                          {b.lastReportedAt ? (
+                            <span className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                              <IconCheck width={14} height={14} /> Reportado
+                            </span>
+                          ) : (
+                            <button onClick={() => openReport(b)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Reportar</button>
+                          )}
                           <button onClick={() => openEdit(b)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
                           <button onClick={() => handleDelete(b)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
                         </div>
@@ -236,6 +250,16 @@ function Fabricacion() {
         handleSubmit={handleSubmit}
         saving={saving}
         operators={operators}
+      />
+
+      <ReportBatchModal
+        open={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        target={reportTarget}
+        form={reportForm}
+        handleChange={handleReportChange}
+        handleSubmit={submitReport}
+        saving={reporting}
       />
 
       <DailyBatchFormModal

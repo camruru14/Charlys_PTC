@@ -14,4 +14,7 @@ router
   .put(inventoryController.updateItem)
   .delete(inventoryController.deleteItem);
 
+// Enviar un lote reportado a Artículos en almacén
+router.route("/:id/send").patch(inventoryController.sendToWarehouse);
+
 export default router;

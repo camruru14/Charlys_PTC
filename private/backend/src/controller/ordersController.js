@@ -67,7 +67,7 @@ ordersController.updateOrder = async (req, res) => {
     update.$unset = { delivery: "" };
   }
 
-  await orderModel.findByIdAndUpdate(req.params.id, update, { new: true });
+  await orderModel.findByIdAndUpdate(req.params.id, update, { returnDocument: "after" });
 
   res.json({ message: "Order updated" });
 };
@@ -84,7 +84,7 @@ ordersController.updateStatus = async (req, res) => {
     update.$unset = { delivery: "" };
   }
 
-  await orderModel.findByIdAndUpdate(req.params.id, update, { new: true });
+  await orderModel.findByIdAndUpdate(req.params.id, update, { returnDocument: "after" });
 
   res.json({ message: "Order status updated" });
 };
@@ -99,7 +99,7 @@ ordersController.assignDelivery = async (req, res) => {
       status: "En Tránsito",
       delivery: { driver, vehicle, dispatchStatus, address },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   res.json({ message: "Delivery assigned" });
