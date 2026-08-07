@@ -9,6 +9,7 @@ import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
 import BatchFormModal from "../components/batches/BatchFormModal";
 import ReportBatchModal from "../components/batches/ReportBatchModal";
+import UndoReportModal from "../components/batches/UndoReportModal";
 import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconFactory, IconAlert, IconCheck, IconPlus } from "../lib/icons";
@@ -47,6 +48,12 @@ function Fabricacion() {
     openReport,
     handleReportChange,
     submitReport,
+    undoReportModalOpen,
+    setUndoReportModalOpen,
+    undoReportTarget,
+    undoingReport,
+    openUndoReport,
+    confirmUndoReport,
   } = useBatchForm(list, refetch);
 
   const {
@@ -178,9 +185,9 @@ function Fabricacion() {
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
                           {b.lastReportedAt ? (
-                            <span className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                            <button onClick={() => openUndoReport(b)} className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 hover:bg-emerald-100">
                               <IconCheck width={14} height={14} /> Reportado
-                            </span>
+                            </button>
                           ) : (
                             <button onClick={() => openReport(b)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Reportar</button>
                           )}
@@ -260,6 +267,14 @@ function Fabricacion() {
         handleChange={handleReportChange}
         handleSubmit={submitReport}
         saving={reporting}
+      />
+
+      <UndoReportModal
+        open={undoReportModalOpen}
+        onClose={() => setUndoReportModalOpen(false)}
+        target={undoReportTarget}
+        handleConfirm={confirmUndoReport}
+        undoing={undoingReport}
       />
 
       <DailyBatchFormModal

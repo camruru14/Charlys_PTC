@@ -29,6 +29,9 @@ function Inventario() {
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendTarget, setSendTarget] = useState(null);
   const [sending, setSending] = useState(false);
+  const [deleteReportModalOpen, setDeleteReportModalOpen] = useState(false);
+  const [deleteReportTarget, setDeleteReportTarget] = useState(null);
+  const [deletingReport, setDeletingReport] = useState(false);
 
   const list = Array.isArray(data) ? data : [];
 
@@ -140,6 +143,29 @@ function Inventario() {
       toast.error(err.message);
     } finally {
       setSending(false);
+    }
+  }
+
+  function openDeleteReport(item) {
+    setDeleteReportTarget(item);
+    setDeleteReportModalOpen(true);
+  }
+
+  // Elimina un lote reportado: el lote en Fabricación queda igual (su
+  // producción y estado no cambian), solo deja de estar "reportado" (vuelve
+  // a mostrar el botón "Reportar"). Si ya se había enviado a almacén, ese
+  // stock se conserva sin cambios en Artículos en almacén; si no, se borra.
+  async function confirmDeleteReport() {
+    setDeletingReport(true);
+    try {
+      await api.del(`/inventory/${deleteReportTarget._id}/report`);
+      toast.success(`Reporte de ${deleteReportTarget.batchNumber} eliminado`);
+      setDeleteReportModalOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setDeletingReport(false);
     }
   }
 
@@ -256,13 +282,16 @@ function Inventario() {
                       <td className="py-3 pr-4">{i.location || "—"}</td>
                       <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(i.updatedAt)}</td>
                       <td className="py-3 text-right">
-                        {i.sentToWarehouse ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                            <IconCheck width={14} height={14} /> Enviado
-                          </span>
-                        ) : (
-                          <button onClick={() => openSend(i)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Enviar</button>
-                        )}
+                        <div className="flex justify-end gap-2 text-xs font-semibold">
+                          {i.sentToWarehouse ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                              <IconCheck width={14} height={14} /> Enviado
+                            </span>
+                          ) : (
+                            <button onClick={() => openSend(i)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Enviar</button>
+                          )}
+                          <button onClick={() => openDeleteReport(i)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -314,6 +343,30 @@ function Inventario() {
             Vas a enviar <strong>{sendTarget.name}</strong> (lote {sendTarget.batchNumber}) a Artículos en almacén.
             Sus {(sendTarget.stock || 0).toLocaleString("es-SV")} {sendTarget.unit} pasarán a contar como stock de almacén,
             sin dejar de aparecer aquí en Lotes Reportados.
+          </p>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={deleteReportModalOpen}
+        onClose={() => setDeleteReportModalOpen(false)}
+        title="Eliminar lote reportado"
+        footer={
+          <>
+            <button onClick={() => setDeleteReportModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+            <button onClick={confirmDeleteReport} disabled={deletingReport} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+              {deletingReport ? "Eliminando…" : "Eliminar"}
+            </button>
+          </>
+        }
+      >
+        {deleteReportTarget ? (
+          <p className="rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-800">
+            Vas a eliminar el reporte de <strong>{deleteReportTarget.name}</strong> (lote {deleteReportTarget.batchNumber}).
+            El lote en Fabricación queda igual (su producción y estado no cambian), solo deja de estar reportado.
+            {deleteReportTarget.sentToWarehouse
+              ? " Como ya se había enviado a almacén, ese stock se conserva sin cambios en Artículos en almacén."
+              : " Como todavía no se había enviado a almacén, no queda ningún stock que conservar."}
           </p>
         ) : null}
       </Modal>

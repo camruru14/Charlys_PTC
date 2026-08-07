@@ -14,7 +14,10 @@ router
   .put(productionBatchesController.updateBatch)
   .delete(productionBatchesController.deleteBatch);
 
-// Registro manual de producción reportada por el empleado
-router.route("/:id/report").patch(productionBatchesController.reportProduction);
+// Registro manual de producción reportada por el empleado / deshacer reporte
+router
+  .route("/:id/report")
+  .patch(productionBatchesController.reportProduction)
+  .delete(productionBatchesController.undoReport);
 
 export default router;

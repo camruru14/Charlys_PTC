@@ -70,6 +70,10 @@ export function useBatchForm(list, refetch) {
   const [reportForm, setReportForm] = useState(emptyReportForm);
   const [reporting, setReporting] = useState(false);
 
+  const [undoReportModalOpen, setUndoReportModalOpen] = useState(false);
+  const [undoReportTarget, setUndoReportTarget] = useState(null);
+  const [undoingReport, setUndoingReport] = useState(false);
+
   const operators = (Array.isArray(employees) ? employees : []).filter((e) =>
     ["operario", "gerente", "admin"].includes(e.role),
   );
@@ -159,19 +163,20 @@ export function useBatchForm(list, refetch) {
   }
 
   // Abre el modal de confirmación de "Reportar" (reemplaza los antiguos window.prompt).
-  // Las unidades a reportar se calculan solas: lo que falta para llegar a la
-  // meta del lote (Cantidad meta - lo ya producido), sin pedirlo a mano.
+  // Las unidades a reportar se toman solas de lo que ya está guardado como
+  // producción del lote (columna "Producido"), sin pedirlo a mano ni
+  // recalcularlo aparte, así se reporta siempre la misma cantidad.
   function openReport(batch) {
-    const remaining = Math.max((Number(batch.targetQuantity) || 0) - (Number(batch.producedQuantity) || 0), 0);
     setReportTarget(batch);
-    setReportForm({ producedQuantity: String(remaining), warehouse: WAREHOUSES[0] });
+    setReportForm({ producedQuantity: String(batch.producedQuantity || 0), warehouse: WAREHOUSES[0] });
     setReportModalOpen(true);
   }
 
   const handleReportChange = (e) => setReportForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  // Confirma el reporte: acumula lo producido en el lote y, del lado del
-  // backend, agrega/actualiza el artículo correspondiente en Inventario.
+  // Confirma el reporte: envía la misma cantidad producida ya guardada en el
+  // lote y, del lado del backend, agrega/actualiza el artículo
+  // correspondiente en Inventario con ese mismo número.
   async function submitReport(e) {
     e.preventDefault();
     setReporting(true);
@@ -187,6 +192,31 @@ export function useBatchForm(list, refetch) {
       toast.error(err.message);
     } finally {
       setReporting(false);
+    }
+  }
+
+  // Abre el modal de confirmación para deshacer el reporte de un lote
+  // (clic en la etiqueta "Reportado").
+  function openUndoReport(batch) {
+    setUndoReportTarget(batch);
+    setUndoReportModalOpen(true);
+  }
+
+  // Confirma deshacer el reporte: el lote vuelve a "no reportado" y, del lado
+  // del backend, se resuelve el artículo vinculado en Inventario (se borra si
+  // nunca se envió a almacén, o se desvincula conservando el stock si ya se
+  // había enviado).
+  async function confirmUndoReport() {
+    setUndoingReport(true);
+    try {
+      await api.del(`/productionBatches/${undoReportTarget._id}/report`);
+      toast.success(`Reporte de ${undoReportTarget.batchNumber} deshecho`);
+      setUndoReportModalOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUndoingReport(false);
     }
   }
 
@@ -210,5 +240,11 @@ export function useBatchForm(list, refetch) {
     openReport,
     handleReportChange,
     submitReport,
+    undoReportModalOpen,
+    setUndoReportModalOpen,
+    undoReportTarget,
+    undoingReport,
+    openUndoReport,
+    confirmUndoReport,
   };
 }

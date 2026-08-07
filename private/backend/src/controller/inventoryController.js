@@ -1,6 +1,8 @@
 const inventoryController = {};
 
 import inventoryModel from "../models/InventoryItem.js";
+import batchModel from "../models/ProductionBatch.js";
+import { resetBatchToUnreported, releaseReportedItem } from "./productionBatchesController.js";
 
 // SELECT
 inventoryController.getItems = async (req, res) => {
@@ -70,6 +72,28 @@ inventoryController.sendToWarehouse = async (req, res) => {
   }
 
   res.json({ message: "Inventory item sent to warehouse" });
+};
+
+// Eliminar un lote reportado desde Inventario > Lotes Reportados: revierte el
+// lote a "no reportado" en Fabricación y resuelve el artículo (se borra si
+// nunca se envió a almacén, o se desvincula conservando el stock si ya se
+// había enviado y no debe verse afectado).
+inventoryController.undoReport = async (req, res) => {
+  const item = await inventoryModel.findById(req.params.id);
+
+  if (!item || !item.batchNumber) {
+    return res.status(404).json({ message: "Reported item not found" });
+  }
+
+  const batch = await batchModel.findOne({ batchNumber: item.batchNumber });
+  if (batch) {
+    resetBatchToUnreported(batch);
+    await batch.save();
+  }
+
+  await releaseReportedItem(item);
+
+  res.json({ message: "Report undone" });
 };
 
 export default inventoryController;

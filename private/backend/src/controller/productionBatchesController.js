@@ -112,9 +112,12 @@ productionBatchesController.updateBatch = async (req, res) => {
   res.json({ message: "Batch updated" });
 };
 
-// Registro manual de producción reportada por el empleado
+// Registro manual de producción reportada por el empleado. Reporta la misma
+// cantidad que ya está guardada como producción del lote (no se acumula ni
+// se recalcula aparte), así el número que llega a Inventario siempre
+// coincide con el que se ve en la columna "Producido" de Fabricación.
 productionBatchesController.reportProduction = async (req, res) => {
-  const { producedQuantity, wasteQuantity, warehouse } = req.body;
+  const { producedQuantity, warehouse } = req.body;
 
   const batch = await batchModel.findById(req.params.id);
 
@@ -122,9 +125,7 @@ productionBatchesController.reportProduction = async (req, res) => {
     return res.status(404).json({ message: "Batch not found" });
   }
 
-  // Acumulamos lo reportado sobre lo ya producido
-  batch.producedQuantity += Number(producedQuantity || 0);
-  batch.wasteQuantity += Number(wasteQuantity || 0);
+  batch.producedQuantity = Number(producedQuantity || 0);
   batch.lastReportedAt = new Date();
 
   if (batch.status === "Programado") {
@@ -153,6 +154,46 @@ productionBatchesController.reportProduction = async (req, res) => {
   );
 
   res.json({ message: "Production reported", wastePercentage: batch.wastePercentage });
+};
+
+// Revierte un lote a "no reportado": solo se limpia lastReportedAt (para que
+// vuelva a mostrar el botón "Reportar"). Producción, residuos y estado no se
+// tocan, el lote queda igual que estaba antes de deshacer el reporte. No
+// guarda el documento, eso queda a cargo de quien llama (así se puede reusar
+// sobre un batch ya cargado).
+export function resetBatchToUnreported(batch) {
+  batch.lastReportedAt = undefined;
+}
+
+// Libera el artículo de Inventario vinculado a un lote reportado: si ya se
+// había enviado a almacén, se conserva ahí (sigue contando como stock real)
+// pero se desvincula del lote; si nunca se envió, se borra por completo ya
+// que nunca llegó a ser stock real de almacén.
+export async function releaseReportedItem(item) {
+  if (!item) return;
+  if (item.sentToWarehouse) {
+    await inventoryModel.updateOne({ _id: item._id }, { $unset: { batchNumber: "" } });
+  } else {
+    await inventoryModel.deleteOne({ _id: item._id });
+  }
+}
+
+// Deshace el reporte de un lote (botón "Reportado" en Fabricación, o
+// "Eliminar" en Inventario > Lotes Reportados).
+productionBatchesController.undoReport = async (req, res) => {
+  const batch = await batchModel.findById(req.params.id);
+
+  if (!batch) {
+    return res.status(404).json({ message: "Batch not found" });
+  }
+
+  const item = await inventoryModel.findOne({ batchNumber: batch.batchNumber });
+
+  resetBatchToUnreported(batch);
+  await batch.save();
+  await releaseReportedItem(item);
+
+  res.json({ message: "Report undone" });
 };
 
 //Eliminar
