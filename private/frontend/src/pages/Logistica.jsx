@@ -12,6 +12,11 @@ import { IconTruck, IconCheck, IconAlert, IconOrders } from "../lib/icons";
 
 const DISPATCH = ["Saliendo", "A tiempo", "Demorado", "Entregado"];
 
+// Mismo estilo que los filtros de Inventario, para que ambas barras de
+// filtros se vean iguales en todo el panel.
+const selectFilterClass =
+  "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
+
 function Logistica() {
   const { data: orders, loading, error, refetch } = useFetch("/orders");
   const { data: employees } = useFetch("/employees");
@@ -197,9 +202,9 @@ function Logistica() {
             <select
               value={filterDriver}
               onChange={(e) => setFilterDriver(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              className={selectFilterClass}
             >
-              <option value="">Todos los motoristas</option>
+              <option value="">Motoristas: Todos</option>
               {shippingDrivers.map((d) => (
                 <option key={d._id} value={d._id}>{d.name} {d.lastName}</option>
               ))}
@@ -207,9 +212,9 @@ function Logistica() {
             <select
               value={filterVehicle}
               onChange={(e) => setFilterVehicle(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              className={selectFilterClass}
             >
-              <option value="">Todos los vehículos</option>
+              <option value="">Vehículos: Todos</option>
               {shippingVehicles.map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
@@ -217,9 +222,9 @@ function Logistica() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              className={selectFilterClass}
             >
-              <option value="">Todos los estados</option>
+              <option value="">Estado: Todos</option>
               {shippingStatuses.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}

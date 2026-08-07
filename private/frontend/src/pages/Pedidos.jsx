@@ -8,12 +8,41 @@ import Modal from "../components/ui/Modal";
 import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { blockNegativeKey, blockWheel } from "../lib/numberInput";
-import { IconOrders, IconTruck, IconCheck, IconPlus } from "../lib/icons";
+import { IconOrders, IconTruck, IconCheck, IconPlus, IconClose } from "../lib/icons";
 
 const STATUSES = ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
+
+// Campos más chicos que Field/SelectField, solo para la fila de "agregar
+// producto" del modal de pedido (esa fila no necesita casillas tan grandes).
+const compactLabelClass = "mb-1 block text-xs font-medium text-slate-600";
+const compactControlClass =
+  "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+
+function CompactField({ label, ...rest }) {
+  return (
+    <label className="block">
+      <span className={compactLabelClass}>{label}</span>
+      <input className={compactControlClass} {...rest} />
+    </label>
+  );
+}
+
+function CompactSelect({ label, options, placeholder, ...rest }) {
+  return (
+    <label className="block">
+      <span className={compactLabelClass}>{label}</span>
+      <select className={compactControlClass} {...rest}>
+        {placeholder ? <option value="">{placeholder}</option> : null}
+        {options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const emptyForm = {
   orderNumber: "",
@@ -21,13 +50,13 @@ const emptyForm = {
   customerEmail: "",
   customerPhone: "",
   customerAddress: "",
-  product: "Pajilla",
-  color: "Rojo",
-  quantity: "",
-  unitPrice: "",
   status: "Pendiente",
   paymentStatus: "Pendiente",
 };
+
+// Línea en construcción en la mini tabla de productos del modal, antes de
+// agregarse a la lista de items del pedido.
+const emptyLine = { product: "Pajilla", color: "Rojo", quantity: "", unitPrice: "" };
 
 // Vista previa del próximo N° de pedido (el backend genera el definitivo al guardar)
 function previewOrderNumber(list) {
@@ -45,7 +74,13 @@ function Pedidos() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [items, setItems] = useState([]);
+  const [lineForm, setLineForm] = useState(emptyLine);
   const [saving, setSaving] = useState(false);
+  // Pedido cuyos productos se muestran en el modal "Ver productos" de la tabla.
+  const [viewTarget, setViewTarget] = useState(null);
+
+  const total = useMemo(() => items.reduce((s, i) => s + i.subtotal, 0), [items]);
 
   const list = Array.isArray(data) ? data : [];
 
@@ -59,36 +94,66 @@ function Pedidos() {
   function openCreate() {
     setEditingId(null);
     setForm({ ...emptyForm, orderNumber: previewOrderNumber(list) });
+    setItems([]);
+    setLineForm(emptyLine);
     setModalOpen(true);
   }
 
   function openEdit(o) {
     setEditingId(o._id);
-    const item = o.items?.[0] || {};
     setForm({
       orderNumber: o.orderNumber || "",
       customerName: o.customer?.name || "",
       customerEmail: o.customer?.email || "",
       customerPhone: o.customer?.phone || "",
       customerAddress: o.customer?.address || "",
-      product: item.product || "Pajilla",
-      color: item.color || "",
-      quantity: item.quantity ?? "",
-      unitPrice: item.unitPrice ?? "",
       status: o.status || "Pendiente",
       paymentStatus: o.paymentStatus || "Pendiente",
     });
+    setItems(
+      (o.items || []).map((i) => ({
+        product: i.product,
+        color: i.color || "",
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        subtotal: i.subtotal ?? i.quantity * i.unitPrice,
+      })),
+    );
+    setLineForm(emptyLine);
     setModalOpen(true);
   }
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleLineChange = (e) => setLineForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  // Agrega la línea en construcción (Producto/Color/Cantidad/Precio unitario)
+  // a la mini tabla de productos del pedido.
+  function addLine() {
+    const quantity = Number(lineForm.quantity) || 0;
+    const unitPrice = Number(lineForm.unitPrice) || 0;
+    if (!lineForm.product) {
+      toast.error("Selecciona un producto");
+      return;
+    }
+    if (quantity <= 0) {
+      toast.error("La cantidad debe ser mayor a 0");
+      return;
+    }
+    setItems((prev) => [...prev, { product: lineForm.product, color: lineForm.color, quantity, unitPrice, subtotal: quantity * unitPrice }]);
+    setLineForm(emptyLine);
+  }
+
+  function removeLine(index) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (items.length === 0) {
+      toast.error("Agrega al menos un producto al pedido");
+      return;
+    }
     setSaving(true);
-    const quantity = Number(form.quantity) || 0;
-    const unitPrice = Number(form.unitPrice) || 0;
-    const subtotal = quantity * unitPrice;
     const payload = {
       customer: {
         name: form.customerName,
@@ -96,8 +161,8 @@ function Pedidos() {
         phone: form.customerPhone,
         address: form.customerAddress,
       },
-      items: [{ product: form.product, color: form.color, quantity, unitPrice, subtotal }],
-      total: subtotal,
+      items,
+      total,
       status: form.status,
       paymentStatus: form.paymentStatus,
     };
@@ -158,16 +223,15 @@ function Pedidos() {
       >
         <AsyncState loading={loading} error={error} empty={!loading && list.length === 0} emptyText="No hay pedidos.">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1400px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-slate-400">
                   <th className="pb-3 pr-4 font-semibold">Pedido</th>
                   <th className="pb-3 pr-4 font-semibold">Cliente</th>
-                  <th className="pb-3 pr-4 font-semibold">Correo</th>
-                  <th className="pb-3 pr-4 font-semibold">Teléfono</th>
+                  <th className="pb-3 pr-8 font-semibold">Correo</th>
+                  <th className="pb-3 pr-8 font-semibold">Teléfono</th>
                   <th className="pb-3 pr-4 font-semibold">Dirección</th>
-                  <th className="pb-3 pr-8 font-semibold">Cantidad</th>
-                  <th className="pb-3 pr-4 font-semibold">Precio unitario</th>
+                  <th className="pb-3 pr-4 font-semibold">Productos</th>
                   <th className="pb-3 pr-4 font-semibold">Total</th>
                   <th className="pb-3 pr-4 font-semibold">Pago</th>
                   <th className="pb-3 pr-4 font-semibold">Estado</th>
@@ -176,16 +240,18 @@ function Pedidos() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {list.map((o) => {
-                  const item = o.items?.[0] || {};
                   return (
                     <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
                       <td className="py-3 pr-4 font-semibold text-slate-800">{o.orderNumber}</td>
                       <td className="py-3 pr-4">{o.customer?.name || "—"}</td>
-                      <td className="py-3 pr-4">{o.customer?.email || "—"}</td>
-                      <td className="py-3 pr-4">{o.customer?.phone || "—"}</td>
+                      <td className="py-3 pr-8 w-[16ch] max-w-[16ch] whitespace-normal break-words">{o.customer?.email || "—"}</td>
+                      <td className="py-3 pr-8">{o.customer?.phone || "—"}</td>
                       <td className="py-3 pr-4 w-[16ch] max-w-[16ch] whitespace-normal break-words">{o.customer?.address || "—"}</td>
-                      <td className="py-3 pr-8 tabular-nums">{item.quantity ?? "—"}</td>
-                      <td className="py-3 pr-4 tabular-nums">${Number(item.unitPrice || 0).toFixed(2)}</td>
+                      <td className="py-3 pr-4">
+                        <button onClick={() => setViewTarget(o)} className="mx-auto block w-fit rounded-lg bg-slate-100 px-3 py-1 text-center text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                          Ver
+                        </button>
+                      </td>
                       <td className="py-3 pr-4 tabular-nums">${Number(o.total || 0).toFixed(2)}</td>
                       <td className="py-3 pr-4"><StatusPill status={o.paymentStatus} /></td>
                       <td className="py-3 pr-4">
@@ -236,16 +302,110 @@ function Pedidos() {
           <Field label="Correo del cliente" name="customerEmail" type="email" value={form.customerEmail} onChange={handleChange} />
           <Field label="Teléfono" name="customerPhone" value={form.customerPhone} onChange={handleChange} />
           <Field label="Dirección" name="customerAddress" value={form.customerAddress} onChange={handleChange} />
-          <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
-          <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
-          <Field label="Cantidad" name="quantity" type="number" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={form.quantity} onChange={handleChange} required />
-          <Field label="Precio unitario ($)" name="unitPrice" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={form.unitPrice} onChange={handleChange} required />
           <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
           <SelectField label="Estado de pago" name="paymentStatus" value={form.paymentStatus} onChange={handleChange} options={PAYMENT} />
+
+          {/* Productos del pedido: se arman en esta mini tabla en vez de ser
+              un solo Producto/Color/Cantidad/Precio unitario fijos, así un
+              mismo pedido puede llevar varios productos. */}
+          <div className="sm:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
+            <span className="block text-sm font-medium text-slate-700">Productos del pedido</span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.3fr_1fr_0.8fr_1fr_auto] sm:items-end">
+              <CompactSelect label="Producto" name="product" value={lineForm.product} onChange={handleLineChange} options={PRODUCTS} />
+              <CompactSelect label="Color" name="color" value={lineForm.color} onChange={handleLineChange} options={COLORS} placeholder="Sin color" />
+              <CompactField label="Cantidad" name="quantity" type="number" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.quantity} onChange={handleLineChange} />
+              <CompactField label="Precio unitario" name="unitPrice" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.unitPrice} onChange={handleLineChange} />
+              <button type="button" onClick={addLine} className="h-fit rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
+                Agregar
+              </button>
+            </div>
+
+            {items.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-wide text-slate-400">
+                      <th className="pb-2 pr-3 font-semibold">Producto</th>
+                      <th className="pb-2 pr-3 font-semibold">Color</th>
+                      <th className="pb-2 pr-3 font-semibold">Cantidad</th>
+                      <th className="pb-2 pr-3 font-semibold">Precio unitario</th>
+                      <th className="pb-2 pr-3 font-semibold">Subtotal</th>
+                      <th className="pb-2 font-semibold text-right">Quitar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {items.map((it, idx) => (
+                      <tr key={idx} className="text-slate-600">
+                        <td className="py-2 pr-3 font-semibold text-slate-800">{it.product}</td>
+                        <td className="py-2 pr-3">{it.color || "—"}</td>
+                        <td className="py-2 pr-3 tabular-nums">{it.quantity}</td>
+                        <td className="py-2 pr-3 tabular-nums">${it.unitPrice.toFixed(2)}</td>
+                        <td className="py-2 pr-3 tabular-nums">${it.subtotal.toFixed(2)}</td>
+                        <td className="py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeLine(idx)}
+                            className="rounded-lg p-1 text-red-500 transition hover:bg-red-50"
+                            aria-label={`Quitar ${it.product}`}
+                          >
+                            <IconClose width={14} height={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Aún no hay productos agregados a este pedido.</p>
+            )}
+          </div>
+
           <div className="sm:col-span-2 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Total estimado: <b className="text-slate-900">${((Number(form.quantity) || 0) * (Number(form.unitPrice) || 0)).toFixed(2)}</b>
+            Total del pedido: <b className="text-slate-900">${total.toFixed(2)}</b>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!viewTarget}
+        onClose={() => setViewTarget(null)}
+        title={`Productos del pedido ${viewTarget?.orderNumber || ""}`}
+        footer={
+          <button onClick={() => setViewTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+        }
+      >
+        {viewTarget?.items?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-3 font-semibold">Producto</th>
+                  <th className="pb-2 pr-3 font-semibold">Color</th>
+                  <th className="pb-2 pr-3 font-semibold">Cantidad</th>
+                  <th className="pb-2 pr-3 font-semibold">Precio unitario</th>
+                  <th className="pb-2 font-semibold">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {viewTarget.items.map((it, idx) => (
+                  <tr key={idx} className="text-slate-600">
+                    <td className="py-2 pr-3 font-semibold text-slate-800">{it.product}</td>
+                    <td className="py-2 pr-3">{it.color || "—"}</td>
+                    <td className="py-2 pr-3 tabular-nums">{it.quantity}</td>
+                    <td className="py-2 pr-3 tabular-nums">${Number(it.unitPrice || 0).toFixed(2)}</td>
+                    <td className="py-2 tabular-nums">${Number(it.subtotal || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="mt-3 rounded-xl bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+              Total del pedido: <b className="text-slate-900">${Number(viewTarget.total || 0).toFixed(2)}</b>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Este pedido no tiene productos.</p>
+        )}
       </Modal>
     </div>
   );

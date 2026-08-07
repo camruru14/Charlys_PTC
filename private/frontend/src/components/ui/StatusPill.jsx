@@ -25,6 +25,7 @@ const STATUS_TONE = {
   Pagado: "green",
   Activo: "green",
   Estable: "green",
+  Suficiente: "green",
   // Azul
   "En proceso": "blue",
   "En Proceso": "blue",
@@ -37,6 +38,7 @@ const STATUS_TONE = {
   Alerta: "red",
   Crítico: "red",
   Cancelado: "red",
+  Insuficiente: "red",
   // Amarillo
   "En Tránsito": "yellow",
   "En tránsito": "yellow",

@@ -135,15 +135,13 @@ productionBatchesController.reportProduction = async (req, res) => {
   await batch.save();
 
   // Reportar el lote también lo agrega/actualiza en Inventario como Producto
-  // Terminado. El artículo se llama "Producto - Color" (o solo "Producto" si
-  // el lote no tiene color). Un mismo lote (mismo batchNumber) actualiza
-  // siempre el mismo artículo en vez de crear uno nuevo en cada reporte.
-  const articleName = batch.color ? `${batch.product} - ${batch.color}` : batch.product;
-
+  // Terminado. Nombre y color se guardan aparte, cada uno en su propio campo
+  // (ya no se juntan en un solo texto). Un mismo lote (mismo batchNumber)
+  // actualiza siempre el mismo artículo en vez de crear uno nuevo en cada reporte.
   await inventoryModel.findOneAndUpdate(
     { batchNumber: batch.batchNumber },
     {
-      name: articleName,
+      name: batch.product,
       category: "Producto Terminado",
       color: batch.color,
       stock: batch.producedQuantity,
@@ -165,17 +163,15 @@ export function resetBatchToUnreported(batch) {
   batch.lastReportedAt = undefined;
 }
 
-// Libera el artículo de Inventario vinculado a un lote reportado: si ya se
-// había enviado a almacén, se conserva ahí (sigue contando como stock real)
-// pero se desvincula del lote; si nunca se envió, se borra por completo ya
-// que nunca llegó a ser stock real de almacén.
+// Libera el artículo de Inventario vinculado a un lote reportado: siempre se
+// borra el registro de "Lotes Reportados", ya que su stock nunca vive ahí
+// realmente. Si el lote ya se había enviado a almacén, esas unidades quedan
+// sumadas (sin verse afectadas) en el producto terminado de Artículos en
+// almacén al que se enviaron (inventoryController.sendToWarehouse), así que
+// borrar el reporte no le resta stock a almacén.
 export async function releaseReportedItem(item) {
   if (!item) return;
-  if (item.sentToWarehouse) {
-    await inventoryModel.updateOne({ _id: item._id }, { $unset: { batchNumber: "" } });
-  } else {
-    await inventoryModel.deleteOne({ _id: item._id });
-  }
+  await inventoryModel.deleteOne({ _id: item._id });
 }
 
 // Deshace el reporte de un lote (botón "Reportado" en Fabricación, o

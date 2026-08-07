@@ -9,6 +9,9 @@ const inventoryItemSchema = new Schema(
       required: true,
     },
     type: { type: String },
+    // Tipo de materia prima (Polimero, Aditivo, Tinta, Insumo). Solo aplica a
+    // artículos de categoría "Materia Prima".
+    materialType: { type: String },
     color: { type: String },
     unit: { type: String, default: "unidad" },
     stock: { type: Number, default: 0, min: 0 },
@@ -22,9 +25,12 @@ const inventoryItemSchema = new Schema(
     // El registro se queda en "Lotes Reportados" para siempre (no se borra ni
     // se desvincula), aunque ya se haya enviado a almacén.
     batchNumber: { type: String },
-    // Se marca true al confirmar "Enviar" en Lotes Reportados. A partir de ahí
-    // el artículo cuenta también como stock de "Artículos en almacén", sin
-    // dejar de aparecer en "Lotes Reportados".
+    // Se marca true al confirmar "Enviar" en Lotes Reportados. Es solo un
+    // indicador visual ahí (cambia el botón "Enviar" por "Enviado"): las
+    // unidades reportadas no se cuentan desde este artículo, se suman al
+    // producto terminado de "Artículos en almacén" con mismo artículo, color
+    // y bodega (o se crea uno nuevo si no hay coincidencia). Ver
+    // inventoryController.sendToWarehouse.
     sentToWarehouse: { type: Boolean, default: false },
   },
   { timestamps: true },
