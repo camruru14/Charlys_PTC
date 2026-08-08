@@ -79,6 +79,9 @@ function Pedidos() {
   const [saving, setSaving] = useState(false);
   // Pedido cuyos productos se muestran en el modal "Ver productos" de la tabla.
   const [viewTarget, setViewTarget] = useState(null);
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestTarget, setRequestTarget] = useState(null);
+  const [requesting, setRequesting] = useState(false);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.subtotal, 0), [items]);
 
@@ -204,6 +207,27 @@ function Pedidos() {
     }
   }
 
+  function openRequest(o) {
+    setRequestTarget(o);
+    setRequestModalOpen(true);
+  }
+
+  // Solicita a Inventario los productos de este pedido: no descuenta ni
+  // reserva stock, solo hace que el pedido aparezca en Inventario > Pedidos.
+  async function confirmRequest() {
+    setRequesting(true);
+    try {
+      await api.patch(`/orders/${requestTarget._id}/request-inventory`);
+      toast.success(`${requestTarget.orderNumber} solicitado a inventario`);
+      setRequestModalOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRequesting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -223,32 +247,32 @@ function Pedidos() {
       >
         <AsyncState loading={loading} error={error} empty={!loading && list.length === 0} emptyText="No hay pedidos.">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[1480px] table-fixed text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-slate-400">
-                  <th className="pb-3 pr-4 font-semibold">Pedido</th>
-                  <th className="pb-3 pr-4 font-semibold">Cliente</th>
-                  <th className="pb-3 pr-8 font-semibold">Correo</th>
-                  <th className="pb-3 pr-8 font-semibold">Teléfono</th>
-                  <th className="pb-3 pr-4 font-semibold">Dirección</th>
-                  <th className="pb-3 pr-4 font-semibold">Productos</th>
-                  <th className="pb-3 pr-4 font-semibold">Total</th>
-                  <th className="pb-3 pr-4 font-semibold">Pago</th>
-                  <th className="pb-3 pr-4 font-semibold">Estado</th>
-                  <th className="pb-3 font-semibold text-right">Acciones</th>
+                  <th className="w-[150px] pb-3 pr-4 font-semibold">Pedido</th>
+                  <th className="w-[140px] pb-3 pr-4 font-semibold">Cliente</th>
+                  <th className="w-[150px] pb-3 pr-8 font-semibold">Correo</th>
+                  <th className="w-[120px] pb-3 pr-8 font-semibold">Teléfono</th>
+                  <th className="w-[200px] pb-3 pr-4 font-semibold">Dirección</th>
+                  <th className="w-[100px] pb-3 pr-8 font-semibold">Productos</th>
+                  <th className="w-[90px] pb-3 pr-4 font-semibold">Total</th>
+                  <th className="w-[110px] pb-3 pr-4 font-semibold">Pago</th>
+                  <th className="w-[160px] pb-3 pr-4 font-semibold">Estado</th>
+                  <th className="w-[260px] pb-3 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {list.map((o) => {
                   return (
                     <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4 font-semibold text-slate-800">{o.orderNumber}</td>
+                      <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{o.orderNumber}</td>
                       <td className="py-3 pr-4">{o.customer?.name || "—"}</td>
                       <td className="py-3 pr-8 w-[16ch] max-w-[16ch] whitespace-normal break-words">{o.customer?.email || "—"}</td>
                       <td className="py-3 pr-8">{o.customer?.phone || "—"}</td>
-                      <td className="py-3 pr-4 w-[16ch] max-w-[16ch] whitespace-normal break-words">{o.customer?.address || "—"}</td>
-                      <td className="py-3 pr-4">
-                        <button onClick={() => setViewTarget(o)} className="mx-auto block w-fit rounded-lg bg-slate-100 px-3 py-1 text-center text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                      <td className="py-3 pr-4 w-[22ch] max-w-[22ch] whitespace-normal break-words">{o.customer?.address || "—"}</td>
+                      <td className="py-3 pr-8">
+                        <button onClick={() => setViewTarget(o)} className="block w-full rounded-lg bg-slate-100 px-3 py-1 text-center text-xs font-semibold text-slate-600 hover:bg-slate-200">
                           Ver
                         </button>
                       </td>
@@ -258,13 +282,20 @@ function Pedidos() {
                         <select
                           value={o.status}
                           onChange={(e) => changeStatus(o, e.target.value)}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-400"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-400"
                         >
                           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2 text-xs font-semibold">
+                      <td className="py-3">
+                        <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
+                          {o.inventoryRequestedAt ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                              <IconCheck width={14} height={14} /> Solicitado
+                            </span>
+                          ) : (
+                            <button onClick={() => openRequest(o)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Solicitar</button>
+                          )}
                           <button onClick={() => openEdit(o)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
                           <button onClick={() => handleDelete(o)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
                         </div>
@@ -406,6 +437,26 @@ function Pedidos() {
         ) : (
           <p className="text-sm text-slate-400">Este pedido no tiene productos.</p>
         )}
+      </Modal>
+
+      <Modal
+        open={requestModalOpen}
+        onClose={() => setRequestModalOpen(false)}
+        title="Solicitar a inventario"
+        footer={
+          <>
+            <button onClick={() => setRequestModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+            <button onClick={confirmRequest} disabled={requesting} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+              {requesting ? "Solicitando…" : "Confirmar"}
+            </button>
+          </>
+        }
+      >
+        {requestTarget ? (
+          <p className="rounded-xl bg-brand-50 px-3.5 py-2.5 text-sm text-brand-800">
+            Solicitar a inventario los productos para este pedido ({requestTarget.orderNumber}).
+          </p>
+        ) : null}
       </Modal>
     </div>
   );

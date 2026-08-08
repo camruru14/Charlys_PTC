@@ -176,6 +176,7 @@ function WarehouseItemsTable({ items, loading, error, emptyText, onEdit, onDelet
 function Inventario() {
   const navigate = useNavigate();
   const { data, loading, error, refetch } = useFetch("/inventory");
+  const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   const [activeTab, setActiveTab] = useState("articulos");
   // Cuál de las dos tablas de "Artículos en almacén" está ampliada a pantalla
   // completa (ocupa todo el ancho); null = las dos en columnas, lado a lado.
@@ -190,8 +191,33 @@ function Inventario() {
   const [deleteReportModalOpen, setDeleteReportModalOpen] = useState(false);
   const [deleteReportTarget, setDeleteReportTarget] = useState(null);
   const [deletingReport, setDeletingReport] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [verifyTarget, setVerifyTarget] = useState(null);
+  const [verifyWarehouse, setVerifyWarehouse] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   const list = Array.isArray(data) ? data : [];
+  const orders = Array.isArray(ordersData) ? ordersData : [];
+
+  // Pedidos solicitados a Inventario desde Pedidos (botón "Solicitar"). Solo
+  // informativo: no reserva ni descuenta stock.
+  const requestedOrders = useMemo(
+    () =>
+      orders
+        .filter((o) => o.inventoryRequestedAt)
+        .sort((a, b) => new Date(b.inventoryRequestedAt) - new Date(a.inventoryRequestedAt)),
+    [orders]
+  );
+
+  // "Pedidos" muestra una fila por producto de cada pedido solicitado (no una
+  // por pedido), ya que cada producto se verifica/empaca por separado.
+  const pedidoLines = useMemo(() => {
+    const rows = [];
+    requestedOrders.forEach((o) => {
+      (o.items || []).forEach((item, index) => rows.push({ order: o, item, index }));
+    });
+    return rows;
+  }, [requestedOrders]);
 
   // Artículos generados automáticamente al confirmar "Reportar" en Fabricación
   // (llevan batchNumber). Se quedan en "Lotes Reportados" para siempre, se
@@ -221,6 +247,20 @@ function Inventario() {
   const finishedItems = useMemo(
     () => warehouseItems.filter((i) => i.category === "Producto Terminado"),
     [warehouseItems]
+  );
+
+  // Bodegas donde ya hay stock del producto/color que se está verificando
+  // (modal "Verificar producto en inventario").
+  const verifyMatches = useMemo(() => {
+    if (!verifyTarget) return [];
+    return finishedItems.filter(
+      (i) => i.name === verifyTarget.item.product && (i.color || "") === (verifyTarget.item.color || "")
+    );
+  }, [finishedItems, verifyTarget]);
+
+  const verifySelectedMatch = verifyMatches.find((m) => m.location === verifyWarehouse);
+  const verifyInsufficientSelected = Boolean(
+    verifySelectedMatch && (verifySelectedMatch.stock || 0) < (verifyTarget?.item.quantity || 0)
   );
 
   const fmtDate = (raw) => {
@@ -355,6 +395,68 @@ function Inventario() {
     }
   }
 
+  // Elimina un pedido de esta pestaña por completo: si algún producto ya
+  // estaba verificado, le devuelve las unidades al stock de esa bodega y
+  // desmarca verified/packed de todos los productos (el backend se encarga).
+  // Así, si el pedido se vuelve a solicitar después, aparece limpio ("Sin
+  // Verificar") en vez de arrastrar el estado anterior. En Pedidos vuelve a
+  // mostrar el botón "Solicitar".
+  async function handleCancelRequest(o) {
+    if (!window.confirm(`¿Eliminar ${o.orderNumber} de Pedidos? Se borra todo su rastro de verificación aquí.`)) return;
+    try {
+      await api.del(`/orders/${o._id}/request-inventory`);
+      toast.success("Pedido eliminado de la lista");
+      refetchOrders();
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  function openVerify(row) {
+    setVerifyTarget(row);
+    setVerifyWarehouse("");
+    setVerifyModalOpen(true);
+  }
+
+  // Confirma la bodega elegida en el modal: resta la cantidad pedida del
+  // stock de ese producto/color en esa bodega y marca la línea como Lista.
+  async function confirmVerify() {
+    if (!verifyTarget || !verifyWarehouse) return;
+    setVerifying(true);
+    try {
+      await api.patch(`/orders/${verifyTarget.order._id}/items/${verifyTarget.index}/verify`, {
+        warehouse: verifyWarehouse,
+      });
+      toast.success(`${verifyTarget.item.product} verificado`);
+      setVerifyModalOpen(false);
+      refetchOrders();
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  // Empaca un producto ya verificado: el pedido pasa a "Empacado" (visible
+  // así también en Pedidos y Logística, lista para asignar motorista).
+  async function handlePack(row) {
+    if (
+      !window.confirm(
+        `¿Marcar ${row.item.product} como empacado? El pedido ${row.order.orderNumber} pasará a "Empacado".`
+      )
+    )
+      return;
+    try {
+      await api.patch(`/orders/${row.order._id}/items/${row.index}/pack`);
+      toast.success(`${row.item.product} empacado`);
+      refetchOrders();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -381,6 +483,14 @@ function Inventario() {
           }`}
         >
           Lotes Reportados
+        </button>
+        <button
+          onClick={() => setActiveTab("pedidos")}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeTab === "pedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Pedidos
         </button>
       </div>
 
@@ -448,7 +558,7 @@ function Inventario() {
             </SectionCard>
           ) : null}
         </div>
-      ) : (
+      ) : activeTab === "lotes" ? (
         <SectionCard
           title="Lotes Reportados"
           action={
@@ -501,6 +611,76 @@ function Inventario() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </AsyncState>
+        </SectionCard>
+      ) : (
+        <SectionCard
+          title="Pedidos"
+          action={
+            <button onClick={() => navigate("/pedidos")} className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-100">
+              Ir a Pedidos
+            </button>
+          }
+        >
+          <AsyncState
+            loading={ordersLoading}
+            error={ordersError}
+            empty={!ordersLoading && pedidoLines.length === 0}
+            emptyText="Aún no hay pedidos solicitados a inventario."
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1000px] text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-slate-400">
+                    <th className="pb-3 pr-4 font-semibold">Pedido</th>
+                    <th className="pb-3 pr-4 font-semibold">Cliente</th>
+                    <th className="pb-3 pr-4 font-semibold">Producto</th>
+                    <th className="pb-3 pr-4 font-semibold">Color</th>
+                    <th className="pb-3 pr-4 font-semibold">Unidades</th>
+                    <th className="pb-3 pr-4 font-semibold">Fecha Solicitado</th>
+                    <th className="pb-3 pr-4 font-semibold">Estado</th>
+                    <th className="pb-3 font-semibold text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pedidoLines.map((row) => {
+                    const { order, item, index } = row;
+                    // "Entregado" aquí significa que ya se le entregó al repartidor
+                    // (Logística ya le asignó motorista), no que el cliente ya lo
+                    // recibió — eso se sigue viendo aparte, con el status real del
+                    // pedido, en Pedidos y Logística.
+                    const status = order.delivery?.driver
+                      ? "Entregado"
+                      : item.packed
+                      ? "Empacado"
+                      : item.verified
+                      ? "Verificado"
+                      : "Sin Verificar";
+                    return (
+                      <tr key={`${order._id}-${index}`} className="text-slate-600 transition hover:bg-slate-50/60">
+                        <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{order.orderNumber}</td>
+                        <td className="py-3 pr-4">{order.customer?.name || "—"}</td>
+                        <td className="py-3 pr-4 font-semibold text-slate-800">{item.product}</td>
+                        <td className="py-3 pr-4">{item.color || "—"}</td>
+                        <td className="py-3 pr-4 tabular-nums">{item.quantity}</td>
+                        <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(order.inventoryRequestedAt)}</td>
+                        <td className="py-3 pr-4"><StatusPill status={status} /></td>
+                        <td className="py-3 text-right">
+                          <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
+                            {!item.verified ? (
+                              <button onClick={() => openVerify(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Verificar</button>
+                            ) : !item.packed ? (
+                              <button onClick={() => handlePack(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Empacar</button>
+                            ) : null}
+                            <button onClick={() => handleCancelRequest(order)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -579,6 +759,69 @@ function Inventario() {
               ? " Como ya se había enviado a almacén, ese stock se conserva sin cambios en Artículos en almacén."
               : " Como todavía no se había enviado a almacén, no queda ningún stock que conservar."}
           </p>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={verifyModalOpen}
+        onClose={() => setVerifyModalOpen(false)}
+        title="Verificar producto en inventario"
+        footer={
+          <>
+            <button onClick={() => setVerifyModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+            <button
+              onClick={confirmVerify}
+              disabled={verifying || !verifyWarehouse || verifyInsufficientSelected}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {verifying ? "Verificando…" : "Confirmar"}
+            </button>
+          </>
+        }
+      >
+        {verifyTarget ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Buscando <strong>{verifyTarget.item.quantity} {verifyTarget.item.product}</strong>
+              {verifyTarget.item.color ? ` (${verifyTarget.item.color})` : ""} para el pedido{" "}
+              <strong>{verifyTarget.order.orderNumber}</strong> en las bodegas disponibles.
+            </p>
+            {verifyMatches.length === 0 ? (
+              <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
+                No se encontró este producto en ninguna bodega de Artículos en almacén.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {verifyMatches.map((m) => {
+                  const insufficient = (m.stock || 0) < verifyTarget.item.quantity;
+                  return (
+                    <label
+                      key={m._id}
+                      className={`flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition ${
+                        verifyWarehouse === m.location ? "border-brand-400 bg-brand-50" : "border-slate-200"
+                      } ${insufficient ? "opacity-60" : "cursor-pointer hover:border-brand-300"}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="verify-warehouse"
+                          value={m.location}
+                          checked={verifyWarehouse === m.location}
+                          disabled={insufficient}
+                          onChange={(e) => setVerifyWarehouse(e.target.value)}
+                        />
+                        <span className="font-semibold text-slate-800">{m.location || "—"}</span>
+                      </span>
+                      <span className={insufficient ? "font-semibold text-red-600" : "text-slate-500"}>
+                        {(m.stock || 0).toLocaleString("es-SV")} {m.unit} disponibles
+                        {insufficient ? " · insuficiente" : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : null}
       </Modal>
     </div>

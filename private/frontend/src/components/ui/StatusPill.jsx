@@ -26,6 +26,7 @@ const STATUS_TONE = {
   Activo: "green",
   Estable: "green",
   Suficiente: "green",
+  Verificado: "green",
   // Azul
   "En proceso": "blue",
   "En Proceso": "blue",
@@ -46,6 +47,7 @@ const STATUS_TONE = {
   Mantenimiento: "yellow",
   Pendiente: "yellow",
   Programado: "yellow",
+  "Sin Verificar": "yellow",
 };
 
 function StatusPill({ status, tone }) {

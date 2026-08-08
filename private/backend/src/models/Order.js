@@ -8,6 +8,16 @@ const orderItemSchema = new Schema(
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true, min: 0 },
+    // Verificación en Inventario > Pedidos: se marca al confirmar el modal
+    // "Verificar producto en inventario", que resta la cantidad pedida del
+    // stock de la bodega elegida.
+    verified: { type: Boolean, default: false },
+    verifiedWarehouse: { type: String },
+    verifiedAt: { type: Date },
+    // Se marca al presionar "Empacar" (solo disponible una vez verificado).
+    // También pone todo el pedido en estado "Empacado" para Logística.
+    packed: { type: Boolean, default: false },
+    packedAt: { type: Date },
   },
   { _id: false },
 );
@@ -79,6 +89,12 @@ const orderSchema = new Schema(
     delivery: deliverySchema,
     notes: {
       type: String,
+    },
+    // Se llena al confirmar "Solicitar" en Pedidos: marca que los productos de
+    // este pedido se solicitaron a Inventario. Ahí aparece en la pestaña
+    // "Pedidos" hasta que alguien lo quite de la lista (no afecta stock).
+    inventoryRequestedAt: {
+      type: Date,
     },
   },
   {
