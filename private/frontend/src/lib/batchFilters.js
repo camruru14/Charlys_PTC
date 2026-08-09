@@ -10,7 +10,6 @@ export const defaultBatchFilters = {
   status: "", // filtro exacto por estado
   operator: "", // filtro exacto por operario responsable (id)
   minProduced: "", // cantidad producida mínima
-  maxWaste: "", // porcentaje de residuos máximo
 };
 
 // Opciones únicas presentes en la lista (para los desplegables de filtro).
@@ -64,8 +63,6 @@ export function filterBatches(list = [], filters = defaultBatchFilters, range = 
     if (filters.operator && b.operator?._id !== filters.operator) return false;
 
     if (filters.minProduced !== "" && (b.producedQuantity || 0) < Number(filters.minProduced))
-      return false;
-    if (filters.maxWaste !== "" && (b.wastePercentage || 0) > Number(filters.maxWaste))
       return false;
 
     return true;

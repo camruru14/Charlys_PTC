@@ -13,10 +13,6 @@ const STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
   Reutilizado por la página de Fabricación y por el "Ver todo" editable de Fabricación.
 */
 function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
-  const target = Number(form.targetQuantity) || 0;
-  const hasProduced = form.producedQuantity !== "";
-  const wastePct = hasProduced && target > 0 ? Math.round((Number(form.wasteQuantity) || 0) / target * 100) : 0;
-
   return (
     <Modal
       open={open}
@@ -42,16 +38,7 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={LINES} />
         <Field label="Fecha" name="startDate" type="date" value={form.startDate} onChange={handleChange} max={todayInput()} />
-        <Field label="Cantidad meta" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} required />
         <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
-        {/* Residuos = Cantidad meta - Cantidad producida (se calcula solo) */}
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">Residuos</span>
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-slate-800">{hasProduced ? form.wasteQuantity || 0 : "—"}</span>
-            <span className="text-xs text-slate-400">{hasProduced ? `${wastePct}%` : "Pendiente"}</span>
-          </div>
-        </div>
         <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
         <SelectField
           label="Operario responsable"

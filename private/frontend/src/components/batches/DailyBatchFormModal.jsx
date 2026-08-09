@@ -1,6 +1,5 @@
 import Modal from "../ui/Modal";
 import { Field, SelectField } from "../ui/Field";
-import { blockNegativeKey } from "../../lib/numberInput";
 
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
@@ -34,7 +33,6 @@ function DailyBatchFormModal({ open, onClose, editingId, form, handleChange, han
         <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} required />
         <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
-        <Field label="Meta" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} required />
       </form>
     </Modal>
   );

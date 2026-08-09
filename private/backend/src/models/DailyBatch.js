@@ -18,11 +18,6 @@ const dailyBatchSchema = new Schema(
     color: {
       type: String,
     },
-    targetQuantity: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
   },
   {
     timestamps: true,

@@ -9,14 +9,17 @@ import Modal from "../components/ui/Modal";
 import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconBox, IconAlert, IconPlus, IconCheck, IconExpand, IconCollapse, IconSearch } from "../lib/icons";
-import { WAREHOUSES } from "../hooks/useBatchForm";
+import { macroStatus, getItemStatusCounts, progressSegments, progressCaption, MACRO_STATUS_LABELS } from "../lib/orderProgress";
+
+// Opciones del filtro de estado de la pestaña Inventario > Pedidos (valor -> macroStatus).
+const PEDIDOS_STATUS_FILTERS = ["sinVerificar", "verificado", "enviado", "empacado", "parcial", "entregado"];
 
 const UNITS = ["kg", "unidad", "caja", "litro"];
 const MATERIAL_TYPES = ["Polimero", "Aditivo", "Tinta", "Insumo"];
 
 const emptyForm = {
   name: "", category: "Materia Prima",
-  unit: "kg", stock: "", unitCost: "", location: WAREHOUSES[0],
+  unit: "kg", stock: "", unitCost: "", location: "",
   materialType: MATERIAL_TYPES[0],
 };
 
@@ -177,6 +180,10 @@ function Inventario() {
   const navigate = useNavigate();
   const { data, loading, error, refetch } = useFetch("/inventory");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
+  // Bodegas configurables desde Configuración > Bodegas (Parte 8), en vez del
+  // arreglo fijo que antes vivía en hooks/useBatchForm.js.
+  const { data: warehousesData } = useFetch("/warehouses");
+  const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
   const [activeTab, setActiveTab] = useState("articulos");
   // Cuál de las dos tablas de "Artículos en almacén" está ampliada a pantalla
   // completa (ocupa todo el ancho); null = las dos en columnas, lado a lado.
@@ -195,6 +202,15 @@ function Inventario() {
   const [verifyTarget, setVerifyTarget] = useState(null);
   const [verifyWarehouse, setVerifyWarehouse] = useState("");
   const [verifying, setVerifying] = useState(false);
+  const [sendingToManufacturing, setSendingToManufacturing] = useState(false);
+  // Id del pedido cuyos productos se muestran en el modal "Info Pedido" de la
+  // tabla de Pedidos (se guarda el id, no el objeto, para que el modal
+  // siempre refleje el estado más reciente tras verificar/empacar/enviar).
+  const [pedidoInfoOrderId, setPedidoInfoOrderId] = useState(null);
+  // Filtros de la pestaña Pedidos: por estado macro (barra de Progreso) y
+  // "solo con pendientes" (algún producto todavía sin verificar).
+  const [pedidosStatusFilter, setPedidosStatusFilter] = useState("");
+  const [pedidosOnlyPending, setPedidosOnlyPending] = useState(false);
 
   const list = Array.isArray(data) ? data : [];
   const orders = Array.isArray(ordersData) ? ordersData : [];
@@ -209,15 +225,26 @@ function Inventario() {
     [orders]
   );
 
-  // "Pedidos" muestra una fila por producto de cada pedido solicitado (no una
-  // por pedido), ya que cada producto se verifica/empaca por separado.
-  const pedidoLines = useMemo(() => {
-    const rows = [];
-    requestedOrders.forEach((o) => {
-      (o.items || []).forEach((item, index) => rows.push({ order: o, item, index }));
+  // requestedOrders filtrados por estado macro y/o "solo con pendientes",
+  // mismo patrón que filteredItems en WarehouseItemsTable: el filtrado es
+  // client-side, sobre datos que ya vinieron de useFetch("/orders").
+  const filteredRequestedOrders = useMemo(() => {
+    return requestedOrders.filter((o) => {
+      if (pedidosStatusFilter && macroStatus(o) !== pedidosStatusFilter) return false;
+      if (pedidosOnlyPending && getItemStatusCounts(o).sinVerificar === 0) return false;
+      return true;
     });
-    return rows;
-  }, [requestedOrders]);
+  }, [requestedOrders, pedidosStatusFilter, pedidosOnlyPending]);
+
+  const hasActivePedidosFilters = Boolean(pedidosStatusFilter || pedidosOnlyPending);
+
+  // Pedido mostrado en el modal "Info Pedido" (se recalcula de requestedOrders
+  // en cada render, así refleja al toque cualquier verificación/empaque/envío
+  // hecho desde dentro del modal).
+  const pedidoInfoOrder = useMemo(
+    () => requestedOrders.find((o) => o._id === pedidoInfoOrderId) || null,
+    [requestedOrders, pedidoInfoOrderId]
+  );
 
   // Artículos generados automáticamente al confirmar "Reportar" en Fabricación
   // (llevan batchNumber). Se quedan en "Lotes Reportados" para siempre, se
@@ -262,6 +289,12 @@ function Inventario() {
   const verifyInsufficientSelected = Boolean(
     verifySelectedMatch && (verifySelectedMatch.stock || 0) < (verifyTarget?.item.quantity || 0)
   );
+  // Ninguna bodega tiene suficiente existencia para cubrir lo pedido: se
+  // ofrece "Enviar a fabricación" como alternativa a esperar stock.
+  const verifyHasSufficientStock = useMemo(() => {
+    if (!verifyTarget) return true;
+    return verifyMatches.some((m) => (m.stock || 0) >= (verifyTarget.item.quantity || 0));
+  }, [verifyMatches, verifyTarget]);
 
   const fmtDate = (raw) => {
     const d = new Date(raw);
@@ -279,7 +312,7 @@ function Inventario() {
 
   function openCreate(category = "Materia Prima") {
     setEditingId(null);
-    setForm({ ...emptyForm, category });
+    setForm({ ...emptyForm, category, location: warehouses[0] || "" });
     setModalOpen(true);
   }
 
@@ -289,7 +322,7 @@ function Inventario() {
       name: item.name || "", category: item.category || "Materia Prima",
       unit: item.unit || "kg",
       stock: item.stock ?? "",
-      unitCost: item.unitCost ?? "", location: item.location || WAREHOUSES[0],
+      unitCost: item.unitCost ?? "", location: item.location || warehouses[0] || "",
       materialType: item.materialType || MATERIAL_TYPES[0],
     });
     setModalOpen(true);
@@ -413,7 +446,14 @@ function Inventario() {
     }
   }
 
+  function openPedidoInfo(order) {
+    setPedidoInfoOrderId(order._id);
+  }
+
+  // Se abre desde el modal "Info Pedido": cierra ese modal para dar paso al
+  // de verificación (así no quedan dos modales encimados).
   function openVerify(row) {
+    setPedidoInfoOrderId(null);
     setVerifyTarget(row);
     setVerifyWarehouse("");
     setVerifyModalOpen(true);
@@ -436,6 +476,24 @@ function Inventario() {
       toast.error(err.message);
     } finally {
       setVerifying(false);
+    }
+  }
+
+  // Envía la línea a Fabricación cuando no hay stock suficiente en ninguna
+  // bodega: no toca inventario, solo marca la línea como enviada para que
+  // aparezca en Fabricación > Pedidos. Aquí queda mostrada como "Enviado".
+  async function sendToManufacturing() {
+    if (!verifyTarget) return;
+    setSendingToManufacturing(true);
+    try {
+      await api.patch(`/orders/${verifyTarget.order._id}/items/${verifyTarget.index}/send-manufacturing`);
+      toast.success(`${verifyTarget.item.product} enviado a fabricación`);
+      setVerifyModalOpen(false);
+      refetchOrders();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSendingToManufacturing(false);
     }
   }
 
@@ -600,9 +658,7 @@ function Inventario() {
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
                           {i.sentToWarehouse ? (
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
-                              <IconCheck width={14} height={14} /> Enviado
-                            </span>
+                            <StatusPill status="Enviado" tone="green" />
                           ) : (
                             <button onClick={() => openSend(i)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Enviar</button>
                           )}
@@ -625,56 +681,87 @@ function Inventario() {
             </button>
           }
         >
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={pedidosStatusFilter}
+              onChange={(e) => setPedidosStatusFilter(e.target.value)}
+              className={selectFilterClass}
+            >
+              <option value="">Estado: Todos</option>
+              {PEDIDOS_STATUS_FILTERS.map((key) => (
+                <option key={key} value={key}>{MACRO_STATUS_LABELS[key]}</option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={pedidosOnlyPending}
+                onChange={(e) => setPedidosOnlyPending(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+              />
+              Solo con pendientes
+            </label>
+            {hasActivePedidosFilters ? (
+              <button
+                onClick={() => { setPedidosStatusFilter(""); setPedidosOnlyPending(false); }}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+              >
+                Limpiar filtros
+              </button>
+            ) : null}
+          </div>
+
           <AsyncState
             loading={ordersLoading}
             error={ordersError}
-            empty={!ordersLoading && pedidoLines.length === 0}
-            emptyText="Aún no hay pedidos solicitados a inventario."
+            empty={!ordersLoading && filteredRequestedOrders.length === 0}
+            emptyText={
+              hasActivePedidosFilters && requestedOrders.length > 0
+                ? "Ningún pedido coincide con los filtros."
+                : "Aún no hay pedidos solicitados a inventario."
+            }
           >
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-slate-400">
                     <th className="pb-3 pr-4 font-semibold">Pedido</th>
                     <th className="pb-3 pr-4 font-semibold">Cliente</th>
-                    <th className="pb-3 pr-4 font-semibold">Producto</th>
-                    <th className="pb-3 pr-4 font-semibold">Color</th>
-                    <th className="pb-3 pr-4 font-semibold">Unidades</th>
+                    <th className="pb-3 pr-4 font-semibold">Info Pedido</th>
+                    <th className="pb-3 pr-4 font-semibold">Progreso</th>
                     <th className="pb-3 pr-4 font-semibold">Fecha Solicitado</th>
-                    <th className="pb-3 pr-4 font-semibold">Estado</th>
                     <th className="pb-3 font-semibold text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pedidoLines.map((row) => {
-                    const { order, item, index } = row;
-                    // "Entregado" aquí significa que ya se le entregó al repartidor
-                    // (Logística ya le asignó motorista), no que el cliente ya lo
-                    // recibió — eso se sigue viendo aparte, con el status real del
-                    // pedido, en Pedidos y Logística.
-                    const status = order.delivery?.driver
-                      ? "Entregado"
-                      : item.packed
-                      ? "Empacado"
-                      : item.verified
-                      ? "Verificado"
-                      : "Sin Verificar";
+                  {filteredRequestedOrders.map((order) => {
+                    const segments = progressSegments(order);
+                    const caption = progressCaption(order);
                     return (
-                      <tr key={`${order._id}-${index}`} className="text-slate-600 transition hover:bg-slate-50/60">
+                      <tr key={order._id} className="text-slate-600 transition hover:bg-slate-50/60">
                         <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{order.orderNumber}</td>
                         <td className="py-3 pr-4">{order.customer?.name || "—"}</td>
-                        <td className="py-3 pr-4 font-semibold text-slate-800">{item.product}</td>
-                        <td className="py-3 pr-4">{item.color || "—"}</td>
-                        <td className="py-3 pr-4 tabular-nums">{item.quantity}</td>
+                        <td className="py-3 pr-4">
+                          <button onClick={() => openPedidoInfo(order)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">Ver</button>
+                        </td>
+                        <td className="py-3 pr-4 min-w-[200px]">
+                          <div>
+                            <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                              {segments.map((seg) => (
+                                <div
+                                  key={seg.key}
+                                  className={seg.colorClass}
+                                  style={{ width: `${seg.pct}%` }}
+                                  title={`${seg.count} ${seg.label}`}
+                                />
+                              ))}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-tight text-slate-500">{caption || "Sin productos"}</p>
+                          </div>
+                        </td>
                         <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(order.inventoryRequestedAt)}</td>
-                        <td className="py-3 pr-4"><StatusPill status={status} /></td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
-                            {!item.verified ? (
-                              <button onClick={() => openVerify(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Verificar</button>
-                            ) : !item.packed ? (
-                              <button onClick={() => handlePack(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Empacar</button>
-                            ) : null}
                             <button onClick={() => handleCancelRequest(order)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
                           </div>
                         </td>
@@ -707,7 +794,7 @@ function Inventario() {
           <Field label="Artículo" name="name" value={form.name} onChange={handleChange} required />
           <Field label="Existencia" name="stock" type="number" value={form.stock} onChange={handleChange} required />
           <SelectField label="Unidad" name="unit" value={form.unit} onChange={handleChange} options={UNITS} />
-          <SelectField label="Bodega" name="location" value={form.location} onChange={handleChange} options={WAREHOUSES} required />
+          <SelectField label="Bodega" name="location" value={form.location} onChange={handleChange} options={warehouses} required />
           {form.category === "Producto Terminado" ? (
             <Field label="Costo unitario ($)" name="unitCost" type="number" step="0.01" value={form.unitCost} onChange={handleChange} />
           ) : (
@@ -769,6 +856,15 @@ function Inventario() {
         footer={
           <>
             <button onClick={() => setVerifyModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+            {!verifyHasSufficientStock ? (
+              <button
+                onClick={sendToManufacturing}
+                disabled={sendingToManufacturing}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+              >
+                {sendingToManufacturing ? "Enviando…" : "Enviar a fabricación"}
+              </button>
+            ) : null}
             <button
               onClick={confirmVerify}
               disabled={verifying || !verifyWarehouse || verifyInsufficientSelected}
@@ -823,6 +919,61 @@ function Inventario() {
             )}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={!!pedidoInfoOrder}
+        onClose={() => setPedidoInfoOrderId(null)}
+        title={`Productos del pedido ${pedidoInfoOrder?.orderNumber || ""}`}
+        size="lg"
+        footer={
+          <button onClick={() => setPedidoInfoOrderId(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+        }
+      >
+        {pedidoInfoOrder?.items?.length ? (
+          <div className="space-y-2">
+            {pedidoInfoOrder.items.map((it, idx) => {
+              const row = { order: pedidoInfoOrder, item: it, index: idx };
+              // Mismo orden de prioridad que en todos lados (empacado > verificado
+              // > enviado a fabricación > sin verificar), "Entregado" aparte
+              // porque es del pedido completo, no de la línea.
+              const itemStatus = pedidoInfoOrder.delivery?.driver
+                ? "Entregado"
+                : it.packed
+                ? "Empacado"
+                : it.verified
+                ? "Verificado"
+                : it.sentToManufacturing
+                ? "En Fabricación"
+                : "Sin Verificar";
+              // La etiqueta de estado siempre va, nunca queda vacía; el botón de
+              // la siguiente acción (si aplica) va justo al lado.
+              return (
+                <div key={idx} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-slate-800">{it.product}{it.color ? ` · ${it.color}` : ""}</p>
+                    <p className="text-xs text-slate-500">{it.quantity} unidades</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {itemStatus === "Empacado" || itemStatus === "Entregado" ? (
+                      <IconCheck width={14} height={14} className="text-emerald-600" />
+                    ) : null}
+                    <StatusPill status={itemStatus} />
+                    {itemStatus === "Sin Verificar" ? (
+                      <button onClick={() => openVerify(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Verificar</button>
+                    ) : itemStatus === "En Fabricación" ? (
+                      <span className="text-xs text-slate-400">esperando lote</span>
+                    ) : itemStatus === "Verificado" ? (
+                      <button onClick={() => handlePack(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Empacar</button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Este pedido no tiene productos.</p>
+        )}
       </Modal>
     </div>
   );

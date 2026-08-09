@@ -3,7 +3,9 @@ const transactionsController = {};
 import transactionModel from "../models/Transaction.js";
 
 // Genera el siguiente N° de transacción correlativo del año (TRAN-2026-0001, TRAN-2026-0002, ...)
-async function generateReference() {
+// Exportada: ordersController la reutiliza para las transacciones que crea
+// automáticamente al marcar un pedido como Pagado/Reembolsado.
+export async function generateReference() {
   const prefix = `TRAN-${new Date().getFullYear()}-`;
   const last = await transactionModel
     .findOne({ reference: { $regex: `^${prefix}` } })
@@ -17,7 +19,10 @@ async function generateReference() {
 
 // SELECT
 transactionsController.getTransactions = async (req, res) => {
-  const transactions = await transactionModel.find().sort({ date: -1 });
+  const transactions = await transactionModel
+    .find()
+    .populate("relatedOrder", "orderNumber")
+    .sort({ date: -1 });
   res.json(transactions);
 };
 

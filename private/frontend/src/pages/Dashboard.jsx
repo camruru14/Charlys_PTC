@@ -48,11 +48,10 @@ function Dashboard() {
       <AsyncState loading={loading} error={error}>
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <KpiCard label="Producción total" value={fmt(kpis.producedTotal)} icon={IconFactory} trend={{ tone: "blue", label: "unidades" }} />
             <KpiCard label="Ingresos" value={`$${fmt(kpis.income)}`} icon={IconFinance} trend={{ tone: "green", label: "en el rango" }} />
             <KpiCard label="Pedidos en curso" value={kpis.ordersInProgress ?? 0} icon={IconOrders} trend={{ tone: "blue", label: `${kpis.ordersReadyToShip ?? 0} listos` }} />
-            <KpiCard label="Índice de residuos" value={`${kpis.wasteIndex ?? 0}%`} icon={IconAlert} trend={{ tone: (kpis.wasteIndex ?? 0) > 2.5 ? "yellow" : "green", label: (kpis.wasteIndex ?? 0) > 2.5 ? "Acción requerida" : "Estable" }} />
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">

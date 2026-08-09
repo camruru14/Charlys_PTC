@@ -8,9 +8,7 @@ export const emptyBatchForm = {
   product: "Pajilla",
   color: "Rojo",
   productionLine: "Línea 1",
-  targetQuantity: "",
   producedQuantity: "",
-  wasteQuantity: "",
   status: "Programado",
   operator: "",
   startDate: "",
@@ -52,14 +50,14 @@ export function previewBatchNumber(list) {
   Estado y acciones (crear/editar/eliminar/reportar) para lotes de fabricación.
   Reutilizado por la página de Fabricación y por el "Ver todo" editable de Fabricación.
 */
-// Bodegas disponibles para reportar producción a Inventario. Por ahora solo
-// existe una; cuando se den de alta más, solo hay que agregarlas aquí.
-export const WAREHOUSES = ["Bodega A-1"];
-
-const emptyReportForm = { producedQuantity: "", warehouse: WAREHOUSES[0] };
+const emptyReportForm = { producedQuantity: "", warehouse: "" };
 
 export function useBatchForm(list, refetch) {
   const { data: employees } = useFetch("/employees");
+  // Bodegas disponibles para reportar producción a Inventario (Parte 8:
+  // configurables desde Configuración > Bodegas, ya no un arreglo fijo).
+  const { data: warehousesData } = useFetch("/warehouses");
+  const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyBatchForm);
@@ -91,9 +89,7 @@ export function useBatchForm(list, refetch) {
       product: batch.product || "Pajilla",
       color: batch.color || "",
       productionLine: batch.productionLine || "Línea 1",
-      targetQuantity: batch.targetQuantity ?? "",
       producedQuantity: batch.producedQuantity ?? "",
-      wasteQuantity: batch.wasteQuantity ?? "",
       status: batch.status || "Programado",
       operator: batch.operator?._id || batch.operator || "",
       startDate: toDateInput(batch.startDate || batch.createdAt),
@@ -101,26 +97,7 @@ export function useBatchForm(list, refetch) {
     setModalOpen(true);
   }
 
-  // Residuos = Cantidad meta - Cantidad producida (0 si se produjo lo esperado o más).
-  // Se recalcula solo, así el % de residuos que guarda el backend sale automático.
-  // Mientras no se haya ingresado lo producido, todavía no hay con qué calcularlo.
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((f) => {
-      const next = { ...f, [name]: value };
-      if (name === "targetQuantity" || name === "producedQuantity") {
-        const producedRaw = name === "producedQuantity" ? value : f.producedQuantity;
-        if (producedRaw === "") {
-          next.wasteQuantity = "";
-        } else {
-          const target = Number(name === "targetQuantity" ? value : f.targetQuantity) || 0;
-          const produced = Number(producedRaw) || 0;
-          next.wasteQuantity = target > produced ? String(target - produced) : "0";
-        }
-      }
-      return next;
-    });
-  };
+  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -128,9 +105,7 @@ export function useBatchForm(list, refetch) {
     const { batchNumber, ...rest } = form;
     const payload = {
       ...rest,
-      targetQuantity: Number(form.targetQuantity) || 0,
       producedQuantity: Number(form.producedQuantity) || 0,
-      wasteQuantity: Number(form.wasteQuantity) || 0,
       operator: form.operator || undefined,
       startDate: form.startDate || undefined,
     };
@@ -168,7 +143,7 @@ export function useBatchForm(list, refetch) {
   // recalcularlo aparte, así se reporta siempre la misma cantidad.
   function openReport(batch) {
     setReportTarget(batch);
-    setReportForm({ producedQuantity: String(batch.producedQuantity || 0), warehouse: WAREHOUSES[0] });
+    setReportForm({ producedQuantity: String(batch.producedQuantity || 0), warehouse: warehouses[0] || "" });
     setReportModalOpen(true);
   }
 
@@ -227,6 +202,7 @@ export function useBatchForm(list, refetch) {
     form,
     saving,
     operators,
+    warehouses,
     openCreate,
     openEdit,
     handleChange,

@@ -17,16 +17,54 @@ const DISPATCH = ["Saliendo", "A tiempo", "Demorado", "Entregado"];
 const selectFilterClass =
   "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
 
+// Al menos una línea ya empacada (en Almacén o Fabricación, ver
+// packedLocation en Order.js): con eso basta para que Logística pueda
+// asignar motorista, aunque el pedido no esté "Empacado" completo todavía
+// (order.status solo llega a "Empacado" cuando TODAS las líneas lo están).
+function hasPackedItems(order) {
+  return (order.items || []).some((i) => i.packed);
+}
+
+// Ubicaciones donde el pedido tiene algo empacado esperando a que el
+// motorista lo recoja: "Almacén" si algún item se empacó desde Inventario >
+// Pedidos, "Fabricación" si algún item se empacó desde Fabricación >
+// Fabricación de pedidos. Un pedido puede requerir una sola parada o las dos.
+function getRequiredPickups(order) {
+  const items = order.items || [];
+  const locations = [];
+  if (items.some((i) => i.packedLocation === "Almacén")) locations.push("Almacén");
+  if (items.some((i) => i.packedLocation === "Fabricación")) locations.push("Fabricación");
+  return locations;
+}
+
+// Fecha en que Logística confirmó la recolección en esa ubicación (o
+// undefined si todavía no).
+function pickupDateFor(order, location) {
+  return location === "Almacén" ? order.delivery?.pickupWarehouseAt : order.delivery?.pickupFactoryAt;
+}
+
+// Ya tiene motorista pero todavía le falta pasar a recoger algo: se muestra
+// "Recolectando" en vez del estado normal. Solo visual, no es un valor nuevo
+// en la base de datos.
+function isCollecting(order) {
+  if (!order.delivery?.driver) return false;
+  return getRequiredPickups(order).some((loc) => !pickupDateFor(order, loc));
+}
+
 function Logistica() {
   const { data: orders, loading, error, refetch } = useFetch("/orders");
   const { data: employees } = useFetch("/employees");
 
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [target, setTarget] = useState(null);
+  // Se guarda el id, no el objeto, así el modal "Editar entrega" (paradas de
+  // recolección incluidas) siempre refleja el estado más reciente tras
+  // confirmar una recolección, sin tener que cerrarlo y reabrirlo.
+  const [targetId, setTargetId] = useState(null);
   const [form, setForm] = useState({ driver: "", vehicle: "", address: "" });
   const [editForm, setEditForm] = useState({ driver: "", vehicle: "", address: "", dispatchStatus: "Saliendo" });
   const [saving, setSaving] = useState(false);
+  const [confirmingPickup, setConfirmingPickup] = useState("");
 
   const [filterDriver, setFilterDriver] = useState("");
   const [filterVehicle, setFilterVehicle] = useState("");
@@ -35,8 +73,15 @@ function Logistica() {
   const list = Array.isArray(orders) ? orders : [];
   const drivers = (Array.isArray(employees) ? employees : []).filter((e) => e.role === "motorista");
 
-  // Pedidos relevantes para logística (empacados o ya en ruta)
-  const shipping = list.filter((o) => ["Empacado", "En Tránsito", "Entregado"].includes(o.status));
+  // Pedido con el modal "Editar entrega"/"Asignar" abierto, recalculado de
+  // `list` en cada render (igual que pedidoInfoOrder en Inventario.jsx).
+  const target = useMemo(() => list.find((o) => o._id === targetId) || null, [list, targetId]);
+
+  // Pedidos relevantes para logística: con al menos un producto ya empacado
+  // (aunque el pedido no esté "Empacado" completo — así se puede asignar
+  // motorista apenas el primer producto quede listo, sin esperar al resto)
+  // o ya en ciclo de despacho activo.
+  const shipping = list.filter((o) => hasPackedItems(o) || ["En Tránsito", "Entregado"].includes(o.status));
 
   // Motoristas ocupados: mapa motorista -> pedido, solo para pedidos activamente en despacho
   // (Empacado / En Tránsito). Se usa "shipping" en vez de "list" para no marcar como ocupado
@@ -133,7 +178,7 @@ function Logistica() {
   // Modal "Asignar": solo para pedidos que aún no tienen motorista. El estado de despacho
   // no se elige aquí, siempre queda en "Saliendo".
   function openAssign(o) {
-    setTarget(o);
+    setTargetId(o._id);
     setForm({ driver: "", vehicle: "", address: o.customer?.address || "" });
     setAssignModalOpen(true);
   }
@@ -159,7 +204,7 @@ function Logistica() {
   // Modal "Editar": para pedidos que ya tienen motorista asignado. Aquí sí se puede
   // ajustar el estado de despacho.
   function openEdit(o) {
-    setTarget(o);
+    setTargetId(o._id);
     setEditForm({
       driver: o.delivery?.driver?._id || o.delivery?.driver || "",
       vehicle: o.delivery?.vehicle || "",
@@ -184,6 +229,22 @@ function Logistica() {
       toast.error(err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Confirma que el motorista ya recogió lo que le tocaba en esa ubicación
+  // (checklist de "Paradas de recolección" del modal "Editar entrega").
+  async function handleConfirmPickup(location) {
+    if (!target) return;
+    setConfirmingPickup(location);
+    try {
+      await api.patch(`/orders/${target._id}/delivery/pickup`, { location });
+      toast.success(`Recolección en ${location} confirmada`);
+      refetch();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setConfirmingPickup("");
     }
   }
 
@@ -246,38 +307,72 @@ function Logistica() {
           >
             <div className="max-h-96 overflow-y-auto">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-sm">
+                <table className="w-full min-w-[860px] text-left text-sm">
                   <thead>
                     <tr className="text-xs uppercase tracking-wide text-slate-400">
                       <th className="pb-3 pr-4 font-semibold">Pedido</th>
                       <th className="pb-3 pr-4 font-semibold">Motorista</th>
                       <th className="pb-3 pr-4 font-semibold">Vehículo</th>
                       <th className="pb-3 pr-4 font-semibold">Zona</th>
+                      <th className="pb-3 pr-4 font-semibold">Paradas</th>
                       <th className="pb-3 pr-4 font-semibold">Estado</th>
                       <th className="pb-3 font-semibold text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredShipping.map((o) => (
-                      <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
-                        <td className="py-3 pr-4 font-semibold text-slate-800">{o.orderNumber}</td>
-                        <td className="py-3 pr-4">{o.delivery?.driver ? `${o.delivery.driver.name} ${o.delivery.driver.lastName}` : "— sin asignar"}</td>
-                        <td className="py-3 pr-4 tabular-nums">{o.delivery?.vehicle || "—"}</td>
-                        <td className="py-3 pr-4">{o.delivery?.address || o.customer?.address || "—"}</td>
-                        <td className="py-3 pr-4">{o.delivery?.dispatchStatus ? <StatusPill status={o.delivery.dispatchStatus} /> : <StatusPill status={o.status} />}</td>
-                        <td className="py-3 text-right">
-                          {o.delivery?.driver ? (
-                            <button onClick={() => openEdit(o)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">
-                              Editar
-                            </button>
-                          ) : (
-                            <button onClick={() => openAssign(o)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
-                              Asignar
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredShipping.map((o) => {
+                      const pickups = getRequiredPickups(o);
+                      return (
+                        <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
+                          <td className="py-3 pr-4 font-semibold text-slate-800">{o.orderNumber}</td>
+                          <td className="py-3 pr-4">{o.delivery?.driver ? `${o.delivery.driver.name} ${o.delivery.driver.lastName}` : "— sin asignar"}</td>
+                          <td className="py-3 pr-4 tabular-nums">{o.delivery?.vehicle || "—"}</td>
+                          <td className="py-3 pr-4">{o.delivery?.address || o.customer?.address || "—"}</td>
+                          <td className="py-3 pr-4">
+                            {pickups.length === 0 ? (
+                              <span className="text-slate-400">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {pickups.map((loc) => {
+                                  const done = Boolean(pickupDateFor(o, loc));
+                                  return (
+                                    <span
+                                      key={loc}
+                                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                        done ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                                      }`}
+                                    >
+                                      {done ? <IconCheck width={12} height={12} /> : null}
+                                      {loc}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {isCollecting(o) ? (
+                              <StatusPill status="Recolectando" />
+                            ) : o.delivery?.dispatchStatus ? (
+                              <StatusPill status={o.delivery.dispatchStatus} />
+                            ) : (
+                              <StatusPill status={o.status} />
+                            )}
+                          </td>
+                          <td className="py-3 text-right">
+                            {o.delivery?.driver ? (
+                              <button onClick={() => openEdit(o)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                                Editar
+                              </button>
+                            ) : (
+                              <button onClick={() => openAssign(o)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+                                Asignar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -356,6 +451,37 @@ function Logistica() {
           <Field label="Zona / dirección" name="address" value={editForm.address} onChange={handleEditChange} />
           <SelectField label="Estado de despacho" name="dispatchStatus" value={editForm.dispatchStatus} onChange={handleEditChange} options={DISPATCH} />
         </form>
+
+        {/* Checklist de recolección: dónde tiene que pasar el motorista antes
+            de salir donde el cliente. Solo aparecen las ubicaciones que este
+            pedido realmente necesita (ver getRequiredPickups). */}
+        {target && getRequiredPickups(target).length > 0 ? (
+          <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
+            <span className="block text-sm font-medium text-slate-700">Paradas de recolección</span>
+            {getRequiredPickups(target).map((loc) => {
+              const count = (target.items || []).filter((i) => i.packedLocation === loc).length;
+              const pickedUpAt = pickupDateFor(target, loc);
+              return (
+                <div key={loc} className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm">
+                  <span className="text-slate-600">
+                    <strong className="font-semibold text-slate-800">{loc}</strong> · {count} producto{count === 1 ? "" : "s"}
+                  </span>
+                  {pickedUpAt ? (
+                    <StatusPill status="Recogido" tone="green" />
+                  ) : (
+                    <button
+                      onClick={() => handleConfirmPickup(loc)}
+                      disabled={confirmingPickup === loc}
+                      className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                    >
+                      {confirmingPickup === loc ? "Confirmando…" : "Confirmar recogido"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

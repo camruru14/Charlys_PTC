@@ -1,6 +1,5 @@
 import Modal from "../ui/Modal";
 import { SelectField } from "../ui/Field";
-import { WAREHOUSES } from "../../hooks/useBatchForm";
 
 /*
   Modal de confirmación para "Reportar" un lote desde Fabricación.
@@ -11,7 +10,7 @@ import { WAREHOUSES } from "../../hooks/useBatchForm";
   producto, Categoría = Producto Terminado, Existencia = esa misma cantidad
   producida, Bodega = la elegida aquí).
 */
-function ReportBatchModal({ open, onClose, target, form, handleChange, handleSubmit, saving }) {
+function ReportBatchModal({ open, onClose, target, form, handleChange, handleSubmit, saving, warehouses = [] }) {
   if (!target) return null;
 
   const toReport = Number(form.producedQuantity) || 0;
@@ -46,7 +45,7 @@ function ReportBatchModal({ open, onClose, target, form, handleChange, handleSub
             <p className="mt-1.5 text-xs text-amber-600">Este lote todavía no tiene cantidad producida registrada, no hay nada que reportar.</p>
           ) : null}
         </div>
-        <SelectField label="Bodega" name="warehouse" value={form.warehouse} onChange={handleChange} options={WAREHOUSES} required />
+        <SelectField label="Bodega" name="warehouse" value={form.warehouse} onChange={handleChange} options={warehouses} required />
       </div>
     </Modal>
   );

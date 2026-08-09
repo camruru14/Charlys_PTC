@@ -45,9 +45,6 @@ dashboardController.getSummary = async (req, res) => {
 
     // --- Producción ---
     const producedTotal = batches.reduce((s, b) => s + (b.producedQuantity || 0), 0);
-    const wasteTotal = batches.reduce((s, b) => s + (b.wasteQuantity || 0), 0);
-    const processedTotal = producedTotal + wasteTotal;
-    const wasteIndex = processedTotal > 0 ? (wasteTotal / processedTotal) * 100 : 0;
 
     // --- Pedidos ---
     const ordersInProgress = orders.filter(
@@ -92,7 +89,6 @@ dashboardController.getSummary = async (req, res) => {
         income,
         ordersInProgress,
         ordersReadyToShip,
-        wasteIndex: Number(wasteIndex.toFixed(1)),
       },
       recentBatches: batches.slice(0, 5),
       productionMix,

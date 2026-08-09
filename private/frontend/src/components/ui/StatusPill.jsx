@@ -1,11 +1,15 @@
 /*
   Etiqueta de estado (Status Pill).
-  Fondo suave + texto en negrita del mismo tono pero más oscuro,
-  según las reglas de diseño:
-    Verde   -> Completado / A tiempo / Entregado / Pagado
-    Azul    -> En proceso / En Fabricación / Procesando
-    Rojo    -> Demorado / Alertas / Detenido
-    Amarillo-> En tránsito / Mantenimiento / Pendiente
+  Fondo suave + texto en negrita del mismo tono pero más oscuro. Este mapa es
+  la ÚNICA fuente de verdad para el color de cada estado de negocio en todo
+  el panel — cualquier componente que necesite pintar uno de estos conceptos
+  debe usar <StatusPill status="..." /> en vez de armar su propio badge o
+  pasar un tone a mano, así nunca se desincroniza entre pantallas:
+    Gris     -> Sin verificar
+    Azul     -> Verificado / En proceso / Procesando
+    Amarillo -> En Fabricación / Enviado a fabricación / Recolectando / En tránsito / Pendiente
+    Verde    -> Empacado / Entregado / Completado / A tiempo / Pagado
+    Rojo     -> Demorado / Alertas / Detenido
 */
 
 const TONES = {
@@ -22,17 +26,16 @@ const STATUS_TONE = {
   Completado: "green",
   "A tiempo": "green",
   Entregado: "green",
+  Empacado: "green",
   Pagado: "green",
   Activo: "green",
   Estable: "green",
   Suficiente: "green",
-  Verificado: "green",
   // Azul
   "En proceso": "blue",
   "En Proceso": "blue",
-  "En Fabricación": "blue",
   Procesando: "blue",
-  Empacado: "blue",
+  Verificado: "blue",
   // Rojo
   Demorado: "red",
   Detenido: "red",
@@ -40,14 +43,18 @@ const STATUS_TONE = {
   Crítico: "red",
   Cancelado: "red",
   Insuficiente: "red",
-  // Amarillo
+  // Amarillo (mismo tono para "ámbar" y "amarillo": son el mismo concepto
+  // visual, solo dos nombres distintos según el contexto)
   "En Tránsito": "yellow",
   "En tránsito": "yellow",
+  "En Fabricación": "yellow",
+  Recolectando: "yellow",
   Saliendo: "yellow",
   Mantenimiento: "yellow",
   Pendiente: "yellow",
   Programado: "yellow",
-  "Sin Verificar": "yellow",
+  // Gris
+  "Sin Verificar": "gray",
 };
 
 function StatusPill({ status, tone }) {

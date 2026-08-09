@@ -46,7 +46,14 @@ function TransactionTable({ transactions = [], onEdit, onDelete }) {
             <tr key={t._id} className="text-slate-600 transition hover:bg-slate-50/60">
               <td className="py-3 pr-4 whitespace-nowrap font-semibold text-slate-800">{t.reference}</td>
               <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(t)}</td>
-              <td className="py-3 pr-4 font-medium text-slate-700">{t.concept}</td>
+              <td className="py-3 pr-4 font-medium text-slate-700">
+                {t.concept}
+                {t.relatedOrder?.orderNumber ? (
+                  <span className="ml-1.5 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
+                    {t.relatedOrder.orderNumber}
+                  </span>
+                ) : null}
+              </td>
               <td className="py-3 pr-4">{t.category || "—"}</td>
               <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-red-600"}`}>
                 {t.type === "Ingreso" ? "+" : "-"}${Number(t.amount || 0).toFixed(2)}

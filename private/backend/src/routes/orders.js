@@ -30,4 +30,23 @@ router
 router.route("/:id/items/:index/verify").patch(ordersController.verifyOrderItem);
 router.route("/:id/items/:index/pack").patch(ordersController.packOrderItem);
 
+// Enviar / quitar un producto del pedido de Fabricación (Inventario >
+// Pedidos lo envía; Fabricación > Pedidos lo puede quitar con "Eliminar").
+router
+  .route("/:id/items/:index/send-manufacturing")
+  .patch(ordersController.sendItemToManufacturing)
+  .delete(ordersController.cancelManufacturingRequest);
+
+// Fabricar un producto enviado a Fabricación (Fabricación > Pedidos): crea
+// el lote correspondiente en Lotes de fabricación.
+router.route("/:id/items/:index/manufacture").patch(ordersController.manufactureOrderItem);
+
+// Empacar un producto ya fabricado para este pedido (Fabricación > Fabricación
+// de pedidos), sin pasar por Inventario.
+router.route("/:id/items/:index/pack-manufactured").patch(ordersController.packManufacturedItem);
+
+// Confirmar que el motorista recogió lo que le tocaba en Almacén o
+// Fabricación (checklist de recolección, Logística).
+router.route("/:id/delivery/pickup").patch(ordersController.confirmPickup);
+
 export default router;

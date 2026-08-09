@@ -41,9 +41,7 @@ function BatchTable({ batches = [], showOperator = false, onEdit, onDelete }) {
             <th className="pb-3 pr-4 font-semibold">Producto</th>
             <th className="pb-3 pr-4 font-semibold">Color</th>
             <th className="pb-3 pr-4 font-semibold">Línea</th>
-            <th className="pb-3 pr-4 font-semibold">Meta</th>
             <th className="pb-3 pr-4 font-semibold">Producido</th>
-            <th className="pb-3 pr-4 font-semibold">Residuos</th>
             <th className="pb-3 pr-4 font-semibold">Estado</th>
             {showOperator ? <th className="pb-3 pr-4 font-semibold">Operario</th> : null}
             {showActions ? <th className="pb-3 font-semibold text-right">Acciones</th> : null}
@@ -57,9 +55,7 @@ function BatchTable({ batches = [], showOperator = false, onEdit, onDelete }) {
               <td className="py-3 pr-4">{b.product}</td>
               <td className="py-3 pr-4">{b.color || "—"}</td>
               <td className="py-3 pr-4">{b.productionLine || "—"}</td>
-              <td className="py-3 pr-4 tabular-nums">{fmt(b.targetQuantity)}</td>
               <td className="py-3 pr-4 tabular-nums">{fmt(b.producedQuantity)}</td>
-              <td className="py-3 pr-4 tabular-nums">{Math.round(b.wastePercentage ?? 0)}%</td>
               <td className="py-3 pr-4"><StatusPill status={b.status} /></td>
               {showOperator ? <td className="py-3 pr-4">{fmtOperator(b)}</td> : null}
               {showActions ? (

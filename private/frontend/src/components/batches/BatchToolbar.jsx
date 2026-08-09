@@ -17,8 +17,7 @@ function BatchToolbar({ list = [], filters, setFilters, compact = false }) {
     filters.line ||
     filters.status ||
     filters.operator ||
-    filters.minProduced !== "" ||
-    filters.maxWaste !== "";
+    filters.minProduced !== "";
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -65,13 +64,6 @@ function BatchToolbar({ list = [], filters, setFilters, compact = false }) {
             value={filters.minProduced}
             onChange={(e) => set("minProduced", e.target.value)}
             placeholder="Producido ≥"
-            className={numberClass}
-          />
-          <input
-            type="number"
-            value={filters.maxWaste}
-            onChange={(e) => set("maxWaste", e.target.value)}
-            placeholder="Residuos ≤ %"
             className={numberClass}
           />
         </>

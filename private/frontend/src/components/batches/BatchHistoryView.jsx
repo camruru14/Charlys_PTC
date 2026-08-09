@@ -15,7 +15,7 @@ import { IconPlus } from "../../lib/icons";
   Reutilizada por cada apartado que tiene su propio botón "Ver todo"
   (Dashboard y Fabricación), cada uno con su propio botón de "volver".
   Incluye: filtro por fechas (en el TopBar), búsqueda y todos los filtros
-  (producto, línea, estado, operario, cantidad producida y % de residuos).
+  (producto, línea, estado, operario y cantidad producida).
   Cuando editable=true (Fabricación) permite editar y eliminar lotes.
 */
 function BatchHistoryView({ backTo, backLabel, editable = false }) {
@@ -31,9 +31,7 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
 
   const stats = useMemo(() => {
     const produced = filtered.reduce((s, b) => s + (b.producedQuantity || 0), 0);
-    const waste = filtered.reduce((s, b) => s + (b.wastePercentage || 0), 0);
-    const avgWaste = filtered.length ? (waste / filtered.length).toFixed(1) : "0.0";
-    return { count: filtered.length, produced, avgWaste };
+    return { count: filtered.length, produced };
   }, [filtered]);
 
   return (
@@ -51,7 +49,7 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
       </div>
 
       {/* Resumen del subconjunto filtrado */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Lotes encontrados</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">{stats.count}</p>
@@ -59,10 +57,6 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
         <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Producción total</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">{stats.produced.toLocaleString("es-SV")}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Residuos (promedio)</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{stats.avgWaste}%</p>
         </div>
       </div>
 

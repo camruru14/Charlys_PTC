@@ -108,7 +108,11 @@ function Finanzas() {
   const kpis = useMemo(() => {
     const income = rangeList.filter((t) => t.type === "Ingreso").reduce((s, t) => s + t.amount, 0);
     const expense = rangeList.filter((t) => t.type === "Gasto").reduce((s, t) => s + t.amount, 0);
-    return { income, expense, net: income - expense };
+    // Distinto de "Rentabilidad neta" (income - expense): esto es lo que
+    // todavía no se ha cobrado ni pagado (transacciones "Pendiente"), sin
+    // importar si son Ingreso o Gasto.
+    const pending = rangeList.filter((t) => t.status === "Pendiente").reduce((s, t) => s + t.amount, 0);
+    return { income, expense, net: income - expense, pending };
   }, [rangeList]);
 
   // Ingresos vs Gastos, según el rango seleccionado.
@@ -242,7 +246,7 @@ function Finanzas() {
         <KpiCard label="Ingresos" value={fmt(kpis.income)} icon={IconFinance} trend={{ tone: "green", label: "en el rango" }} />
         <KpiCard label="Gastos" value={fmt(kpis.expense)} icon={IconFinance} trend={{ tone: "yellow", label: "en el rango" }} />
         <KpiCard label="Rentabilidad neta" value={fmt(kpis.net)} icon={IconFinance} trend={{ tone: kpis.net >= 0 ? "green" : "red", label: kpis.net >= 0 ? "Positiva" : "Negativa" }} />
-        <KpiCard label="Flujo de caja" value={fmt(kpis.net)} icon={IconFinance} trend={{ tone: "blue", label: "neto" }} />
+        <KpiCard label="Pendiente por cobrar/pagar" value={fmt(kpis.pending)} icon={IconFinance} trend={{ tone: kpis.pending ? "yellow" : "green", label: kpis.pending ? "en el rango" : "Al día" }} />
       </div>
 
       {/* Ingresos vs Gastos, por día o por mes según el rango de fechas */}

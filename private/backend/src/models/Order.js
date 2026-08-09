@@ -18,6 +18,24 @@ const orderItemSchema = new Schema(
     // También pone todo el pedido en estado "Empacado" para Logística.
     packed: { type: Boolean, default: false },
     packedAt: { type: Date },
+    // Dónde se empacó la línea: se llena solo (nunca a mano) al marcarla como
+    // empacada. "Almacén" desde el flujo normal de Inventario > Pedidos
+    // (packOrderItem); "Fabricación" desde Fabricación > Fabricación de
+    // pedidos (packManufacturedItem), cuando el producto no había en stock y
+    // se fabricó exclusivamente para este pedido. Logística lo usa para saber
+    // dónde tiene que pasar el motorista a recoger (ver getRequiredPickups).
+    packedLocation: { type: String, enum: ["Almacén", "Fabricación"] },
+    // Se marca al presionar "Enviar a fabricación" en el modal "Verificar
+    // producto en inventario" (Inventario > Pedidos), cuando no hay stock
+    // suficiente para cubrir el pedido. La línea aparece entonces en
+    // Fabricación > Pedidos; en Inventario > Pedidos queda como "Enviado".
+    sentToManufacturing: { type: Boolean, default: false },
+    sentToManufacturingAt: { type: Date },
+    // Se llena al presionar "Fabricar" en Fabricación > Pedidos: crea un lote
+    // en Lotes de fabricación (categoría "Pedido", meta = cantidad pedida) y
+    // queda enlazado aquí.
+    manufacturingBatch: { type: Schema.Types.ObjectId, ref: "ProductionBatch" },
+    manufacturedAt: { type: Date },
   },
   { _id: false },
 );
@@ -35,6 +53,12 @@ const deliverySchema = new Schema(
     dispatchedAt: { type: Date },
     deliveredAt: { type: Date },
     address: { type: String },
+    // Checklist de recolección: se llenan cuando Logística confirma que el
+    // motorista ya recogió lo que le tocaba en ese lugar (ver confirmPickup y
+    // getRequiredPickups en Logistica.jsx). Si el pedido nunca tuvo nada que
+    // recoger en un lugar, el campo correspondiente se queda vacío.
+    pickupWarehouseAt: { type: Date },
+    pickupFactoryAt: { type: Date },
   },
   { _id: false },
 );
@@ -81,10 +105,6 @@ const orderSchema = new Schema(
     source: {
       type: String,
       default: "ecommerce",
-    },
-    batch: {
-      type: Schema.Types.ObjectId,
-      ref: "ProductionBatch",
     },
     delivery: deliverySchema,
     notes: {

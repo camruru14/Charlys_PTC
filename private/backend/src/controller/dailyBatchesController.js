@@ -31,7 +31,7 @@ dailyBatchesController.getBatch = async (req, res) => {
 
 // INSERT
 dailyBatchesController.insertBatch = async (req, res) => {
-  const { date, product, color, targetQuantity } = req.body;
+  const { date, product, color } = req.body;
 
   const dailyBatchNumber = await generateDailyBatchNumber();
 
@@ -40,7 +40,6 @@ dailyBatchesController.insertBatch = async (req, res) => {
     date,
     product,
     color,
-    targetQuantity,
   });
 
   await newBatch.save();
@@ -50,7 +49,7 @@ dailyBatchesController.insertBatch = async (req, res) => {
 
 // ACTUALIZAR
 dailyBatchesController.updateBatch = async (req, res) => {
-  const { date, product, color, targetQuantity } = req.body;
+  const { date, product, color } = req.body;
 
   const batch = await dailyBatchModel.findById(req.params.id);
 
@@ -58,7 +57,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
     return res.status(404).json({ message: "Daily batch not found" });
   }
 
-  batch.set({ date, product, color, targetQuantity });
+  batch.set({ date, product, color });
 
   await batch.save();
 
@@ -71,8 +70,8 @@ dailyBatchesController.deleteBatch = async (req, res) => {
   res.json({ message: "Daily batch deleted" });
 };
 
-// Programar - envía el lote diario a Lotes de fabricación (Línea, Producido,
-// Residuos y Operario quedan vacíos y se completan después) y lo quita de Lotes Diarios.
+// Programar - envía el lote diario a Lotes de fabricación (Línea, Producido
+// y Operario quedan vacíos y se completan después) y lo quita de Lotes Diarios.
 dailyBatchesController.scheduleBatch = async (req, res) => {
   const daily = await dailyBatchModel.findById(req.params.id);
 
@@ -86,7 +85,6 @@ dailyBatchesController.scheduleBatch = async (req, res) => {
     batchNumber,
     product: daily.product,
     color: daily.color,
-    targetQuantity: daily.targetQuantity,
     startDate: daily.date,
     status: "Programado",
   });

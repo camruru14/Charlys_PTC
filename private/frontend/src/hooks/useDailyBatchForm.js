@@ -8,7 +8,6 @@ export const emptyDailyBatchForm = {
   date: "",
   product: "Pajilla",
   color: "Rojo",
-  targetQuantity: "",
 };
 
 // Vista previa del próximo ID de lote diario (el backend genera el definitivo al guardar)
@@ -24,8 +23,8 @@ export function previewDailyBatchNumber(list) {
 
 /*
   Estado y acciones (crear/editar/eliminar/programar) para lotes diarios.
-  "Programar" envía el lote a Lotes de fabricación (Línea, Producido, Residuos
-  y Operario quedan vacíos ahí, editables después) y lo quita de esta lista.
+  "Programar" envía el lote a Lotes de fabricación (Línea, Producido y
+  Operario quedan vacíos ahí, editables después) y lo quita de esta lista.
 */
 export function useDailyBatchForm(list, refetch, onScheduled) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -46,7 +45,6 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
       date: batch.date ? new Date(batch.date).toISOString().slice(0, 10) : "",
       product: batch.product || "Pajilla",
       color: batch.color || "",
-      targetQuantity: batch.targetQuantity ?? "",
     });
     setModalOpen(true);
   }
@@ -59,7 +57,6 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
     const { dailyBatchNumber, ...rest } = form;
     const payload = {
       ...rest,
-      targetQuantity: Number(form.targetQuantity) || 0,
       date: form.date || undefined,
     };
     try {

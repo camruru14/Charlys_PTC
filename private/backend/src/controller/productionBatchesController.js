@@ -39,12 +39,9 @@ productionBatchesController.insertBatch = async (req, res) => {
     product,
     color,
     productionLine,
-    targetQuantity,
     producedQuantity,
-    wasteQuantity,
     status,
     operator,
-    rawMaterials,
     startDate,
   } = req.body;
 
@@ -55,12 +52,9 @@ productionBatchesController.insertBatch = async (req, res) => {
     product,
     color,
     productionLine,
-    targetQuantity,
     producedQuantity,
-    wasteQuantity,
     status,
     operator,
-    rawMaterials,
     startDate,
   });
 
@@ -75,13 +69,9 @@ productionBatchesController.updateBatch = async (req, res) => {
     product,
     color,
     productionLine,
-    targetQuantity,
     producedQuantity,
-    wasteQuantity,
     status,
-    qualityCheck,
     operator,
-    rawMaterials,
     startDate,
     endDate,
   } = req.body;
@@ -96,13 +86,9 @@ productionBatchesController.updateBatch = async (req, res) => {
     product,
     color,
     productionLine,
-    targetQuantity,
     producedQuantity,
-    wasteQuantity,
     status,
-    qualityCheck,
     operator,
-    rawMaterials,
     startDate,
     endDate,
   });
@@ -151,12 +137,12 @@ productionBatchesController.reportProduction = async (req, res) => {
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
-  res.json({ message: "Production reported", wastePercentage: batch.wastePercentage });
+  res.json({ message: "Production reported" });
 };
 
 // Revierte un lote a "no reportado": solo se limpia lastReportedAt (para que
-// vuelva a mostrar el botón "Reportar"). Producción, residuos y estado no se
-// tocan, el lote queda igual que estaba antes de deshacer el reporte. No
+// vuelva a mostrar el botón "Reportar"). Producción y estado no se tocan, el
+// lote queda igual que estaba antes de deshacer el reporte. No
 // guarda el documento, eso queda a cargo de quien llama (así se puede reusar
 // sobre un batch ya cargado).
 export function resetBatchToUnreported(batch) {

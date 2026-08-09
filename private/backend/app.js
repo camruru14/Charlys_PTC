@@ -13,6 +13,7 @@ import employeesRoutes from "./src/routes/employees.js";
 import inventoryRoutes from "./src/routes/inventory.js";
 import transactionsRoutes from "./src/routes/transactions.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
+import warehousesRoutes from "./src/routes/warehouses.js";
 
 //Ejecutar express
 const app = express();
@@ -57,6 +58,9 @@ app.use("/api/employees", validateAuthCookie(["admin", "gerente"]), employeesRou
 
 // Inventario / Almacén
 app.use("/api/inventory", validateAuthCookie(["admin", "gerente"]), inventoryRoutes);
+
+// Bodegas (usadas por Inventario, verificación de pedidos y reportes de Fabricación)
+app.use("/api/warehouses", validateAuthCookie(["admin", "gerente", "operario"]), warehousesRoutes);
 
 // Finanzas (transacciones)
 app.use("/api/transactions", validateAuthCookie(["admin", "gerente"]), transactionsRoutes);
