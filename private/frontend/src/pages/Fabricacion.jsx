@@ -14,7 +14,21 @@ import ReportBatchModal from "../components/batches/ReportBatchModal";
 import UndoReportModal from "../components/batches/UndoReportModal";
 import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
+import Modal from "../components/ui/Modal";
 import { IconFactory, IconAlert, IconCheck, IconPlus } from "../lib/icons";
+import {
+  getManufacturingCounts,
+  manufacturingMacroStatus,
+  manufacturingProgressSegments,
+  manufacturingProgressCaption,
+  MANUFACTURING_STATUS_LABELS,
+} from "../lib/manufacturingProgress";
+
+const MANUFACTURING_STATUS_FILTERS = ["enCola", "programado", "enProceso", "completado", "detenido", "parcial"];
+
+// Mismo alto que el buscador (py-1.5 text-xs), igual que selectFilterClass en Inventario.jsx.
+const selectFilterClass =
+  "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
 
 function Fabricacion() {
   const navigate = useNavigate();
@@ -24,6 +38,11 @@ function Fabricacion() {
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchManufacturingOrders } = useFetch("/orders");
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("fabricacion");
+  // Se guarda el id del pedido, no el objeto, para que el modal "Ver" de
+  // "Por fabricar" siempre refleje el estado más reciente de orders.
+  const [manufacturingInfoOrderId, setManufacturingInfoOrderId] = useState(null);
+  const [manufacturingStatusFilter, setManufacturingStatusFilter] = useState("");
+  const [manufacturingOnlyPending, setManufacturingOnlyPending] = useState(false);
 
   // Lista completa (sin filtrar por fecha): necesaria para numerar el siguiente lote
   const list = Array.isArray(batches) ? batches : [];
@@ -38,16 +57,42 @@ function Fabricacion() {
   const orders = Array.isArray(ordersData) ? ordersData : [];
 
   // Pedidos enviados desde Inventario > Pedidos cuando no había stock
-  // disponible (botón "Enviar a fabricación"). Una fila por producto enviado.
-  const manufacturingLines = useMemo(() => {
-    const rows = [];
+  // disponible (botón "Enviar a fabricación"). Agrupados por pedido: cada
+  // grupo trae todas sus líneas enviadas a fabricación, para mostrar una
+  // sola fila por pedido en la tabla (igual que "Pedidos" en Inventario).
+  const manufacturingGroups = useMemo(() => {
+    const groups = [];
     orders.forEach((o) => {
+      const lines = [];
       (o.items || []).forEach((item, index) => {
-        if (item.sentToManufacturing) rows.push({ order: o, item, index });
+        if (item.sentToManufacturing) lines.push({ item, index });
       });
+      if (lines.length) groups.push({ order: o, lines });
     });
-    return rows.sort((a, b) => new Date(b.item.sentToManufacturingAt) - new Date(a.item.sentToManufacturingAt));
+    const latest = (group) => Math.max(...group.lines.map((l) => new Date(l.item.sentToManufacturingAt).getTime()));
+    return groups.sort((a, b) => latest(b) - latest(a));
   }, [orders]);
+
+  // Pedido mostrado en el modal "Ver" de "Por fabricar" (se recalcula de
+  // manufacturingGroups para reflejar el estado más reciente sin cerrar el modal).
+  const manufacturingInfoGroup = useMemo(
+    () => manufacturingGroups.find((g) => g.order._id === manufacturingInfoOrderId) || null,
+    [manufacturingGroups, manufacturingInfoOrderId]
+  );
+
+  // manufacturingGroups filtrados por estado macro y/o "solo con pendientes",
+  // mismo patrón que filteredRequestedOrders en Inventario.jsx. "Pendientes"
+  // acá es "no 100% completado" (detenido también cuenta como pendiente de
+  // atención, no solo lo que sigue en cola).
+  const filteredManufacturingGroups = useMemo(() => {
+    return manufacturingGroups.filter((g) => {
+      if (manufacturingStatusFilter && manufacturingMacroStatus(g) !== manufacturingStatusFilter) return false;
+      if (manufacturingOnlyPending && getManufacturingCounts(g).completado === g.lines.length) return false;
+      return true;
+    });
+  }, [manufacturingGroups, manufacturingStatusFilter, manufacturingOnlyPending]);
+
+  const hasActiveManufacturingFilters = Boolean(manufacturingStatusFilter || manufacturingOnlyPending);
 
   // Para cada lote de "Fabricación de pedidos" (category "Pedido"), a qué
   // pedido/línea pertenece: item.manufacturingBatch viene poblado ({_id,
@@ -64,6 +109,17 @@ function Fabricacion() {
     });
     return map;
   }, [orders]);
+
+  // Cambiar el status/producedQuantity de un lote (crear/editar/eliminar/
+  // reportar desde "Fabricación de pedidos" o "Lotes de fabricación") puede
+  // afectar la barra de progreso de "Por fabricar", que lee
+  // item.manufacturingBatch.status desde /orders (una copia poblada, no
+  // reactiva al lote). Por eso useBatchForm refetch-ea ambas listas, así la
+  // barra refleja el cambio de estado sin recargar la página.
+  function refetchBatchesAndOrders() {
+    refetch();
+    refetchManufacturingOrders();
+  }
 
   const {
     modalOpen,
@@ -92,7 +148,7 @@ function Fabricacion() {
     undoingReport,
     openUndoReport,
     confirmUndoReport,
-  } = useBatchForm(list, refetch);
+  } = useBatchForm(list, refetchBatchesAndOrders);
 
   const {
     modalOpen: dailyModalOpen,
@@ -354,11 +410,45 @@ function Fabricacion() {
         </SectionCard>
       ) : activeTab === "pedidos" ? (
         <SectionCard title="Por fabricar">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <select
+              value={manufacturingStatusFilter}
+              onChange={(e) => setManufacturingStatusFilter(e.target.value)}
+              className={selectFilterClass}
+            >
+              <option value="">Estado: Todos</option>
+              {MANUFACTURING_STATUS_FILTERS.map((key) => (
+                <option key={key} value={key}>{MANUFACTURING_STATUS_LABELS[key]}</option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={manufacturingOnlyPending}
+                onChange={(e) => setManufacturingOnlyPending(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+              />
+              Solo con pendientes
+            </label>
+            {hasActiveManufacturingFilters ? (
+              <button
+                onClick={() => { setManufacturingStatusFilter(""); setManufacturingOnlyPending(false); }}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+              >
+                Limpiar filtros
+              </button>
+            ) : null}
+          </div>
+
           <AsyncState
             loading={ordersLoading}
             error={ordersError}
-            empty={!ordersLoading && manufacturingLines.length === 0}
-            emptyText="Aún no hay pedidos enviados a fabricación."
+            empty={!ordersLoading && filteredManufacturingGroups.length === 0}
+            emptyText={
+              hasActiveManufacturingFilters && manufacturingGroups.length > 0
+                ? "Ningún pedido coincide con los filtros."
+                : "Aún no hay pedidos enviados a fabricación."
+            }
           >
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-left text-sm">
@@ -366,36 +456,48 @@ function Fabricacion() {
                   <tr className="text-xs uppercase tracking-wide text-slate-400">
                     <th className="pb-3 pr-4 font-semibold">Pedido</th>
                     <th className="pb-3 pr-4 font-semibold">Cliente</th>
-                    <th className="pb-3 pr-4 font-semibold">Producto</th>
-                    <th className="pb-3 pr-4 font-semibold">Color</th>
-                    <th className="pb-3 pr-4 font-semibold">Unidades</th>
+                    <th className="pb-3 pr-4 font-semibold">Productos</th>
                     <th className="pb-3 pr-4 font-semibold">Fecha Enviado</th>
                     <th className="pb-3 font-semibold text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {manufacturingLines.map(({ order, item, index }) => (
-                    <tr key={`${order._id}-${index}`} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{order.orderNumber}</td>
-                      <td className="py-3 pr-4">{order.customer?.name || "—"}</td>
-                      <td className="py-3 pr-4 font-semibold text-slate-800">{item.product}</td>
-                      <td className="py-3 pr-4">{item.color || "—"}</td>
-                      <td className="py-3 pr-4 tabular-nums">{item.quantity}</td>
-                      <td className="py-3 pr-4 whitespace-nowrap">{fmtOrderDate(item.sentToManufacturingAt)}</td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2 text-xs font-semibold">
-                          {item.manufacturingBatch ? (
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
-                              <IconCheck width={14} height={14} /> Fabricado{item.manufacturingBatch.batchNumber ? ` (${item.manufacturingBatch.batchNumber})` : ""}
-                            </span>
-                          ) : (
-                            <button onClick={() => handleManufacture({ order, item, index })} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Fabricar</button>
-                          )}
-                          <button onClick={() => handleRemoveManufacturingLine({ order, item, index })} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredManufacturingGroups.map((group) => {
+                    const { order, lines } = group;
+                    const segments = manufacturingProgressSegments(group);
+                    const caption = manufacturingProgressCaption(group);
+                    const latestSentAt = lines.reduce(
+                      (latest, l) => (new Date(l.item.sentToManufacturingAt) > new Date(latest) ? l.item.sentToManufacturingAt : latest),
+                      lines[0].item.sentToManufacturingAt
+                    );
+                    return (
+                      <tr key={order._id} className="text-slate-600 transition hover:bg-slate-50/60">
+                        <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{order.orderNumber}</td>
+                        <td className="py-3 pr-4">{order.customer?.name || "—"}</td>
+                        <td className="py-3 pr-4 min-w-[200px]">
+                          <div>
+                            <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                              {segments.map((seg) => (
+                                <div
+                                  key={seg.key}
+                                  className={seg.colorClass}
+                                  style={{ width: `${seg.pct}%` }}
+                                  title={`${seg.count} ${seg.label}`}
+                                />
+                              ))}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-tight text-slate-500">{caption || "Sin productos"}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 whitespace-nowrap">{fmtOrderDate(latestSentAt)}</td>
+                        <td className="py-3 text-right">
+                          <div className="flex justify-end gap-2 text-xs font-semibold">
+                            <button onClick={() => setManufacturingInfoOrderId(order._id)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Ver</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -418,6 +520,7 @@ function Fabricacion() {
                     <th className="pb-3 pr-4 font-semibold">Producto</th>
                     <th className="pb-3 pr-4 font-semibold">Color</th>
                     <th className="pb-3 pr-4 font-semibold">Línea</th>
+                    <th className="pb-3 pr-4 font-semibold">Meta</th>
                     <th className="pb-3 pr-4 font-semibold">Producido</th>
                     <th className="pb-3 pr-4 font-semibold">Estado</th>
                     <th className="pb-3 font-semibold text-right">Acciones</th>
@@ -433,6 +536,7 @@ function Fabricacion() {
                         <td className="py-3 pr-4">{b.product}</td>
                         <td className="py-3 pr-4">{b.color || "—"}</td>
                         <td className="py-3 pr-4">{b.productionLine || "—"}</td>
+                        <td className="py-3 pr-4 tabular-nums">{pedidoLine?.item?.quantity ?? "—"}</td>
                         <td className="py-3 pr-4 tabular-nums">{(b.producedQuantity || 0).toLocaleString("es-SV")}</td>
                         <td className="py-3 pr-4"><StatusPill status={b.status} /></td>
                         <td className="py-3 text-right">
@@ -499,6 +603,44 @@ function Fabricacion() {
         handleSubmit={handleDailySubmit}
         saving={dailySaving}
       />
+
+      <Modal
+        open={!!manufacturingInfoGroup}
+        onClose={() => setManufacturingInfoOrderId(null)}
+        title={`Productos enviados a fabricar · ${manufacturingInfoGroup?.order?.orderNumber || ""}`}
+        size="lg"
+        footer={
+          <button onClick={() => setManufacturingInfoOrderId(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+        }
+      >
+        {manufacturingInfoGroup?.lines?.length ? (
+          <div className="space-y-2">
+            {manufacturingInfoGroup.lines.map(({ item, index }) => {
+              const order = manufacturingInfoGroup.order;
+              return (
+                <div key={index} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-slate-800">{item.product}{item.color ? ` · ${item.color}` : ""}</p>
+                    <p className="text-xs text-slate-500">{item.quantity} unidades · Enviado {fmtOrderDate(item.sentToManufacturingAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    {item.manufacturingBatch ? (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                        <IconCheck width={14} height={14} /> Fabricado{item.manufacturingBatch.batchNumber ? ` · ${item.manufacturingBatch.batchNumber}` : ""}
+                      </span>
+                    ) : (
+                      <button onClick={() => handleManufacture({ order, item, index })} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Fabricar</button>
+                    )}
+                    <button onClick={() => handleRemoveManufacturingLine({ order, item, index })} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">Este pedido no tiene productos enviados a fabricar.</p>
+        )}
+      </Modal>
     </div>
   );
 }
