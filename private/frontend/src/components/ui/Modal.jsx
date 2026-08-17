@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { IconClose } from "../../lib/icons";
 
 /*
-  Modal reutilizable. Se cierra con la tecla Escape o al hacer clic en el fondo.
+  Modal reutilizable. Se cierra con la tecla Escape o el botón de cerrar (la X
+  o el de footer) — clic en el fondo NO cierra, para no perder datos de un
+  formulario a medio llenar por un clic accidental fuera del modal.
   Props: open, onClose, title, children, footer, size ("md" | "lg").
 */
 function Modal({ open, onClose, title, children, footer, size = "md" }) {
@@ -19,11 +21,6 @@ function Modal({ open, onClose, title, children, footer, size = "md" }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center">
-      <div
-        className="absolute inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
       <div
         className={`app-modal relative z-10 w-full ${maxW} rounded-2xl bg-white shadow-xl`}
       >

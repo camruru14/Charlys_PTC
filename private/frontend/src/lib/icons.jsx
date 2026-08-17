@@ -153,3 +153,24 @@ export const IconCollapse = (p) => (
     <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
   </svg>
 );
+
+export const IconChevronDown = (p) => (
+  <svg {...base} {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+export const IconTag = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12.59 2H6a2 2 0 0 0-2 2v6.59c0 .53.21 1.04.59 1.41l8.83 8.83a2 2 0 0 0 2.82 0l6.18-6.18a2 2 0 0 0 0-2.82l-8.83-8.83A2 2 0 0 0 12.59 2Z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </svg>
+);
+
+export const IconImage = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="9" cy="9" r="1.5" />
+    <path d="m21 15-5-5L5 21" />
+  </svg>
+);

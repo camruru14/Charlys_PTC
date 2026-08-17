@@ -29,9 +29,10 @@ authController.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    //#4- Generar el token con el rol del empleado
+    //#4- Generar el token de sesión (el sistema ya no maneja roles/permisos:
+    // cualquier empleado autenticado puede usar cualquier ruta, ver authMiddleware.js)
     jsonwebtoken.sign(
-      { id: employeeFound._id, userType: employeeFound.role },
+      { id: employeeFound._id },
       config.JWT.secret,
       (error, token) => {
         if (error) console.log("error" + error);
@@ -44,7 +45,6 @@ authController.login = async (req, res) => {
             name: employeeFound.name,
             lastName: employeeFound.lastName,
             email: employeeFound.email,
-            role: employeeFound.role,
             position: employeeFound.position,
           },
         });

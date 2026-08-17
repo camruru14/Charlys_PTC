@@ -40,6 +40,27 @@ function computeOrderStatus(order) {
   return "Pendiente";
 }
 
+// Ubicaciones donde el pedido tiene algo empacado esperando a que el
+// motorista lo recoja, equivalente a getRequiredPickups en Logistica.jsx.
+function getRequiredPickupLocations(order) {
+  const items = order.items || [];
+  const locations = [];
+  if (items.some((i) => i.packedLocation === "Almacén")) locations.push("Almacén");
+  if (items.some((i) => i.packedLocation === "Fabricación")) locations.push("Fabricación");
+  return locations;
+}
+
+// El motorista ya pasó por todas las paradas de recolección que este pedido
+// requiere (o no requiere ninguna). Se le pasa `delivery` aparte del `order`
+// porque a veces se evalúa contra el delivery ya guardado en DB y a veces
+// contra uno recién armado en memoria (ver assignDelivery/confirmPickup).
+function isFullyCollected(order, delivery) {
+  const required = getRequiredPickupLocations(order);
+  if (required.includes("Almacén") && !delivery?.pickupWarehouseAt) return false;
+  if (required.includes("Fabricación") && !delivery?.pickupFactoryAt) return false;
+  return true;
+}
+
 // Crea la transacción de Finanzas que corresponde a un pedido que acaba de
 // cambiar de paymentStatus (Pagado -> Ingreso "Ventas"; Reembolsado -> Gasto
 // "Ventas"), para no capturarla a mano en Finanzas cada vez. Resguardo
@@ -169,23 +190,51 @@ ordersController.updateStatus = async (req, res) => {
 
 // ASIGNAR logística (motorista / vehículo) al pedido, o editar una entrega ya
 // asignada (mismo endpoint: Logística usa este PATCH tanto para "Asignar"
-// como para "Editar entrega"). El pedido pasa a "En Tránsito" salvo que el
-// estado de despacho elegido ya sea "Entregado", en cuyo caso el pedido
-// mismo pasa a "Entregado": así Logística libera al motorista (ver
+// como para "Editar entrega"). El pedido pasa a "En Tránsito" solo cuando ya
+// no le falta ninguna parada de recolección (o nunca la tuvo) — mientras el
+// motorista todavía tenga que pasar por Almacén y/o Fabricación, el pedido
+// se queda en su status de "para despacho" (Empacado/Procesando/etc.) y
+// Logística lo sigue mostrando en esa pestaña, no en "En Tránsito". Salvo
+// que el estado de despacho elegido ya sea "Entregado", en cuyo caso el
+// pedido mismo pasa a "Entregado": así Logística libera al motorista (ver
 // busyDriverMap en Logistica.jsx, que excluye pedidos con status
 // "Entregado") en cuanto se marca la entrega como completada, en vez de
 // dejarlo "ocupado" para siempre en un pedido ya cerrado.
 ordersController.assignDelivery = async (req, res) => {
   const { driver, vehicle, dispatchStatus, address } = req.body;
 
-  await orderModel.findByIdAndUpdate(
-    req.params.id,
-    {
-      status: dispatchStatus === "Entregado" ? "Entregado" : "En Tránsito",
-      delivery: { driver, vehicle, dispatchStatus, address },
-    },
-    { returnDocument: "after" },
-  );
+  const order = await orderModel.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  // Se copian pickupWarehouseAt/pickupFactoryAt del delivery existente en
+  // vez de reemplazar todo el subdocumento: reemplazarlo (como antes)
+  // borraba las recolecciones ya confirmadas por confirmPickup, así que
+  // guardar la entrega (aunque fuera solo para cambiar vehículo o estado de
+  // despacho) las deshacía silenciosamente.
+  const delivery = {
+    driver,
+    vehicle,
+    dispatchStatus,
+    address,
+    pickupWarehouseAt: order.delivery?.pickupWarehouseAt,
+    pickupFactoryAt: order.delivery?.pickupFactoryAt,
+  };
+
+  let status;
+  if (dispatchStatus === "Entregado") {
+    status = "Entregado";
+  } else if (getRequiredPickupLocations(order).length === 0 || isFullyCollected(order, order.delivery)) {
+    status = "En Tránsito";
+  } else {
+    status = computeOrderStatus(order);
+  }
+
+  order.delivery = delivery;
+  order.status = status;
+  order.markModified("delivery");
+  await order.save();
 
   res.json({ message: "Delivery assigned" });
 };
@@ -447,6 +496,7 @@ ordersController.manufactureOrderItem = async (req, res) => {
     color: item.color,
     category: "Pedido",
     status: "Programado",
+    targetQuantity: item.quantity,
   });
   await newBatch.save();
 
@@ -518,6 +568,14 @@ ordersController.confirmPickup = async (req, res) => {
   } else {
     order.delivery.pickupFactoryAt = new Date();
   }
+
+  // Si con esta parada ya quedó todo recogido, el pedido pasa de "para
+  // despacho" a "en tránsito" (salvo que ya estuviera "Entregado", que no
+  // debería retroceder por confirmar una parada tardía).
+  if (isFullyCollected(order, order.delivery) && order.delivery.dispatchStatus !== "Entregado") {
+    order.status = "En Tránsito";
+  }
+
   order.markModified("delivery");
   await order.save();
 

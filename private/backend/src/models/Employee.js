@@ -40,11 +40,6 @@ const employeeSchema = new Schema(
       type: String,
       required: true,
     },
-    role: {
-      type: String,
-      enum: ["admin", "gerente", "operario", "motorista"],
-      default: "operario",
-    },
     position: {
       type: String,
     },

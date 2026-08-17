@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { todayInput } from "./useBatchForm";
+import { useConfirm } from "./useConfirm";
 
 export const emptyDailyBatchForm = {
   dailyBatchNumber: "",
@@ -27,6 +28,7 @@ export function previewDailyBatchNumber(list) {
   Operario quedan vacíos ahí, editables después) y lo quita de esta lista.
 */
 export function useDailyBatchForm(list, refetch, onScheduled) {
+  const { confirm, confirmProps } = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyDailyBatchForm);
@@ -77,7 +79,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
   }
 
   async function handleDelete(batch) {
-    if (!window.confirm(`¿Eliminar el lote ${batch.dailyBatchNumber}?`)) return;
+    if (!(await confirm(`¿Eliminar el lote ${batch.dailyBatchNumber}?`, { danger: true }))) return;
     try {
       await api.del(`/dailyBatches/${batch._id}`);
       toast.success("Lote diario eliminado");
@@ -88,7 +90,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
   }
 
   async function handleSchedule(batch) {
-    if (!window.confirm(`¿Programar el lote ${batch.dailyBatchNumber}? Se enviará a Lotes de fabricación.`)) return;
+    if (!(await confirm(`¿Programar el lote ${batch.dailyBatchNumber}? Se enviará a Lotes de fabricación.`, { confirmLabel: "Programar" }))) return;
     try {
       const res = await api.patch(`/dailyBatches/${batch._id}/schedule`);
       toast.success(res?.batchNumber ? `Lote ${res.batchNumber} programado` : "Lote programado");
@@ -111,5 +113,6 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
     handleSubmit,
     handleDelete,
     handleSchedule,
+    confirmProps,
   };
 }

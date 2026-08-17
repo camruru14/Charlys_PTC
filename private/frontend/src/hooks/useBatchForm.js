@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "./useFetch";
+import { useConfirm } from "./useConfirm";
 
 export const emptyBatchForm = {
   batchNumber: "",
@@ -9,6 +10,7 @@ export const emptyBatchForm = {
   color: "Rojo",
   productionLine: "Línea 1",
   producedQuantity: "",
+  targetQuantity: "",
   status: "Programado",
   operator: "",
   startDate: "",
@@ -53,6 +55,7 @@ export function previewBatchNumber(list) {
 const emptyReportForm = { producedQuantity: "", warehouse: "" };
 
 export function useBatchForm(list, refetch) {
+  const { confirm, confirmProps } = useConfirm();
   const { data: employees } = useFetch("/employees");
   // Bodegas disponibles para reportar producción a Inventario (Parte 8:
   // configurables desde Configuración > Bodegas, ya no un arreglo fijo).
@@ -72,8 +75,11 @@ export function useBatchForm(list, refetch) {
   const [undoReportTarget, setUndoReportTarget] = useState(null);
   const [undoingReport, setUndoingReport] = useState(false);
 
-  const operators = (Array.isArray(employees) ? employees : []).filter((e) =>
-    ["operario", "gerente", "admin"].includes(e.role),
+  // "Operario responsable" del lote: solo empleados del Área Fabricación.
+  // El sistema ya no maneja roles, el Área de cada empleado es lo que
+  // distingue estos casos (ver Empleados.jsx).
+  const operators = (Array.isArray(employees) ? employees : []).filter(
+    (e) => e.department === "Fabricación",
   );
 
   function openCreate() {
@@ -90,6 +96,7 @@ export function useBatchForm(list, refetch) {
       color: batch.color || "",
       productionLine: batch.productionLine || "Línea 1",
       producedQuantity: batch.producedQuantity ?? "",
+      targetQuantity: batch.targetQuantity ?? "",
       status: batch.status || "Programado",
       operator: batch.operator?._id || batch.operator || "",
       startDate: toDateInput(batch.startDate || batch.createdAt),
@@ -102,7 +109,9 @@ export function useBatchForm(list, refetch) {
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
-    const { batchNumber, ...rest } = form;
+    // targetQuantity (Meta) es de solo lectura en este formulario (la fija el
+    // pedido al fabricar, ver manufactureOrderItem), no se manda a actualizar.
+    const { batchNumber, targetQuantity, ...rest } = form;
     const payload = {
       ...rest,
       producedQuantity: Number(form.producedQuantity) || 0,
@@ -127,7 +136,7 @@ export function useBatchForm(list, refetch) {
   }
 
   async function handleDelete(batch) {
-    if (!window.confirm(`¿Eliminar el lote ${batch.batchNumber}?`)) return;
+    if (!(await confirm(`¿Eliminar el lote ${batch.batchNumber}?`, { danger: true }))) return;
     try {
       await api.del(`/productionBatches/${batch._id}`);
       toast.success("Lote eliminado");
@@ -208,6 +217,7 @@ export function useBatchForm(list, refetch) {
     handleChange,
     handleSubmit,
     handleDelete,
+    confirmProps,
     reportModalOpen,
     setReportModalOpen,
     reportTarget,

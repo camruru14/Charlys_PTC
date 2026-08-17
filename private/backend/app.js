@@ -14,6 +14,7 @@ import inventoryRoutes from "./src/routes/inventory.js";
 import transactionsRoutes from "./src/routes/transactions.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import warehousesRoutes from "./src/routes/warehouses.js";
+import vehiclesRoutes from "./src/routes/vehicles.js";
 
 //Ejecutar express
 const app = express();
@@ -37,35 +38,30 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 
 // Pedidos provenientes del e-commerce
-app.use("/api/orders", validateAuthCookie(["admin", "gerente"]), ordersRoutes);
+app.use("/api/orders", validateAuthCookie(), ordersRoutes);
 
 // Lotes de fabricación
-app.use(
-  "/api/productionBatches",
-  validateAuthCookie(["admin", "gerente", "operario"]),
-  productionBatchesRoutes,
-);
+app.use("/api/productionBatches", validateAuthCookie(), productionBatchesRoutes);
 
 // Lotes Diarios (programación previa de Lotes de fabricación)
-app.use(
-  "/api/dailyBatches",
-  validateAuthCookie(["admin", "gerente", "operario"]),
-  dailyBatchesRoutes,
-);
+app.use("/api/dailyBatches", validateAuthCookie(), dailyBatchesRoutes);
 
 // Empleados (RRHH)
-app.use("/api/employees", validateAuthCookie(["admin", "gerente"]), employeesRoutes);
+app.use("/api/employees", validateAuthCookie(), employeesRoutes);
 
 // Inventario / Almacén
-app.use("/api/inventory", validateAuthCookie(["admin", "gerente"]), inventoryRoutes);
+app.use("/api/inventory", validateAuthCookie(), inventoryRoutes);
 
 // Bodegas (usadas por Inventario, verificación de pedidos y reportes de Fabricación)
-app.use("/api/warehouses", validateAuthCookie(["admin", "gerente", "operario"]), warehousesRoutes);
+app.use("/api/warehouses", validateAuthCookie(), warehousesRoutes);
+
+// Vehículos (usados por Logística al asignar/editar una entrega)
+app.use("/api/vehicles", validateAuthCookie(), vehiclesRoutes);
 
 // Finanzas (transacciones)
-app.use("/api/transactions", validateAuthCookie(["admin", "gerente"]), transactionsRoutes);
+app.use("/api/transactions", validateAuthCookie(), transactionsRoutes);
 
 // Resumen del Dashboard
-app.use("/api/dashboard", validateAuthCookie(["admin", "gerente"]), dashboardRoutes);
+app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
 
 export default app;

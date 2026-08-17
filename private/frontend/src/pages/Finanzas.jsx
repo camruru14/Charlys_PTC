@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
+import { useConfirm } from "../hooks/useConfirm";
 import { useDateRange } from "../context/DateRangeContext";
 import KpiCard from "../components/ui/KpiCard";
 import BarChart from "../components/ui/BarChart";
 import Modal from "../components/ui/Modal";
+import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import TransactionToolbar from "../components/transactions/TransactionToolbar";
@@ -76,6 +78,7 @@ const PRESET_MONTHS = { "3m": 3, "6m": 6, "365d": 12 };
 
 function Finanzas() {
   const navigate = useNavigate();
+  const { confirm, confirmProps } = useConfirm();
   const range = useDateRange();
   const { data, loading, error, refetch } = useFetch("/transactions");
   const [modalOpen, setModalOpen] = useState(false);
@@ -228,7 +231,7 @@ function Finanzas() {
   }
 
   async function handleDelete(t) {
-    if (!window.confirm(`¿Eliminar la transacción ${t.reference}?`)) return;
+    if (!(await confirm(`¿Eliminar la transacción ${t.reference}?`, { danger: true }))) return;
     try {
       await api.del(`/transactions/${t._id}`);
       toast.success("Transacción eliminada");
@@ -311,6 +314,8 @@ function Finanzas() {
           <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} />
         </form>
       </Modal>
+
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

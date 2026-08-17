@@ -3,14 +3,15 @@ import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { todayInput } from "../hooks/useBatchForm";
+import { useConfirm } from "../hooks/useConfirm";
 import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
 import Modal from "../components/ui/Modal";
+import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconUsers, IconCheck, IconPlus } from "../lib/icons";
 
-const ROLES = ["admin", "gerente", "operario", "motorista"];
 const DEPARTMENTS = ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"];
 
 // Jornada de referencia para calcular horas extra en la marcación manual
@@ -29,10 +30,11 @@ function formatDui(dui) {
 
 const emptyForm = {
   name: "", lastName: "", dui: "", phone: "", email: "", password: "",
-  role: "operario", position: "", department: "Fabricación", hourlyRate: "", isActive: true,
+  position: "", department: "Fabricación", hourlyRate: "", isActive: true,
 };
 
 function Empleados() {
+  const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/employees");
   const [activeTab, setActiveTab] = useState("personal");
   const [modalOpen, setModalOpen] = useState(false);
@@ -46,11 +48,13 @@ function Empleados() {
 
   const list = Array.isArray(data) ? data : [];
 
+  // El sistema ya no maneja roles: el Área de cada empleado es lo que ahora
+  // distingue motoristas (Logística) de operarios (Fabricación).
   const kpis = useMemo(() => ({
     total: list.length,
     active: list.filter((e) => e.isActive !== false).length,
-    drivers: list.filter((e) => e.role === "motorista").length,
-    operators: list.filter((e) => e.role === "operario").length,
+    drivers: list.filter((e) => e.department === "Logística").length,
+    operators: list.filter((e) => e.department === "Fabricación").length,
   }), [list]);
 
   // Cada empleado trae su propio arreglo `attendance` (Employee.attendance);
@@ -88,7 +92,7 @@ function Empleados() {
     setForm({
       name: emp.name || "", lastName: emp.lastName || "", dui: emp.dui || "",
       phone: emp.phone || "", email: emp.email || "", password: "",
-      role: emp.role || "operario", position: emp.position || "",
+      position: emp.position || "",
       department: emp.department || "Fabricación",
       hourlyRate: emp.hourlyRate ?? "", isActive: emp.isActive !== false,
     });
@@ -127,7 +131,7 @@ function Empleados() {
   }
 
   async function handleDelete(emp) {
-    if (!window.confirm(`¿Eliminar a ${emp.name} ${emp.lastName}?`)) return;
+    if (!(await confirm(`¿Eliminar a ${emp.name} ${emp.lastName}?`, { danger: true }))) return;
     try {
       await api.del(`/employees/${emp._id}`);
       toast.success("Empleado eliminado");
@@ -226,7 +230,6 @@ function Empleados() {
                     <th className="pb-3 pr-4 font-semibold">DUI</th>
                     <th className="pb-3 pr-4 font-semibold">Puesto</th>
                     <th className="pb-3 pr-4 font-semibold">Área</th>
-                    <th className="pb-3 pr-4 font-semibold">Rol</th>
                     <th className="pb-3 pr-4 font-semibold">Estado</th>
                     <th className="pb-3 font-semibold text-right">Acciones</th>
                   </tr>
@@ -241,7 +244,6 @@ function Empleados() {
                       <td className="py-3 pr-4 tabular-nums">{formatDui(emp.dui)}</td>
                       <td className="py-3 pr-4">{emp.position || "—"}</td>
                       <td className="py-3 pr-4">{emp.department || "—"}</td>
-                      <td className="py-3 pr-4 capitalize">{emp.role}</td>
                       <td className="py-3 pr-4"><StatusPill status={emp.isActive !== false ? "Activo" : "Cancelado"} /></td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
@@ -325,7 +327,6 @@ function Empleados() {
           <Field label="Teléfono" name="phone" value={form.phone} onChange={handleChange} />
           <Field label="Correo" name="email" type="email" value={form.email} onChange={handleChange} required />
           <Field label={editingId ? "Contraseña (dejar vacío = sin cambio)" : "Contraseña"} name="password" type="password" value={form.password} onChange={handleChange} required={!editingId} />
-          <SelectField label="Rol" name="role" value={form.role} onChange={handleChange} options={ROLES} />
           <Field label="Puesto" name="position" value={form.position} onChange={handleChange} />
           <SelectField label="Área" name="department" value={form.department} onChange={handleChange} options={DEPARTMENTS} />
           <Field label="Valor por hora ($)" name="hourlyRate" type="number" step="0.01" value={form.hourlyRate} onChange={handleChange} />
@@ -365,6 +366,8 @@ function Empleados() {
           <p className="text-xs text-slate-400">Las horas trabajadas y las horas extra se calculan solas a partir de la entrada y la salida.</p>
         </form>
       </Modal>
+
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

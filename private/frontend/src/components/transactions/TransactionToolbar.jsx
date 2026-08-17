@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { IconSearch } from "../../lib/icons";
 import { defaultTransactionFilters, transactionFilterOptions } from "../../lib/transactionFilters";
+import { FilterSelect } from "../ui/Field";
 
 /*
   Barra de búsqueda + filtros para las transacciones.
@@ -32,20 +33,26 @@ function TransactionToolbar({ list = [], filters, setFilters, compact = false })
         />
       </div>
 
-      <select value={filters.type} onChange={(e) => set("type", e.target.value)} className={selectClass}>
-        <option value="">Tipo: todos</option>
-        {options.types.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.type}
+        onChange={(e) => set("type", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Tipo: todos" }, ...options.types.map((t) => ({ value: t, label: t }))]}
+      />
 
-      <select value={filters.category} onChange={(e) => set("category", e.target.value)} className={selectClass}>
-        <option value="">Categoría: todas</option>
-        {options.categories.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.category}
+        onChange={(e) => set("category", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Categoría: todas" }, ...options.categories.map((c) => ({ value: c, label: c }))]}
+      />
 
-      <select value={filters.status} onChange={(e) => set("status", e.target.value)} className={selectClass}>
-        <option value="">Estado: todos</option>
-        {options.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.status}
+        onChange={(e) => set("status", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Estado: todos" }, ...options.statuses.map((s) => ({ value: s, label: s }))]}
+      />
 
       {!compact ? (
         <>
