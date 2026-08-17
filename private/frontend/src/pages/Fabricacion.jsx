@@ -524,6 +524,7 @@ function Fabricacion() {
                     <th className="pb-3 pr-4 font-semibold">Cliente</th>
                     <th className="pb-3 pr-4 font-semibold">Cantidad Productos</th>
                     <th className="pb-3 pr-4 font-semibold">Proceso</th>
+                    <th className="pb-3 pr-4 font-semibold">Fecha Enviado</th>
                     <th className="pb-3 font-semibold text-right">Productos</th>
                   </tr>
                 </thead>
@@ -532,6 +533,10 @@ function Fabricacion() {
                     const { order, lines } = group;
                     const segments = manufacturingProgressSegments(group);
                     const caption = manufacturingProgressCaption(group);
+                    const latestSentAt = lines.reduce(
+                      (latest, l) => (new Date(l.item.sentToManufacturingAt) > new Date(latest) ? l.item.sentToManufacturingAt : latest),
+                      lines[0].item.sentToManufacturingAt
+                    );
                     return (
                       <tr key={order._id} className="text-slate-600 transition hover:bg-slate-50/60">
                         <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{order.orderNumber}</td>
@@ -552,6 +557,7 @@ function Fabricacion() {
                             <p className="mt-1 text-[11px] leading-tight text-slate-500">{caption || "Sin productos"}</p>
                           </div>
                         </td>
+                        <td className="py-3 pr-4 whitespace-nowrap">{fmtOrderDate(latestSentAt)}</td>
                         <td className="py-3 text-right">
                           <div className="flex justify-end gap-2 text-xs font-semibold">
                             <button onClick={() => setManufacturingInfoOrderId(order._id)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Ver</button>

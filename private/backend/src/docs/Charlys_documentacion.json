@@ -1,0 +1,4659 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Charly's PTC API",
+    "version": "1.0.0",
+    "description": "Documentación oficial de la API backend del sistema ERP de Charly's PTC. Gestiona autenticación por cookies httpOnly con JWT, pedidos de e-commerce y fabricación, lotes de producción, programación de lotes diarios, empleados (asistencia y nómina), inventario y almacén, bodegas físicas, transacciones financieras y métricas consolidadas del dashboard.\n\n### Uploads y Cloudinary\nLas librerías `multer` y `multer-storage-cloudinary` se encuentran configuradas en el entorno (`config.js`), pero actualmente ningún endpoint expone rutas de subida de archivos activas. *(No determinado; requiere revisión manual)*."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "Servidor de desarrollo local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Autenticación",
+      "description": "Inicio y cierre de sesión de empleados administrativos (cookie httpOnly authCookie)"
+    },
+    {
+      "name": "Pedidos",
+      "description": "Gestión de pedidos del e-commerce, verificación de stock, flujo a fabricación, empaque y despacho"
+    },
+    {
+      "name": "Lotes de Fabricación",
+      "description": "Control de lotes de producción en planta, reporte de producto terminado y asignación de operarios"
+    },
+    {
+      "name": "Lotes Diarios",
+      "description": "Programación previa y correlativos de lotes diarios antes de enviarlos a fabricación"
+    },
+    {
+      "name": "Empleados",
+      "description": "Gestión de personal administrativo y operativo, tarifas por hora y marcaciones de asistencia"
+    },
+    {
+      "name": "Inventario",
+      "description": "Control de materias primas y productos terminados en almacén, recepción y envío de lotes reportados"
+    },
+    {
+      "name": "Bodegas",
+      "description": "Catálogo de bodegas físicas para almacenamiento y verificación de pedidos"
+    },
+    {
+      "name": "Transacciones",
+      "description": "Registro contable de ingresos y gastos, resumen financiero y vinculación automática con pedidos"
+    },
+    {
+      "name": "Dashboard",
+      "description": "Métricas clave de rendimiento (KPIs), mezcla de producción, alertas de stock y conteos consolidados"
+    },
+    {
+      "name": "Documentación",
+      "description": "Endpoints de documentación Swagger UI y especificación OpenAPI (protegidos para rol admin)"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "authCookie",
+        "description": "Cookie de sesión httpOnly que contiene un JWT firmado con el payload `{ id, userType }`. Validada mediante el middleware `validateAuthCookie(roles)`."
+      }
+    },
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Acceso no autorizado: rol insuficiente o token JWT inválido/expirado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "accessDenied": {
+                "summary": "Rol no permitido",
+                "value": { "message": "Access denied" }
+              },
+              "expiredSession": {
+                "summary": "Sesión inválida o expirada",
+                "value": { "message": "Invalid or expired session" }
+              }
+            }
+          }
+        }
+      },
+      "ForbiddenError": {
+        "description": "Acceso denegado: falta la cookie de autenticación requerida o empleado inactivo",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "message": "No cookie found, Authorization required"
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "Recurso no encontrado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "message": "Resource not found"
+            }
+          }
+        }
+      },
+      "RateLimitError": {
+        "description": "Límite de peticiones excedido (1000 peticiones por ventana de 5 minutos)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RateLimitResponse"
+            },
+            "example": {
+              "status": 429,
+              "error": "Too many request"
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "Error interno del servidor",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "message": "Internal server error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Mensaje descriptivo del error"
+          }
+        },
+        "required": ["message"]
+      },
+      "RateLimitResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "example": 429
+          },
+          "error": {
+            "type": "string",
+            "example": "Too many request"
+          }
+        },
+        "required": ["status", "error"]
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Operación exitosa"
+          }
+        },
+        "required": ["message"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "admin@charlys.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "ContraseñaSegura123"
+          }
+        },
+        "required": ["email", "password"]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Login successful"
+          },
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "664b8a2f1b4e2c001f3a5b67"
+              },
+              "name": {
+                "type": "string",
+                "example": "Carlos"
+              },
+              "lastName": {
+                "type": "string",
+                "example": "Pérez"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "example": "carlos@charlys.com"
+              },
+              "role": {
+                "type": "string",
+                "enum": ["admin", "gerente", "operario", "motorista"],
+                "example": "admin"
+              },
+              "position": {
+                "type": "string",
+                "example": "Administrador General"
+              }
+            },
+            "required": ["id", "name", "lastName", "email", "role"]
+          }
+        },
+        "required": ["message", "user"]
+      },
+      "AttendanceRecord": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha de la jornada"
+          },
+          "checkIn": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Hora de entrada"
+          },
+          "checkOut": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Hora de salida"
+          },
+          "overtimeHours": {
+            "type": "number",
+            "default": 0,
+            "description": "Horas extra acumuladas"
+          },
+          "workedHours": {
+            "type": "number",
+            "default": 0,
+            "description": "Horas trabajadas"
+          }
+        },
+        "required": ["date"]
+      },
+      "AttendanceRecordInput": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T08:00:00.000Z"
+          },
+          "checkIn": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T08:00:00.000Z"
+          },
+          "checkOut": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T17:00:00.000Z"
+          },
+          "workedHours": {
+            "type": "number",
+            "example": 8
+          },
+          "overtimeHours": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": ["date"]
+      },
+      "Employee": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b67"
+          },
+          "name": {
+            "type": "string",
+            "example": "Mario"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "González"
+          },
+          "dui": {
+            "type": "string",
+            "example": "01234567-8"
+          },
+          "phone": {
+            "type": "string",
+            "example": "7788-9900"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "mario.gonzalez@charlys.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "gerente", "operario", "motorista"],
+            "default": "operario"
+          },
+          "position": {
+            "type": "string",
+            "example": "Operador de Extrusión"
+          },
+          "department": {
+            "type": "string",
+            "enum": ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"],
+            "example": "Fabricación"
+          },
+          "hourlyRate": {
+            "type": "number",
+            "default": 0,
+            "example": 4.5
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          },
+          "hireDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRecord"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "name", "lastName", "email", "role"]
+      },
+      "EmployeeResponse": {
+        "type": "object",
+        "description": "Empleado sin el campo password",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b67"
+          },
+          "name": {
+            "type": "string",
+            "example": "Mario"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "González"
+          },
+          "dui": {
+            "type": "string",
+            "example": "01234567-8"
+          },
+          "phone": {
+            "type": "string",
+            "example": "7788-9900"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "mario.gonzalez@charlys.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "gerente", "operario", "motorista"]
+          },
+          "position": {
+            "type": "string",
+            "example": "Operador de Extrusión"
+          },
+          "department": {
+            "type": "string",
+            "enum": ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"]
+          },
+          "hourlyRate": {
+            "type": "number",
+            "example": 4.5
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "hireDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRecord"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "name", "lastName", "email", "role"]
+      },
+      "EmployeeCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Mario"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "González"
+          },
+          "dui": {
+            "type": "string",
+            "example": "01234567-8"
+          },
+          "phone": {
+            "type": "string",
+            "example": "7788-9900"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "mario.gonzalez@charlys.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "ClaveSegura123!"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "gerente", "operario", "motorista"],
+            "default": "operario"
+          },
+          "position": {
+            "type": "string",
+            "example": "Operario de Planta"
+          },
+          "department": {
+            "type": "string",
+            "enum": ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"],
+            "example": "Fabricación"
+          },
+          "hourlyRate": {
+            "type": "number",
+            "default": 0,
+            "example": 3.75
+          },
+          "hireDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-01-15T00:00:00.000Z"
+          }
+        },
+        "required": ["name", "lastName", "email", "password"]
+      },
+      "EmployeeUpdateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Mario"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "González"
+          },
+          "dui": {
+            "type": "string",
+            "example": "01234567-8"
+          },
+          "phone": {
+            "type": "string",
+            "example": "7788-9900"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "mario.gonzalez@charlys.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "description": "Opcional: Si se envía, se re-encripta y actualiza la contraseña"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "gerente", "operario", "motorista"]
+          },
+          "position": {
+            "type": "string",
+            "example": "Operario Senior"
+          },
+          "department": {
+            "type": "string",
+            "enum": ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"]
+          },
+          "hourlyRate": {
+            "type": "number",
+            "example": 4.25
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "DailyBatch": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b68"
+          },
+          "dailyBatchNumber": {
+            "type": "string",
+            "example": "LTE-DIARIO-0001"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T00:00:00.000Z"
+          },
+          "product": {
+            "type": "string",
+            "example": "Pajilla Flexible"
+          },
+          "color": {
+            "type": "string",
+            "example": "Azul"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "dailyBatchNumber", "date", "product"]
+      },
+      "DailyBatchInput": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T00:00:00.000Z"
+          },
+          "product": {
+            "type": "string",
+            "example": "Pajilla Flexible"
+          },
+          "color": {
+            "type": "string",
+            "example": "Azul"
+          }
+        },
+        "required": ["date", "product"]
+      },
+      "DailyBatchCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Daily batch saved"
+          },
+          "dailyBatchNumber": {
+            "type": "string",
+            "example": "LTE-DIARIO-0001"
+          }
+        },
+        "required": ["message", "dailyBatchNumber"]
+      },
+      "DailyBatchScheduledResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Daily batch scheduled"
+          },
+          "batchNumber": {
+            "type": "string",
+            "example": "LOTE-2026-0001"
+          }
+        },
+        "required": ["message", "batchNumber"]
+      },
+      "ProductionBatch": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b69"
+          },
+          "batchNumber": {
+            "type": "string",
+            "example": "LOTE-2026-0001"
+          },
+          "product": {
+            "type": "string",
+            "example": "Pajilla Flexible"
+          },
+          "color": {
+            "type": "string",
+            "example": "Rojo"
+          },
+          "productionLine": {
+            "type": "string",
+            "example": "Línea 1"
+          },
+          "producedQuantity": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "example": 5000
+          },
+          "lastReportedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Programado", "En Proceso", "Completado", "Detenido"],
+            "default": "Programado"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["Diario", "Pedido"],
+            "default": "Diario"
+          },
+          "operator": {
+            "description": "ID del operario o documento populado con name y lastName",
+            "anyOf": [
+              { "type": "string", "example": "664b8a2f1b4e2c001f3a5b67" },
+              {
+                "type": "object",
+                "properties": {
+                  "_id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "lastName": { "type": "string" }
+                }
+              }
+            ]
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "batchNumber", "product"]
+      },
+      "ProductionBatchCreateInput": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "example": "Pelota Plástica"
+          },
+          "color": {
+            "type": "string",
+            "example": "Amarillo"
+          },
+          "productionLine": {
+            "type": "string",
+            "example": "Línea 2"
+          },
+          "producedQuantity": {
+            "type": "number",
+            "minimum": 0,
+            "example": 1200
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Programado", "En Proceso", "Completado", "Detenido"],
+            "default": "Programado"
+          },
+          "operator": {
+            "type": "string",
+            "description": "ObjectId del empleado operario",
+            "example": "664b8a2f1b4e2c001f3a5b67"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T08:00:00.000Z"
+          }
+        },
+        "required": ["product"]
+      },
+      "ProductionBatchUpdateInput": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "example": "Pelota Plástica"
+          },
+          "color": {
+            "type": "string",
+            "example": "Amarillo"
+          },
+          "productionLine": {
+            "type": "string",
+            "example": "Línea 2"
+          },
+          "producedQuantity": {
+            "type": "number",
+            "minimum": 0,
+            "example": 1500
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Programado", "En Proceso", "Completado", "Detenido"]
+          },
+          "operator": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b67"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProductionBatchCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Batch saved"
+          },
+          "batchNumber": {
+            "type": "string",
+            "example": "LOTE-2026-0001"
+          }
+        },
+        "required": ["message", "batchNumber"]
+      },
+      "ReportProductionRequest": {
+        "type": "object",
+        "properties": {
+          "producedQuantity": {
+            "type": "number",
+            "example": 500
+          },
+          "warehouse": {
+            "type": "string",
+            "example": "Bodega Central"
+          }
+        },
+        "required": ["producedQuantity", "warehouse"]
+      },
+      "InventoryItem": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b70"
+          },
+          "name": {
+            "type": "string",
+            "example": "Polipropileno Virgen"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["Materia Prima", "Producto Terminado"],
+            "example": "Materia Prima"
+          },
+          "type": {
+            "type": "string",
+            "example": "Polímero"
+          },
+          "materialType": {
+            "type": "string",
+            "description": "Tipo de materia prima (Polimero, Aditivo, Tinta, Insumo)",
+            "example": "Polimero"
+          },
+          "color": {
+            "type": "string",
+            "example": "Transparente"
+          },
+          "unit": {
+            "type": "string",
+            "default": "unidad",
+            "example": "kg"
+          },
+          "stock": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "example": 250
+          },
+          "minStock": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "example": 50
+          },
+          "unitCost": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "example": 2.15
+          },
+          "location": {
+            "type": "string",
+            "example": "Bodega Central"
+          },
+          "batchNumber": {
+            "type": "string",
+            "description": "Número de lote reportado desde Fabricación si aplica",
+            "example": "LOTE-2026-0001"
+          },
+          "sentToWarehouse": {
+            "type": "boolean",
+            "default": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "name", "category"]
+      },
+      "InventoryItemInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Polipropileno Virgen"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["Materia Prima", "Producto Terminado"],
+            "example": "Materia Prima"
+          },
+          "type": {
+            "type": "string",
+            "example": "Insumo"
+          },
+          "materialType": {
+            "type": "string",
+            "example": "Polimero"
+          },
+          "color": {
+            "type": "string",
+            "example": "Blanco"
+          },
+          "unit": {
+            "type": "string",
+            "default": "unidad",
+            "example": "saco"
+          },
+          "stock": {
+            "type": "number",
+            "minimum": 0,
+            "example": 100
+          },
+          "minStock": {
+            "type": "number",
+            "minimum": 0,
+            "example": 20
+          },
+          "unitCost": {
+            "type": "number",
+            "minimum": 0,
+            "example": 25.5
+          },
+          "location": {
+            "type": "string",
+            "example": "Bodega Central"
+          }
+        },
+        "required": ["name", "category"]
+      },
+      "Warehouse": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b71"
+          },
+          "name": {
+            "type": "string",
+            "example": "Bodega Central"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "name"]
+      },
+      "WarehouseInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Bodega San Salvador"
+          }
+        },
+        "required": ["name"]
+      },
+      "CustomerInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Distribuidora El Sol"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "contacto@elsol.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "2233-4455"
+          },
+          "address": {
+            "type": "string",
+            "example": "Boulevard Los Próceres #123, San Salvador"
+          }
+        },
+        "required": ["name"]
+      },
+      "OrderItem": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "example": "Pajilla Flexible"
+          },
+          "color": {
+            "type": "string",
+            "example": "Rojo"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "example": 1000
+          },
+          "unitPrice": {
+            "type": "number",
+            "minimum": 0,
+            "example": 0.05
+          },
+          "subtotal": {
+            "type": "number",
+            "minimum": 0,
+            "example": 50.0
+          },
+          "verified": {
+            "type": "boolean",
+            "default": false
+          },
+          "verifiedWarehouse": {
+            "type": "string",
+            "example": "Bodega Central"
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "packed": {
+            "type": "boolean",
+            "default": false
+          },
+          "packedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "packedLocation": {
+            "type": "string",
+            "enum": ["Almacén", "Fabricación"]
+          },
+          "sentToManufacturing": {
+            "type": "boolean",
+            "default": false
+          },
+          "sentToManufacturingAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "manufacturingBatch": {
+            "description": "ID del lote o documento populado con batchNumber y status",
+            "anyOf": [
+              { "type": "string", "example": "664b8a2f1b4e2c001f3a5b69" },
+              {
+                "type": "object",
+                "properties": {
+                  "_id": { "type": "string" },
+                  "batchNumber": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            ]
+          },
+          "manufacturedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["product", "quantity", "unitPrice", "subtotal"]
+      },
+      "DeliveryInfo": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "description": "ID del motorista o documento populado con name, lastName, phone",
+            "anyOf": [
+              { "type": "string", "example": "664b8a2f1b4e2c001f3a5b67" },
+              {
+                "type": "object",
+                "properties": {
+                  "_id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "lastName": { "type": "string" },
+                  "phone": { "type": "string" }
+                }
+              }
+            ]
+          },
+          "vehicle": {
+            "type": "string",
+            "example": "Camión Isuzu P-123456"
+          },
+          "dispatchStatus": {
+            "type": "string",
+            "enum": ["Saliendo", "A tiempo", "Demorado", "Entregado"],
+            "default": "Saliendo"
+          },
+          "dispatchedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "address": {
+            "type": "string",
+            "example": "Boulevard Los Próceres #123, San Salvador"
+          },
+          "pickupWarehouseAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pickupFactoryAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b72"
+          },
+          "orderNumber": {
+            "type": "string",
+            "example": "ORD-2026-0001"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerInfo"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "total": {
+            "type": "number",
+            "minimum": 0,
+            "example": 150.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"],
+            "default": "Pendiente"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": ["Pendiente", "Pagado", "Reembolsado"],
+            "default": "Pendiente"
+          },
+          "source": {
+            "type": "string",
+            "default": "ecommerce"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/DeliveryInfo"
+          },
+          "notes": {
+            "type": "string",
+            "example": "Entregar en horario de oficina matutino"
+          },
+          "inventoryRequestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "orderNumber", "customer", "total"]
+      },
+      "OrderCreateInput": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerInfo"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "total": {
+            "type": "number",
+            "minimum": 0,
+            "example": 250.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"],
+            "default": "Pendiente"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": ["Pendiente", "Pagado", "Reembolsado"],
+            "default": "Pendiente"
+          },
+          "notes": {
+            "type": "string",
+            "example": "Pedido especial"
+          }
+        },
+        "required": ["customer", "total"]
+      },
+      "OrderUpdateInput": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerInfo"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "total": {
+            "type": "number",
+            "minimum": 0,
+            "example": 250.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"]
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": ["Pendiente", "Pagado", "Reembolsado"]
+          },
+          "notes": {
+            "type": "string",
+            "example": "Notas actualizadas"
+          }
+        }
+      },
+      "OrderCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Order saved"
+          },
+          "orderNumber": {
+            "type": "string",
+            "example": "ORD-2026-0001"
+          }
+        },
+        "required": ["message", "orderNumber"]
+      },
+      "OrderManufactureResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Order item sent to production"
+          },
+          "batchNumber": {
+            "type": "string",
+            "example": "LOTE-2026-0002"
+          }
+        },
+        "required": ["message", "batchNumber"]
+      },
+      "AssignDeliveryRequest": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "description": "ObjectId del motorista",
+            "example": "664b8a2f1b4e2c001f3a5b67"
+          },
+          "vehicle": {
+            "type": "string",
+            "example": "Pickup Toyota Hilux P-987654"
+          },
+          "dispatchStatus": {
+            "type": "string",
+            "enum": ["Saliendo", "A tiempo", "Demorado", "Entregado"],
+            "example": "Saliendo"
+          },
+          "address": {
+            "type": "string",
+            "example": "Calle El Mirador #456, San Salvador"
+          }
+        }
+      },
+      "VerifyOrderItemRequest": {
+        "type": "object",
+        "properties": {
+          "warehouse": {
+            "type": "string",
+            "example": "Bodega Central"
+          }
+        },
+        "required": ["warehouse"]
+      },
+      "ConfirmPickupRequest": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "enum": ["Almacén", "Fabricación"],
+            "example": "Almacén"
+          }
+        },
+        "required": ["location"]
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b73"
+          },
+          "reference": {
+            "type": "string",
+            "example": "TRAN-2026-0001"
+          },
+          "concept": {
+            "type": "string",
+            "example": "Venta pedido ORD-2026-0001"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["Ingreso", "Gasto"],
+            "example": "Ingreso"
+          },
+          "category": {
+            "type": "string",
+            "example": "Ventas"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "example": 150.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Completado"],
+            "default": "Completado"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "relatedOrder": {
+            "description": "ID del pedido o documento populado con orderNumber",
+            "anyOf": [
+              { "type": "string", "example": "664b8a2f1b4e2c001f3a5b72" },
+              {
+                "type": "object",
+                "properties": {
+                  "_id": { "type": "string" },
+                  "orderNumber": { "type": "string" }
+                }
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "reference", "concept", "type", "amount"]
+      },
+      "TransactionCreateInput": {
+        "type": "object",
+        "properties": {
+          "concept": {
+            "type": "string",
+            "example": "Compra de materia prima"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["Ingreso", "Gasto"],
+            "example": "Gasto"
+          },
+          "category": {
+            "type": "string",
+            "example": "Materia Prima"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "example": 450.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Completado"],
+            "default": "Completado"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-08-16T10:00:00.000Z"
+          }
+        },
+        "required": ["concept", "type", "amount"]
+      },
+      "TransactionUpdateInput": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "example": "TRAN-2026-0001"
+          },
+          "concept": {
+            "type": "string",
+            "example": "Compra de materia prima corregida"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["Ingreso", "Gasto"],
+            "example": "Gasto"
+          },
+          "category": {
+            "type": "string",
+            "example": "Materia Prima"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "example": 500.0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Pendiente", "Completado"]
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TransactionCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Transaction saved"
+          },
+          "reference": {
+            "type": "string",
+            "example": "TRAN-2026-0001"
+          }
+        },
+        "required": ["message", "reference"]
+      },
+      "TransactionSummary": {
+        "type": "object",
+        "properties": {
+          "income": {
+            "type": "number",
+            "example": 15420.5
+          },
+          "expense": {
+            "type": "number",
+            "example": 8340.25
+          },
+          "net": {
+            "type": "number",
+            "example": 7080.25
+          },
+          "count": {
+            "type": "integer",
+            "example": 48
+          }
+        },
+        "required": ["income", "expense", "net", "count"]
+      },
+      "DashboardSummary": {
+        "type": "object",
+        "properties": {
+          "kpis": {
+            "type": "object",
+            "properties": {
+              "producedTotal": {
+                "type": "number",
+                "example": 18500
+              },
+              "income": {
+                "type": "number",
+                "example": 12500.0
+              },
+              "ordersInProgress": {
+                "type": "integer",
+                "example": 7
+              },
+              "ordersReadyToShip": {
+                "type": "integer",
+                "example": 3
+              }
+            },
+            "required": ["producedTotal", "income", "ordersInProgress", "ordersReadyToShip"]
+          },
+          "recentBatches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionBatch"
+            }
+          },
+          "productionMix": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "example": "Pajilla Flexible"
+                },
+                "value": {
+                  "type": "number",
+                  "example": 12000
+                }
+              },
+              "required": ["label", "value"]
+            }
+          },
+          "alerts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tone": {
+                  "type": "string",
+                  "enum": ["yellow", "red"],
+                  "example": "yellow"
+                },
+                "text": {
+                  "type": "string",
+                  "example": "Stock bajo de Polipropileno Virgen (15 kg)"
+                },
+                "meta": {
+                  "type": "string",
+                  "example": "Almacén"
+                }
+              },
+              "required": ["tone", "text", "meta"]
+            }
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "orders": {
+                "type": "integer",
+                "example": 15
+              },
+              "batches": {
+                "type": "integer",
+                "example": 9
+              },
+              "inventory": {
+                "type": "integer",
+                "example": 32
+              }
+            },
+            "required": ["orders", "batches", "inventory"]
+          }
+        },
+        "required": ["kpis", "recentBatches", "productionMix", "alerts", "counts"]
+      }
+    }
+  },
+  "paths": {
+    "/api-docs": {
+      "get": {
+        "tags": ["Documentación"],
+        "summary": "Visor interactivo Swagger UI",
+        "description": "Renderiza la interfaz Swagger UI para probar e inspeccionar la API. Solo se monta en entornos distintos a producción (`NODE_ENV !== 'production'`) y requiere sesión activa de un usuario con rol `admin`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Interfaz Swagger UI servida correctamente en HTML"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          }
+        }
+      }
+    },
+    "/api-docs.json": {
+      "get": {
+        "tags": ["Documentación"],
+        "summary": "Especificación OpenAPI 3.1.0 en formato JSON",
+        "description": "Retorna el documento de especificación OpenAPI en formato JSON. Solo disponible fuera de producción (`NODE_ENV !== 'production'`) y protegido con rol `admin`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Especificación OpenAPI 3.1.0 completa en JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Iniciar sesión en el panel administrativo",
+        "description": "Autentica al empleado mediante correo electrónico y contraseña. Al autenticarse correctamente, establece la cookie `authCookie` (httpOnly) con el JWT firmado con el ID y rol del usuario.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inicio de sesión exitoso. Se adjunta cabecera `Set-Cookie: authCookie=...; HttpOnly`",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string",
+                  "example": "authCookie=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Path=/; HttpOnly"
+                },
+                "description": "Cookie httpOnly que contiene el token JWT"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas (contraseña incorrecta)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "El empleado está marcado como inactivo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Employee is not active"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Empleado no encontrado con el correo suministrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Employee not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Cerrar sesión en el panel administrativo",
+        "description": "Limpia la cookie `authCookie` del cliente.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Cierre de sesión exitoso. Se remueve la cookie de sesión",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Logout successful"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "tags": ["Pedidos"],
+        "summary": "Obtener todos los pedidos",
+        "description": "Retorna la lista de pedidos ordenada por fecha de creación descendente, con populate de motorista (`delivery.driver`) y lote de fabricación (`items.manufacturingBatch`).\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de pedidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Order"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Pedidos"],
+        "summary": "Crear un nuevo pedido",
+        "description": "Crea un pedido generando automáticamente el correlativo `ORD-YYYY-XXXX`.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pedido registrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "tags": ["Pedidos"],
+        "summary": "Obtener un pedido por ID",
+        "description": "Obtiene los detalles de un pedido específico por su identificador único.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos del pedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Pedidos"],
+        "summary": "Actualizar un pedido",
+        "description": "Actualiza la información general del pedido. Si el estado de pago cambia a `Pagado` o `Reembolsado`, genera automáticamente la transacción contable correspondiente en Finanzas.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pedido actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Order not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Pedidos"],
+        "summary": "Eliminar un pedido",
+        "description": "Elimina permanentemente el pedido de la base de datos.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pedido eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/status": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Actualizar el estado del pedido",
+        "description": "Avanza el estado del pedido en su ciclo de vida. Si el estado cambia fuera de 'En Tránsito'/'Entregado', limpia cualquier asignación previa de logística.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"]
+                  }
+                },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order status updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/delivery": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Asignar o editar entrega logística",
+        "description": "Asigna motorista, vehículo y estado de despacho al pedido. El pedido pasa a estado 'En Tránsito' o 'Entregado'.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignDeliveryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Entrega asignada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Delivery assigned"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/request-inventory": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Solicitar productos del pedido a inventario",
+        "description": "Marca la fecha `inventoryRequestedAt` para que el pedido aparezca en la pestaña 'Pedidos' de Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Solicitud registrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory requested"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Pedidos"],
+        "summary": "Cancelar solicitud a inventario y restaurar stock",
+        "description": "Cancela la solicitud a inventario devolviendo el stock restado a las bodegas correspondientes y limpiando el estado de verificación de las líneas.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Solicitud a inventario cancelada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory request cancelled"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Order not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/verify": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Verificar producto en inventario y descontar stock",
+        "description": "Valida la existencia de stock del producto en la bodega elegida, resta la cantidad solicitada y marca la línea como verificada.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice numérico de la línea del producto dentro del arreglo items",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOrderItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Producto verificado y stock descontado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item verified"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta seleccionar bodega o stock insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "noWarehouse": {
+                    "value": { "message": "Selecciona una bodega" }
+                  },
+                  "insufficientStock": {
+                    "value": { "message": "Stock insuficiente en esa bodega" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido, línea de producto o stock no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "orderNotFound": {
+                    "value": { "message": "Order not found" }
+                  },
+                  "itemNotFound": {
+                    "value": { "message": "Order item not found" }
+                  },
+                  "stockNotFound": {
+                    "value": { "message": "No hay stock de ese producto en esa bodega" }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/pack": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Empacar producto desde almacén",
+        "description": "Marca una línea previamente verificada como empacada desde 'Almacén' y actualiza el estado general del pedido a 'Empacado' cuando procede.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Línea empacada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item packed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "El producto no está verificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Verifica el producto antes de empacarlo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Order item not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/send-manufacturing": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Enviar producto a fabricación por falta de stock",
+        "description": "Marca la línea de pedido para que aparezca en la vista de Fabricación > Pedidos.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Producto enviado a fabricación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item sent to manufacturing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Pedidos"],
+        "summary": "Cancelar envío de producto a fabricación",
+        "description": "Deshace el envío a fabricación para que el producto vuelva a mostrarse 'Sin Verificar' en Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envío cancelado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Manufacturing request cancelled"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/manufacture": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Crear lote de fabricación para producto de pedido",
+        "description": "Crea un nuevo lote de producción con categoría `Pedido` y lo asocia a esta línea del pedido.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote de fabricación creado y asociado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderManufactureResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/pack-manufactured": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Empacar producto fabricado exclusivamente para el pedido",
+        "description": "Marca la línea de pedido como empacada desde 'Fabricación' una vez que el lote de producción asociado alcanza el estado 'Completado'. No descuenta inventario de almacén.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Producto empacado desde fabricación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item packed from manufacturing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lote no asociado o aún no completado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "noBatch": {
+                    "value": { "message": "Este producto no tiene un lote de fabricación asociado" }
+                  },
+                  "notCompleted": {
+                    "value": { "message": "El lote de fabricación todavía no está completado" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/delivery/pickup": {
+      "patch": {
+        "tags": ["Pedidos"],
+        "summary": "Confirmar recolección de entrega",
+        "description": "Registra la confirmación de recogida en Almacén o Fabricación dentro de la lista de chequeo de despacho en Logística.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmPickupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recolección confirmada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Pickup confirmed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ubicación inválida o falta asignar motorista",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidLocation": {
+                    "value": { "message": "Ubicación inválida" }
+                  },
+                  "noDriver": {
+                    "value": { "message": "El pedido todavía no tiene motorista asignado" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Order not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches": {
+      "get": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Obtener todos los lotes de fabricación",
+        "description": "Retorna todos los lotes de producción ordenados por fecha de creación descendente con populate del operario (`operator`).\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de lotes de fabricación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductionBatch"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Crear un lote de fabricación",
+        "description": "Crea un nuevo lote de producción generando el correlativo `LOTE-YYYY-XXXX`.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductionBatchCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatchCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}": {
+      "get": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Obtener lote de fabricación por ID",
+        "description": "Obtiene la información de un lote de producción por su identificador único.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos del lote de producción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Actualizar lote de fabricación",
+        "description": "Actualiza la información del lote de fabricación.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductionBatchUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Batch updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Batch not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Eliminar lote de fabricación",
+        "description": "Elimina el lote de fabricación de la base de datos.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Batch deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/report": {
+      "patch": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Reportar producción terminada a inventario",
+        "description": "Registra la cantidad producida y sincroniza automáticamente un artículo en Inventario con categoría `Producto Terminado` asociado a este lote.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportProductionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Producción reportada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Production reported"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Batch not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Lotes de Fabricación"],
+        "summary": "Deshacer reporte de producción del lote",
+        "description": "Revierte el lote al estado no reportado y elimina el artículo asociado en la vista de lotes reportados de inventario.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reporte deshecho",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Report undone"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Batch not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/dailyBatches": {
+      "get": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Obtener todos los lotes diarios",
+        "description": "Retorna la lista de lotes diarios programados ordenados por fecha de creación descendente.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de lotes diarios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DailyBatch"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Crear un lote diario",
+        "description": "Registra un lote diario generando el correlativo `LTE-DIARIO-XXXX`.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyBatchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote diario guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyBatchCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/dailyBatches/{id}": {
+      "get": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Obtener lote diario por ID",
+        "description": "Obtiene la información de un lote diario específico.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote diario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos del lote diario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Actualizar lote diario",
+        "description": "Actualiza la fecha, producto o color del lote diario.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote diario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyBatchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote diario actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Daily batch updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote diario no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Daily batch not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Eliminar lote diario",
+        "description": "Elimina el registro de lote diario.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote diario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote diario eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Daily batch deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/dailyBatches/{id}/schedule": {
+      "patch": {
+        "tags": ["Lotes Diarios"],
+        "summary": "Programar lote diario para enviarlo a fabricación",
+        "description": "Convierte el lote diario en un lote de fabricación activo con categoría `Diario` y estado `Programado`, eliminándolo de la lista de lotes diarios.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote diario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote diario programado a fabricación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyBatchScheduledResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote diario no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Daily batch not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/employees": {
+      "get": {
+        "tags": ["Empleados"],
+        "summary": "Obtener todos los empleados (sin contraseña)",
+        "description": "Retorna la lista de empleados registrados excluyendo el campo `password`.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de empleados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EmployeeResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Empleados"],
+        "summary": "Crear un nuevo empleado",
+        "description": "Registra un empleado con su contraseña encriptada con `bcryptjs`.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empleado guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Employee saved"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/employees/{id}": {
+      "get": {
+        "tags": ["Empleados"],
+        "summary": "Obtener empleado por ID",
+        "description": "Obtiene la información de un empleado específico sin contraseña.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del empleado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos del empleado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Empleados"],
+        "summary": "Actualizar datos de un empleado",
+        "description": "Actualiza la información laboral y personal del empleado. Re-encripta la contraseña solo si viene provista en la petición.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del empleado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empleado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Employee updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Empleados"],
+        "summary": "Eliminar un empleado",
+        "description": "Elimina el registro del empleado.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del empleado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empleado eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Employee deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/employees/{id}/attendance": {
+      "post": {
+        "tags": ["Empleados"],
+        "summary": "Registrar marcación de asistencia (app móvil)",
+        "description": "Agrega un nuevo registro de marcación de entrada/salida y horas laboradas/extra al historial de asistencia del empleado.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del empleado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceRecordInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Asistencia registrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Attendance registered"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/inventory": {
+      "get": {
+        "tags": ["Inventario"],
+        "summary": "Obtener todos los artículos del inventario",
+        "description": "Retorna la lista de materias primas y productos terminados en inventario ordenados por categoría y nombre.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de artículos de inventario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Inventario"],
+        "summary": "Crear artículo en inventario",
+        "description": "Registra una nueva materia prima o producto terminado en almacén.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryItemInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Artículo de inventario guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory item saved"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/inventory/{id}": {
+      "get": {
+        "tags": ["Inventario"],
+        "summary": "Obtener artículo de inventario por ID",
+        "description": "Obtiene la información de un artículo de inventario específico.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del artículo de inventario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos del artículo de inventario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Inventario"],
+        "summary": "Actualizar artículo de inventario",
+        "description": "Actualiza la información de existencias, costos y ubicación de un artículo.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del artículo",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryItemInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Artículo de inventario actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory item updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Inventario"],
+        "summary": "Eliminar artículo o desmarcar lote reportado",
+        "description": "Elimina el artículo de almacén o desmarca `sentToWarehouse` si tiene `batchNumber`.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del artículo de inventario",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artículo eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory item deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/inventory/{id}/send": {
+      "patch": {
+        "tags": ["Inventario"],
+        "summary": "Enviar lote reportado a Artículos en almacén",
+        "description": "Suma las existencias del lote reportado al producto terminado correspondiente en 'Artículos en almacén' (o lo crea si no existe coincidencia) y marca el lote como enviado.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del artículo de lote reportado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artículo enviado a almacén",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Inventory item sent to warehouse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Artículo de lote reportado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Inventory item not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/inventory/{id}/report": {
+      "delete": {
+        "tags": ["Inventario"],
+        "summary": "Eliminar lote reportado de inventario (deshacer reporte)",
+        "description": "Revierte el lote asociado a estado no reportado en Fabricación y elimina el registro de lotes reportados en Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del artículo de lote reportado",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reporte deshecho",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Report undone"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote reportado no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Reported item not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/warehouses": {
+      "get": {
+        "tags": ["Bodegas"],
+        "summary": "Obtener todas las bodegas",
+        "description": "Retorna el catálogo de bodegas físicas registradas en el sistema.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de bodegas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Warehouse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Bodegas"],
+        "summary": "Crear una nueva bodega",
+        "description": "Registra una bodega física única por nombre.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bodega guardada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Warehouse saved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nombre de bodega duplicado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ya existe una bodega con ese nombre"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/warehouses/{id}": {
+      "put": {
+        "tags": ["Bodegas"],
+        "summary": "Actualizar nombre de bodega",
+        "description": "Actualiza el nombre de una bodega existente.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la bodega",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bodega actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Warehouse updated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nombre de bodega duplicado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ya existe una bodega con ese nombre"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Bodegas"],
+        "summary": "Eliminar una bodega",
+        "description": "Elimina la bodega del sistema.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la bodega",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bodega eliminada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Warehouse deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "tags": ["Transacciones"],
+        "summary": "Obtener todas las transacciones financieras",
+        "description": "Retorna el historial de transacciones financieras ordenadas por fecha descendente con populate del pedido relacionado (`relatedOrder`).\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de transacciones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Transaction"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Transacciones"],
+        "summary": "Registrar una nueva transacción contable",
+        "description": "Crea una transacción contable asignando el número de referencia `TRAN-YYYY-XXXX` automáticamente.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transacción guardada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionCreatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/transactions/summary": {
+      "get": {
+        "tags": ["Transacciones"],
+        "summary": "Obtener resumen financiero (ingresos, gastos, balance neto)",
+        "description": "Calcula el acumulado de ingresos, gastos, balance neto y total de registros contables.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumen financiero",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/transactions/{id}": {
+      "put": {
+        "tags": ["Transacciones"],
+        "summary": "Actualizar una transacción contable",
+        "description": "Actualiza la información de una transacción existente.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la transacción",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transacción actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Transaction updated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Transacciones"],
+        "summary": "Eliminar una transacción contable",
+        "description": "Elimina el registro contable.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la transacción",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transacción eliminada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Transaction deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "tags": ["Dashboard"],
+        "summary": "Obtener resumen y métricas consolidadas del dashboard",
+        "description": "Calcula y retorna indicadores clave de producción, finanzas, pedidos en progreso/listos, mezcla de productos fabricados, alertas de stock mínimo o lotes detenidos y conteos generales.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Fecha inicial de filtrado (formato ISO o YYYY-MM-DD)",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2026-01-01T00:00:00.000Z"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Fecha final de filtrado (formato ISO o YYYY-MM-DD)",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2026-12-31T23:59:59.999Z"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumen de métricas del dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    }
+  }
+}

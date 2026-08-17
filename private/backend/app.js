@@ -1,7 +1,9 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-
+import fs from "node:fs";
+import swaggerUi from "swagger-ui-express";
+import swaggerDocument from "./src/docs/Charlys_documentacion.json" with {type: "json"};
 import limiter from "./src/middlewares/limiter.js";
 import { validateAuthCookie } from "./src/middlewares/authMiddleware.js";
 
@@ -15,6 +17,11 @@ import transactionsRoutes from "./src/routes/transactions.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import warehousesRoutes from "./src/routes/warehouses.js";
 import vehiclesRoutes from "./src/routes/vehicles.js";
+
+// Cargar especificación OpenAPI 3.1.0
+const openapiDoc = JSON.parse(
+  fs.readFileSync(new URL("./src/docs/Charlys_documentacion.json", import.meta.url), "utf-8"),
+);
 
 //Ejecutar express
 const app = express();
@@ -32,6 +39,22 @@ app.use(limiter);
 app.use(cookieParser());
 
 app.use(express.json());
+
+// Documentación de la API (Swagger UI y especificación JSON)
+// Solo se monta fuera del entorno de producción y está protegida exclusivamente para rol admin
+if (process.env.NODE_ENV !== "production") {
+  app.get("/api-docs.json", validateAuthCookie(["admin"]), (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.json(openapiDoc);
+  });
+
+  app.use(
+    "/api-docs",
+    validateAuthCookie(["admin"]),
+    swaggerUi.serve,
+    swaggerUi.setup(openapiDoc),
+  );
+}
 
 //Creamos los endPoints
 // Autenticación del panel (login / logout de empleados administrativos)
@@ -64,4 +87,8 @@ app.use("/api/transactions", validateAuthCookie(), transactionsRoutes);
 // Resumen del Dashboard
 app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
 
+// Documentación de la API 
+app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
 export default app;
+
