@@ -338,40 +338,46 @@ function Fabricacion() {
         <KpiCard label="Lotes detenidos" value={kpis.stopped} icon={IconAlert} trend={{ tone: kpis.stopped ? "red" : "green", label: kpis.stopped ? "Alerta" : "OK" }} />
       </div>
 
-      {/* Selector de tabla: Lotes de fabricación / Lotes Diarios */}
-      <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-        <button
-          onClick={() => setActiveTab("fabricacion")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "fabricacion" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Lotes de fabricación
-        </button>
-        <button
-          onClick={() => setActiveTab("diario")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "diario" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Lotes Diarios
-        </button>
-        <button
-          onClick={() => setActiveTab("pedidos")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "pedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Por fabricar
-        </button>
-        <button
-          onClick={() => setActiveTab("fabricacionPedidos")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "fabricacionPedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Fabricación de pedidos
-        </button>
+      {/* Selector de tabla: Lotes de fabricación / Lotes Diarios / Por
+          fabricar / Fabricación de pedidos. Con 4 pestañas (la última
+          bastante larga) no cabe en pantallas chicas — overflow-x-auto lo
+          deja como scroll horizontal contenido en vez de desbordar la
+          página, mismo criterio que las tablas. */}
+      <div className="overflow-x-auto">
+        <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+          <button
+            onClick={() => setActiveTab("fabricacion")}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "fabricacion" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Lotes de fabricación
+          </button>
+          <button
+            onClick={() => setActiveTab("diario")}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "diario" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Lotes Diarios
+          </button>
+          <button
+            onClick={() => setActiveTab("pedidos")}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "pedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Por fabricar
+          </button>
+          <button
+            onClick={() => setActiveTab("fabricacionPedidos")}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "fabricacionPedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Fabricación de pedidos
+          </button>
+        </div>
       </div>
 
       {activeTab === "fabricacion" ? (

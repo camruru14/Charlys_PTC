@@ -93,11 +93,14 @@ export default function PerfilPage() {
         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
           {customer.name?.charAt(0).toUpperCase()}
         </div>
-        <div>
+        {/* min-w-0: sin esto, un correo largo no deja que el flex item se
+            angoste (min-width: auto por defecto), y se desborda la página en
+            vez de quebrar la línea. */}
+        <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold tracking-tight">
             {customer.name} {customer.lastName}
           </h1>
-          <p className="text-muted-foreground">{customer.email}</p>
+          <p className="break-words text-muted-foreground">{customer.email}</p>
         </div>
       </header>
 

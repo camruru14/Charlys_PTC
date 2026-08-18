@@ -42,7 +42,11 @@ export default function Footer() {
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Contacto
           </p>
-          <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+          {/* break-words: el correo no tiene espacios donde partir, así que sin
+              esto se desborda la columna en vez de ajustarse a su ancho (se
+              nota sobre todo justo en el breakpoint md, donde la columna es
+              más angosta que en escritorio). */}
+          <ul className="mt-4 space-y-2 text-sm text-muted-foreground break-words">
             <li>ventas@industriascharly.com</li>
             <li>+503 0000 0000</li>
           </ul>
