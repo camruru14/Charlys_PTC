@@ -2,21 +2,50 @@ import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
+import { useConfirm } from "../hooks/useConfirm";
 import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
 import Modal from "../components/ui/Modal";
-import { Field, SelectField } from "../components/ui/Field";
+import ConfirmModal from "../components/ui/ConfirmModal";
+import { Field, SelectField, FilterSelect } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { blockNegativeKey, blockWheel } from "../lib/numberInput";
-import { IconOrders, IconTruck, IconCheck, IconPlus, IconClose } from "../lib/icons";
+import { IconOrders, IconTruck, IconCheck, IconPlus, IconClose, IconSearch } from "../lib/icons";
 
+// Mismas categorías que ya mostraba el dropdown de Estado antes de que
+// pasara a ser un StatusPill de solo lectura — acá se usan solo como
+// opciones del filtro, no para editar el pedido.
 const STATUSES = ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
+
+// Un color por cada una de las 6 etapas, exclusivo de esta tabla: el mapa
+// global STATUS_TONE (StatusPill.jsx) comparte ámbar entre "Pendiente"/"En
+// Fabricación"/"En Tránsito" y verde entre "Empacado"/"Entregado" porque esas
+// mismas palabras significan otra cosa en otras pantallas (ej. "Empacado" a
+// nivel de producto individual en Inventario > Pedidos, que debe seguir
+// verde). Acá se pasa como `tone` explícito, que StatusPill prioriza sobre
+// STATUS_TONE, así que no afecta a nadie más.
+const ORDER_STATUS_TONE = {
+  Pendiente: "gray",
+  Procesando: "blue",
+  "En Fabricación": "yellow",
+  Empacado: "purple",
+  "En Tránsito": "sky",
+  Entregado: "green",
+};
+
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
 
-// Campos más chicos que Field/SelectField, solo para la fila de "agregar
+// Mismo estilo que los filtros de Logística/Inventario/Fabricación, para que
+// todas las barras de filtros del panel se vean iguales.
+const selectFilterClass =
+  "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
+
+// Campo de texto más chico que Field, solo para la fila de "agregar
 // producto" del modal de pedido (esa fila no necesita casillas tan grandes).
+// El desplegable de esa misma fila usa SelectField size="sm" (ver más abajo),
+// que ya trae su propia variante compacta.
 const compactLabelClass = "mb-1 block text-xs font-medium text-slate-600";
 const compactControlClass =
   "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
@@ -26,20 +55,6 @@ function CompactField({ label, ...rest }) {
     <label className="block">
       <span className={compactLabelClass}>{label}</span>
       <input className={compactControlClass} {...rest} />
-    </label>
-  );
-}
-
-function CompactSelect({ label, options, placeholder, ...rest }) {
-  return (
-    <label className="block">
-      <span className={compactLabelClass}>{label}</span>
-      <select className={compactControlClass} {...rest}>
-        {placeholder ? <option value="">{placeholder}</option> : null}
-        {options.map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
     </label>
   );
 }
@@ -70,6 +85,7 @@ function previewOrderNumber(list) {
 }
 
 function Pedidos() {
+  const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/orders");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -83,6 +99,11 @@ function Pedidos() {
   const [requestTarget, setRequestTarget] = useState(null);
   const [requesting, setRequesting] = useState(false);
 
+  // Filtros de la tabla "Pedidos del e-commerce".
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("");
+
   const total = useMemo(() => items.reduce((s, i) => s + i.subtotal, 0), [items]);
 
   const list = Array.isArray(data) ? data : [];
@@ -93,6 +114,30 @@ function Pedidos() {
     transit: list.filter((o) => o.status === "En Tránsito").length,
     delivered: list.filter((o) => o.status === "Entregado").length,
   }), [list]);
+
+  // Búsqueda por N° de pedido, cliente o correo + filtros de Estado/Pago.
+  // Los KPI de arriba se quedan calculados sobre `list` completa, no
+  // filtrada, mismo patrón que Logística/Inventario/Fabricación.
+  const filteredList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return list.filter((o) => {
+      if (q) {
+        const haystack = `${o.orderNumber || ""} ${o.customer?.name || ""} ${o.customer?.email || ""}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (statusFilter && o.status !== statusFilter) return false;
+      if (paymentFilter && o.paymentStatus !== paymentFilter) return false;
+      return true;
+    });
+  }, [list, search, statusFilter, paymentFilter]);
+
+  const hasActiveFilters = Boolean(search || statusFilter || paymentFilter);
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("");
+    setPaymentFilter("");
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -186,18 +231,8 @@ function Pedidos() {
     }
   }
 
-  async function changeStatus(o, status) {
-    try {
-      await api.patch(`/orders/${o._id}/status`, { status });
-      toast.success(`Pedido ${o.orderNumber}: ${status}`);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  }
-
   async function handleDelete(o) {
-    if (!window.confirm(`¿Eliminar el pedido ${o.orderNumber}?`)) return;
+    if (!(await confirm(`¿Eliminar el pedido ${o.orderNumber}?`, { danger: true }))) return;
     try {
       await api.del(`/orders/${o._id}`);
       toast.success("Pedido eliminado");
@@ -245,7 +280,44 @@ function Pedidos() {
           </button>
         }
       >
-        <AsyncState loading={loading} error={error} empty={!loading && list.length === 0} emptyText="No hay pedidos.">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-0 flex-1 sm:max-w-xs">
+            <IconSearch width={16} height={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar pedido, cliente, correo…"
+              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-400"
+            />
+          </div>
+          <FilterSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={selectFilterClass}
+            options={[{ value: "", label: "Estado: Todos" }, ...STATUSES.map((s) => ({ value: s, label: s }))]}
+          />
+          <FilterSelect
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value)}
+            className={selectFilterClass}
+            options={[{ value: "", label: "Pago: Todos" }, ...PAYMENT.map((p) => ({ value: p, label: p }))]}
+          />
+          {hasActiveFilters ? (
+            <button
+              onClick={clearFilters}
+              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
+            >
+              Limpiar filtros
+            </button>
+          ) : null}
+        </div>
+        <AsyncState
+          loading={loading}
+          error={error}
+          empty={!loading && filteredList.length === 0}
+          emptyText={hasActiveFilters ? "Ningún pedido coincide con los filtros." : "No hay pedidos."}
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1480px] table-fixed text-left text-sm">
               <thead>
@@ -263,7 +335,7 @@ function Pedidos() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {list.map((o) => {
+                {filteredList.map((o) => {
                   return (
                     <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
                       <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{o.orderNumber}</td>
@@ -278,15 +350,7 @@ function Pedidos() {
                       </td>
                       <td className="py-3 pr-4 tabular-nums">${Number(o.total || 0).toFixed(2)}</td>
                       <td className="py-3 pr-4"><StatusPill status={o.paymentStatus} /></td>
-                      <td className="py-3 pr-4">
-                        <select
-                          value={o.status}
-                          onChange={(e) => changeStatus(o, e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-brand-400"
-                        >
-                          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </td>
+                      <td className="py-3 pr-4"><StatusPill status={o.status} tone={ORDER_STATUS_TONE[o.status]} /></td>
                       <td className="py-3">
                         <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
                           {o.inventoryRequestedAt ? (
@@ -333,7 +397,17 @@ function Pedidos() {
           <Field label="Correo del cliente" name="customerEmail" type="email" value={form.customerEmail} onChange={handleChange} />
           <Field label="Teléfono" name="customerPhone" value={form.customerPhone} onChange={handleChange} />
           <Field label="Dirección" name="customerAddress" value={form.customerAddress} onChange={handleChange} />
-          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
+          {/* El estado del pedido ya no se elige a mano acá: avanza solo según
+              lo que pasa en Inventario/Fabricación/Logística (ver
+              computeOrderStatus en el backend). Un pedido nuevo siempre
+              arranca en "Pendiente" (ver emptyForm); al editar, se muestra
+              nada más de referencia. */}
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Estado</span>
+            <div className="flex items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
+              <StatusPill status={form.status} tone={ORDER_STATUS_TONE[form.status]} />
+            </div>
+          </div>
           <SelectField label="Estado de pago" name="paymentStatus" value={form.paymentStatus} onChange={handleChange} options={PAYMENT} />
 
           {/* Productos del pedido: se arman en esta mini tabla en vez de ser
@@ -342,8 +416,8 @@ function Pedidos() {
           <div className="sm:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
             <span className="block text-sm font-medium text-slate-700">Productos del pedido</span>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.3fr_1fr_0.8fr_1fr_auto] sm:items-end">
-              <CompactSelect label="Producto" name="product" value={lineForm.product} onChange={handleLineChange} options={PRODUCTS} />
-              <CompactSelect label="Color" name="color" value={lineForm.color} onChange={handleLineChange} options={COLORS} placeholder="Sin color" />
+              <SelectField size="sm" label="Producto" name="product" value={lineForm.product} onChange={handleLineChange} options={PRODUCTS} />
+              <SelectField size="sm" label="Color" name="color" value={lineForm.color} onChange={handleLineChange} options={COLORS} placeholder="Sin color" />
               <CompactField label="Cantidad" name="quantity" type="number" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.quantity} onChange={handleLineChange} />
               <CompactField label="Precio unitario" name="unitPrice" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.unitPrice} onChange={handleLineChange} />
               <button type="button" onClick={addLine} className="h-fit rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
@@ -458,6 +532,8 @@ function Pedidos() {
           </p>
         ) : null}
       </Modal>
+
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

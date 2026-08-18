@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { IconSearch } from "../../lib/icons";
 import { defaultBatchFilters, batchFilterOptions } from "../../lib/batchFilters";
+import { FilterSelect } from "../ui/Field";
 
 function BatchToolbar({ list = [], filters, setFilters, compact = false }) {
   const options = useMemo(() => batchFilterOptions(list), [list]);
@@ -37,27 +38,35 @@ function BatchToolbar({ list = [], filters, setFilters, compact = false }) {
         />
       </div>
 
-      <select value={filters.product} onChange={(e) => set("product", e.target.value)} className={selectClass}>
-        <option value="">Producto: todos</option>
-        {options.products.map((p) => <option key={p} value={p}>{p}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.product}
+        onChange={(e) => set("product", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Producto: todos" }, ...options.products.map((p) => ({ value: p, label: p }))]}
+      />
 
-      <select value={filters.line} onChange={(e) => set("line", e.target.value)} className={selectClass}>
-        <option value="">Línea: todas</option>
-        {options.lines.map((l) => <option key={l} value={l}>{l}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.line}
+        onChange={(e) => set("line", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Línea: todas" }, ...options.lines.map((l) => ({ value: l, label: l }))]}
+      />
 
-      <select value={filters.status} onChange={(e) => set("status", e.target.value)} className={selectClass}>
-        <option value="">Estado: todos</option>
-        {options.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
+      <FilterSelect
+        value={filters.status}
+        onChange={(e) => set("status", e.target.value)}
+        className={selectClass}
+        options={[{ value: "", label: "Estado: todos" }, ...options.statuses.map((s) => ({ value: s, label: s }))]}
+      />
 
       {!compact ? (
         <>
-          <select value={filters.operator} onChange={(e) => set("operator", e.target.value)} className={selectClass}>
-            <option value="">Operario: todos</option>
-            {options.operators.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <FilterSelect
+            value={filters.operator}
+            onChange={(e) => set("operator", e.target.value)}
+            className={selectClass}
+            options={[{ value: "", label: "Operario: todos" }, ...options.operators]}
+          />
 
           <input
             type="number"

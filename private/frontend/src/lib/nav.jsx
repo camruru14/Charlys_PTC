@@ -7,6 +7,7 @@ import {
   IconBox,
   IconUsers,
   IconSettings,
+  IconTag,
 } from "./icons";
 
 export const NAV_ITEMS = [
@@ -51,6 +52,13 @@ export const NAV_ITEMS = [
     icon: IconBox,
     title: "Inventario / Almacén",
     subtitle: "Materia prima y stock de productos terminados",
+  },
+  {
+    to: "/catalogo",
+    label: "Catálogo",
+    icon: IconTag,
+    title: "Catálogo — Tienda pública",
+    subtitle: "Productos, precios, colores e imágenes de la tienda en línea",
   },
   {
     to: "/empleados",

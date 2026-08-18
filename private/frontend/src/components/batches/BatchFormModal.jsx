@@ -9,8 +9,11 @@ const LINES = ["Línea 1", "Línea 2", "Línea 3", "Línea 4"];
 const STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
 
 /*
-  Modal de creación/edición de un lote de fabricación.
-  Reutilizado por la página de Fabricación y por el "Ver todo" editable de Fabricación.
+  Modal de creación/edición de un lote de fabricación normal ("Lotes de
+  fabricación" / Lotes Diarios ya programados). Reutilizado por la página de
+  Fabricación y por el "Ver todo" editable de Fabricación.
+  Para lotes de "Fabricación de pedidos" (categoría "Pedido") se usa
+  PedidoBatchFormModal, que además muestra la Meta del pedido.
 */
 function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
   return (
@@ -37,7 +40,6 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
         <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={LINES} />
-        <Field label="Fecha" name="startDate" type="date" value={form.startDate} onChange={handleChange} max={todayInput()} />
         <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
         <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
         <SelectField

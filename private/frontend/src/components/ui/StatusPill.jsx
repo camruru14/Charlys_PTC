@@ -6,9 +6,9 @@
   debe usar <StatusPill status="..." /> en vez de armar su propio badge o
   pasar un tone a mano, así nunca se desincroniza entre pantallas:
     Gris     -> Sin verificar
-    Azul     -> Verificado / En proceso / Procesando
+    Azul     -> Verificado / En proceso / Procesando / A tiempo
     Amarillo -> En Fabricación / Enviado a fabricación / Recolectando / En tránsito / Pendiente
-    Verde    -> Empacado / Entregado / Completado / A tiempo / Pagado
+    Verde    -> Empacado / Entregado / Completado / Pagado
     Rojo     -> Demorado / Alertas / Detenido
 */
 
@@ -18,13 +18,18 @@ const TONES = {
   red: "bg-red-50 text-red-700 ring-red-600/20",
   yellow: "bg-amber-50 text-amber-700 ring-amber-600/20",
   gray: "bg-slate-100 text-slate-600 ring-slate-500/20",
+  // No están en STATUS_TONE a propósito: STATUS_TONE es la fuente de verdad
+  // compartida por toda la app, y estos dos tonos son solo para diferenciar
+  // las 6 etapas del pedido en la tabla de Pedidos.jsx (ver ORDER_STATUS_TONE
+  // ahí), pasados directo como `tone` sin pasar por el mapa global.
+  purple: "bg-purple-50 text-purple-700 ring-purple-600/20",
+  sky: "bg-sky-50 text-sky-700 ring-sky-600/20",
 };
 
 // Mapa de estados de negocio -> tono de color
 const STATUS_TONE = {
   // Verde
   Completado: "green",
-  "A tiempo": "green",
   Entregado: "green",
   Empacado: "green",
   Pagado: "green",
@@ -36,6 +41,7 @@ const STATUS_TONE = {
   "En Proceso": "blue",
   Procesando: "blue",
   Verificado: "blue",
+  "A tiempo": "blue",
   // Rojo
   Demorado: "red",
   Detenido: "red",

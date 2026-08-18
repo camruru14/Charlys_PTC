@@ -3,10 +3,12 @@ import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
+import { useConfirm } from "../hooks/useConfirm";
 import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
 import Modal from "../components/ui/Modal";
-import { Field, SelectField } from "../components/ui/Field";
+import ConfirmModal from "../components/ui/ConfirmModal";
+import { Field, SelectField, FilterSelect } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconBox, IconAlert, IconPlus, IconCheck, IconExpand, IconCollapse, IconSearch } from "../lib/icons";
 import { macroStatus, getItemStatusCounts, progressSegments, progressCaption, MACRO_STATUS_LABELS } from "../lib/orderProgress";
@@ -96,31 +98,41 @@ function WarehouseItemsTable({ items, loading, error, emptyText, onEdit, onDelet
             />
           </div>
           {showColor ? (
-            <select value={articleFilter} onChange={(e) => setArticleFilter(e.target.value)} className={selectFilterClass}>
-              <option value="">Artículo: Todos</option>
-              {articles.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <FilterSelect
+              value={articleFilter}
+              onChange={(e) => setArticleFilter(e.target.value)}
+              className={selectFilterClass}
+              options={[{ value: "", label: "Artículo: Todos" }, ...articles.map((a) => ({ value: a, label: a }))]}
+            />
           ) : null}
-          <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectFilterClass}>
-            <option value="">Bodega: Todos</option>
-            {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          <FilterSelect
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className={selectFilterClass}
+            options={[{ value: "", label: "Bodega: Todos" }, ...locations.map((l) => ({ value: l, label: l }))]}
+          />
           {showColor ? (
-            <select value={colorFilter} onChange={(e) => setColorFilter(e.target.value)} className={selectFilterClass}>
-              <option value="">Color: Todos</option>
-              {colors.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <FilterSelect
+              value={colorFilter}
+              onChange={(e) => setColorFilter(e.target.value)}
+              className={selectFilterClass}
+              options={[{ value: "", label: "Color: Todos" }, ...colors.map((c) => ({ value: c, label: c }))]}
+            />
           ) : null}
           {showType ? (
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectFilterClass}>
-              <option value="">Tipo: Todos</option>
-              {MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <FilterSelect
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className={selectFilterClass}
+              options={[{ value: "", label: "Tipo: Todos" }, ...MATERIAL_TYPES.map((t) => ({ value: t, label: t }))]}
+            />
           ) : null}
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectFilterClass}>
-            <option value="">Stock: Todos</option>
-            {STOCK_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <FilterSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={selectFilterClass}
+            options={[{ value: "", label: "Stock: Todos" }, ...STOCK_STATUSES.map((s) => ({ value: s, label: s }))]}
+          />
           {hasActiveFilters ? (
             <button
               onClick={() => { setSearch(""); setArticleFilter(""); setLocationFilter(""); setColorFilter(""); setTypeFilter(""); setStatusFilter(""); }}
@@ -178,6 +190,7 @@ function WarehouseItemsTable({ items, loading, error, emptyText, onEdit, onDelet
 
 function Inventario() {
   const navigate = useNavigate();
+  const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/inventory");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   // Bodegas configurables desde Configuración > Bodegas (Parte 8), en vez del
@@ -371,7 +384,7 @@ function Inventario() {
     const message = item.batchNumber
       ? `¿Eliminar ${item.name} de Artículos en almacén? Su reporte se mantendrá en Lotes Reportados.`
       : `¿Eliminar ${item.name}?`;
-    if (!window.confirm(message)) return;
+    if (!(await confirm(message, { danger: true }))) return;
     try {
       await api.del(`/inventory/${item._id}`);
       toast.success("Artículo eliminado de Artículos en almacén");
@@ -435,7 +448,7 @@ function Inventario() {
   // Verificar") en vez de arrastrar el estado anterior. En Pedidos vuelve a
   // mostrar el botón "Solicitar".
   async function handleCancelRequest(o) {
-    if (!window.confirm(`¿Eliminar ${o.orderNumber} de Pedidos? Se borra todo su rastro de verificación aquí.`)) return;
+    if (!(await confirm(`¿Eliminar ${o.orderNumber} de Pedidos? Se borra todo su rastro de verificación aquí.`, { danger: true }))) return;
     try {
       await api.del(`/orders/${o._id}/request-inventory`);
       toast.success("Pedido eliminado de la lista");
@@ -500,12 +513,11 @@ function Inventario() {
   // Empaca un producto ya verificado: el pedido pasa a "Empacado" (visible
   // así también en Pedidos y Logística, lista para asignar motorista).
   async function handlePack(row) {
-    if (
-      !window.confirm(
-        `¿Marcar ${row.item.product} como empacado? El pedido ${row.order.orderNumber} pasará a "Empacado".`
-      )
-    )
-      return;
+    const ok = await confirm(
+      `¿Marcar ${row.item.product} como empacado? El pedido ${row.order.orderNumber} pasará a "Empacado".`,
+      { confirmLabel: "Empacar" }
+    );
+    if (!ok) return;
     try {
       await api.patch(`/orders/${row.order._id}/items/${row.index}/pack`);
       toast.success(`${row.item.product} empacado`);
@@ -682,16 +694,12 @@ function Inventario() {
           }
         >
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <select
+            <FilterSelect
               value={pedidosStatusFilter}
               onChange={(e) => setPedidosStatusFilter(e.target.value)}
               className={selectFilterClass}
-            >
-              <option value="">Estado: Todos</option>
-              {PEDIDOS_STATUS_FILTERS.map((key) => (
-                <option key={key} value={key}>{MACRO_STATUS_LABELS[key]}</option>
-              ))}
-            </select>
+              options={[{ value: "", label: "Estado: Todos" }, ...PEDIDOS_STATUS_FILTERS.map((key) => ({ value: key, label: MACRO_STATUS_LABELS[key] }))]}
+            />
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -975,6 +983,8 @@ function Inventario() {
           <p className="text-sm text-slate-400">Este pedido no tiene productos.</p>
         )}
       </Modal>
+
+      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

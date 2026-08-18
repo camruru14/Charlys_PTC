@@ -7,6 +7,7 @@ import { SectionCard, AsyncState } from "../ui/SectionCard";
 import BatchToolbar from "./BatchToolbar";
 import BatchTable from "./BatchTable";
 import BatchFormModal from "./BatchFormModal";
+import ConfirmModal from "../ui/ConfirmModal";
 import { defaultBatchFilters, filterBatches } from "../../lib/batchFilters";
 import { IconPlus } from "../../lib/icons";
 
@@ -25,7 +26,7 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
   const [filters, setFilters] = useState(defaultBatchFilters);
 
   const all = Array.isArray(data) ? data : [];
-  const { modalOpen, setModalOpen, editingId, form, saving, operators, openCreate, openEdit, handleChange, handleSubmit, handleDelete } =
+  const { modalOpen, setModalOpen, editingId, form, saving, operators, openCreate, openEdit, handleChange, handleSubmit, handleDelete, confirmProps } =
     useBatchForm(all, refetch);
   const filtered = useMemo(() => filterBatches(all, filters, range), [all, filters, range]);
 
@@ -93,6 +94,8 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
           operators={operators}
         />
       ) : null}
+
+      {editable ? <ConfirmModal {...confirmProps} /> : null}
     </div>
   );
 }

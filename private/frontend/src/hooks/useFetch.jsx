@@ -5,8 +5,11 @@ import { api } from "../lib/api";
   Hook genérico de lectura (GET) con estado de carga, error y refetch.
   Uso:
     const { data, loading, error, refetch } = useFetch("/orders");
+  Por defecto pega a private/backend (lib/api.js). Para leer de otro backend
+  (ej. Catálogo.jsx contra public/backend) pasa `client`:
+    useFetch("/products", { client: publicApi });
 */
-export function useFetch(path) {
+export function useFetch(path, { client = api } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,14 +18,14 @@ export function useFetch(path) {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.get(path);
+      const result = await client.get(path);
       setData(result);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [path]);
+  }, [path, client]);
 
   useEffect(() => {
     load();

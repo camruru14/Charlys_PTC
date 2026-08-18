@@ -22,6 +22,13 @@ const productionBatchSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // Cantidad objetivo del lote ("Meta"). En lotes categoría "Pedido" se
+    // prellena con la cantidad pedida al fabricar (ver manufactureOrderItem),
+    // pero queda editable a mano desde el modal de edición como cualquier otro campo.
+    targetQuantity: {
+      type: Number,
+      min: 0,
+    },
     // Se llena solo cuando se usa el botón "Reportar" en Fabricación (endpoint
     // /report). Sirve para distinguir producción reportada de producción
     // simplemente capturada al crear/editar el lote a mano.

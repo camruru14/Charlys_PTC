@@ -9,6 +9,7 @@ import Logistica from "./pages/Logistica";
 import Fabricacion from "./pages/Fabricacion";
 import Pedidos from "./pages/Pedidos";
 import Inventario from "./pages/Inventario";
+import Catalogo from "./pages/Catalogo";
 import Empleados from "./pages/Empleados";
 import Finanzas from "./pages/Finanzas";
 import HistorialTransacciones from "./pages/HistorialTransacciones";
@@ -32,6 +33,7 @@ function App() {
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/logistica" element={<Logistica />} />
           <Route path="/inventario" element={<Inventario />} />
+          <Route path="/catalogo" element={<Catalogo />} />
           <Route path="/empleados" element={<Empleados />} />
           <Route path="/configuracion" element={<Configuracion />} />
         </Route>
