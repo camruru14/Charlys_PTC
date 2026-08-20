@@ -53,10 +53,12 @@ authController.register = async (req, res) => {
       expiresIn: "30d",
     });
 
+    const isProduction = process.env.NODE_ENV === "production";
     res.cookie(CUSTOMER_COOKIE_NAME, token, {
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
-      sameSite: "lax",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
 
     res.status(201).json({
@@ -93,10 +95,12 @@ authController.login = async (req, res) => {
       expiresIn: "30d",
     });
 
+    const isProduction = process.env.NODE_ENV === "production";
     res.cookie(CUSTOMER_COOKIE_NAME, token, {
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
-      sameSite: "lax",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
 
     res.json({
@@ -111,7 +115,12 @@ authController.login = async (req, res) => {
 
 // LOGOUT
 authController.logout = async (_req, res) => {
-  res.clearCookie(CUSTOMER_COOKIE_NAME);
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie(CUSTOMER_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  });
   res.json({ message: "Sesión cerrada." });
 };
 

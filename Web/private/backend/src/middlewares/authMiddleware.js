@@ -36,7 +36,12 @@ export const validateAuthCookie = () => {
       if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
         // Cookie firmada con un secreto viejo, corrupta o expirada:
         // la limpiamos para que el cliente no quede atascado reenviándola.
-        res.clearCookie("authCookie");
+        const isProduction = process.env.NODE_ENV === "production";
+        res.clearCookie("authCookie", {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: isProduction ? "none" : "lax",
+        });
         return res.status(401).json({ message: "Invalid or expired session" });
       }
 

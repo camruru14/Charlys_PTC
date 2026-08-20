@@ -1,10 +1,11 @@
 import { createContext, useCallback, useEffect, useState } from "react";
+import { API_URL } from "../lib/api";
+import { setPublicApiToken } from "../lib/publicApi";
 
 // Contexto global de autenticación del panel administrativo.
 // Evita "prop drilling" al compartir la sesión entre todas las vistas.
 const AuthContext = createContext(null);
 
-const API_URL = "http://localhost:4000/api";
 const SESSION_STORAGE_KEY = "charly:auth-session";
 
 /**
@@ -30,21 +31,27 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const stored = readStoredSession();
     if (stored?.user) setUser(stored.user);
+    // El token también se restaura, para que publicApi.js (usado por
+    // Catalogo.jsx) siga pudiendo administrar el catálogo público después de
+    // recargar la página, sin tener que loguearse de nuevo.
+    if (stored?.token) setPublicApiToken(stored.token);
     setLoading(false);
   }, []);
 
   // Guarda o limpia la sesión en estado + localStorage.
-  const persistSession = useCallback((nextUser) => {
+  const persistSession = useCallback((nextUser, nextToken) => {
     if (!nextUser) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
       setUser(null);
+      setPublicApiToken(null);
       return;
     }
     localStorage.setItem(
       SESSION_STORAGE_KEY,
-      JSON.stringify({ user: nextUser, authenticatedAt: new Date().toISOString() }),
+      JSON.stringify({ user: nextUser, token: nextToken, authenticatedAt: new Date().toISOString() }),
     );
     setUser(nextUser);
+    setPublicApiToken(nextToken);
   }, []);
 
   // Inicia sesión contra el backend (empleados administrativos).
@@ -64,7 +71,7 @@ export function AuthProvider({ children }) {
           return { ok: false, message: payload.message || "No se pudo iniciar sesión" };
         }
 
-        persistSession(payload.user);
+        persistSession(payload.user, payload.token);
         return { ok: true, message: payload.message || "Sesión iniciada" };
       } catch {
         return { ok: false, message: "No se pudo conectar con el servidor" };
@@ -81,7 +88,7 @@ export function AuthProvider({ children }) {
         credentials: "include",
       });
     } finally {
-      persistSession(null);
+      persistSession(null, null);
     }
   }, [persistSession]);
 

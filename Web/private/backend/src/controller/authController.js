@@ -37,7 +37,12 @@ authController.login = async (req, res) => {
       (error, token) => {
         if (error) console.log("error" + error);
 
-        res.cookie("authCookie", token, { httpOnly: true });
+        const isProduction = process.env.NODE_ENV === "production";
+        res.cookie("authCookie", token, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: isProduction ? "none" : "lax",
+        });
         res.json({
           message: "Login successful",
           // El panel web sigue usando la cookie httpOnly; el token también
@@ -62,7 +67,12 @@ authController.login = async (req, res) => {
 
 // LOGOUT
 authController.logout = async (req, res) => {
-  res.clearCookie("authCookie");
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie("authCookie", {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  });
   res.json({ message: "Logout successful" });
 };
 

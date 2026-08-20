@@ -3,20 +3,38 @@
   src/lib/api.js (que apunta a private/backend). Se usa solo desde
   pages/Catalogo.jsx para administrar el catálogo de productos.
 
-  No hace falta loguearse aparte: public/backend valida la MISMA cookie de
-  sesión de empleado ("authCookie") que ya puso private/backend al iniciar
-  sesión en este panel (ver
-  public/backend/src/middlewares/employeeAuthMiddleware.js), así que
-  `credentials: "include"` es suficiente.
+  public/backend valida la sesión de empleado con el mismo JWT que ya generó
+  private/backend al iniciar sesión en este panel (ver
+  public/backend/src/middlewares/employeeAuthMiddleware.js), pero acá se
+  manda como header "Authorization: Bearer <token>" en vez de depender de la
+  cookie httpOnly de private/backend: al ser dos servicios en dominios
+  distintos (dos servicios separados en Render), el navegador nunca comparte
+  cookies entre ellos, aunque ambos backends compartan el mismo
+  JWT_Secret_key. El token se registra acá vía setPublicApiToken(), llamado
+  desde AuthContext.jsx apenas hay sesión (login o restaurada desde
+  localStorage).
 */
 export const PUBLIC_API_URL = import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:4100/api";
 
 const SESSION_STORAGE_KEY = "charly:auth-session";
 
+// Token de la sesión de empleado, inyectado por AuthContext.jsx. En memoria
+// (no en un closure de React) para que este módulo lo pueda leer sin pasar
+// por contexto — mismo patrón que setTokenGetter en Movil/src/lib/api.js.
+let authToken = null;
+
+export function setPublicApiToken(token) {
+  authToken = token || null;
+}
+
 async function request(path, { method = "GET", body, isForm = false } = {}) {
+  const headers = {};
+  if (body && !isForm) headers["Content-Type"] = "application/json";
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
   const response = await fetch(`${PUBLIC_API_URL}${path}`, {
     method,
-    headers: body && !isForm ? { "Content-Type": "application/json" } : undefined,
+    headers,
     credentials: "include",
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   });

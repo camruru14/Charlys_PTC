@@ -22,7 +22,12 @@ export const requireCustomerAuth = () => {
       next();
     } catch (error) {
       if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
-        res.clearCookie(CUSTOMER_COOKIE_NAME);
+        const isProduction = process.env.NODE_ENV === "production";
+        res.clearCookie(CUSTOMER_COOKIE_NAME, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: isProduction ? "none" : "lax",
+        });
         return res.status(401).json({ message: "Sesión inválida o expirada." });
       }
       console.log("error " + error);
