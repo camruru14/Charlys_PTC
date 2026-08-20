@@ -11,7 +11,7 @@
 // porque el celular no tiene forma de resolver 10.0.2.2.
 import { emitUnauthorized } from "./sessionEvents";
 
-export const API_URL = "http://10.0.2.2:4000/api";
+export const API_URL = "http://192.168.1.18:4000/api";
 
 // Función inyectada por AuthContext para leer el token actual sin acoplar
 // este módulo a React ni a expo-secure-store directamente.

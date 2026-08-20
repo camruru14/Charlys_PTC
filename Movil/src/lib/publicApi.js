@@ -9,7 +9,7 @@
 // un dispositivo físico con Expo Go.
 import { emitUnauthorized } from "./sessionEvents";
 
-export const PUBLIC_API_URL = "http://10.0.2.2:4100/api";
+export const PUBLIC_API_URL = "http://192.168.1.18:4100/api";
 
 let getToken = () => null;
 
