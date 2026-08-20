@@ -7,22 +7,24 @@ Una solución integral diseñada para optimizar el ciclo de vida de producción 
 ---
 
 ### 👥 Equipo de Desarrollo (Integrantes)
-| Nombre | Rol |
-| :--- | :--- |
-| 👨‍💻 **Camila Rugamas** | Coordinadora |
-| 👨‍💻 **David Iglesias** | SubCoordinador |
-| 👨‍💻 **Carlos Salinas** | Secretario |
-| 👨‍💻 **Gabriel Ramirez** | Tesorero |
-| 👨‍💻 **Isaac Ramos** | Vocal |
+
+| Nombre                 | Rol            |
+| :--------------------- | :------------- |
+| 👨‍💻 **Camila Rugamas**  | Coordinadora   |
+| 👨‍💻 **David Iglesias**  | SubCoordinador |
+| 👨‍💻 **Carlos Salinas**  | Secretario     |
+| 👨‍💻 **Gabriel Ramirez** | Tesorero       |
+| 👨‍💻 **Isaac Ramos**     | Vocal          |
 
 ---
 
 ### ✨ Características Principales
-* **📦 Gestión de Inventario:** Control total de producción y productos terminados.
-* **🏗️ Control de Producción:** Monitoreo ventas y producciones al día de la fábrica.
-* **📈 Ventas:** Seguimiento de pedidos y reportes mensuales de las ventas.
-* **👥 Usuarios & Roles:** Seguridad basada en perfiles (Administrador, Empleados, Clientes).
-* **🛒 Tienda en línea:** Catálogo público, carrito, cuentas de cliente y pago con tarjeta
+
+- **📦 Gestión de Inventario:** Control total de producción y productos terminados.
+- **🏗️ Control de Producción:** Monitoreo ventas y producciones al día de la fábrica.
+- **📈 Ventas:** Seguimiento de pedidos y reportes mensuales de las ventas.
+- **👥 Usuarios & Roles:** Seguridad basada en perfiles (Administrador, Empleados, Clientes).
+- **🛒 Tienda en línea:** Catálogo público, carrito, cuentas de cliente y pago con tarjeta
   vía Wompi (`public/backend` + `public/frontend`). Los pedidos de la tienda caen en la
   misma base de datos que usa el panel privado, así que aparecen directo en
   Pedidos / Inventario / Logística sin pasos manuales.
@@ -46,4 +48,5 @@ Cada carpeta (`private/backend`, `private/frontend`, `public/backend`,
 independiente. `public` y `private` comparten la misma base de datos MongoDB.
 
 ---
-*© 2026 - PlastiGest para Industrias Charly. Todos los derechos reservados.*
+
+_© 2026 - PlastiGest para Industrias Charly. Todos los derechos reservados._
