@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useState } from "react";
-import { API_URL } from "../lib/api";
+import { API_URL, setAuthToken } from "../lib/api";
 import { setPublicApiToken } from "../lib/publicApi";
 
 // Contexto global de autenticación del panel administrativo.
@@ -31,10 +31,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const stored = readStoredSession();
     if (stored?.user) setUser(stored.user);
-    // El token también se restaura, para que publicApi.js (usado por
-    // Catalogo.jsx) siga pudiendo administrar el catálogo público después de
-    // recargar la página, sin tener que loguearse de nuevo.
-    if (stored?.token) setPublicApiToken(stored.token);
+    // El token también se restaura -- tanto para publicApi.js (usado por
+    // Catalogo.jsx) como para api.js (todo el resto del panel): en
+    // Safari/iPhone la cookie httpOnly del login no persiste (ver
+    // lib/api.js), así que este token de respaldo es el que realmente
+    // mantiene la sesión activa después de recargar la página.
+    if (stored?.token) {
+      setPublicApiToken(stored.token);
+      setAuthToken(stored.token);
+    }
     setLoading(false);
   }, []);
 
@@ -44,6 +49,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
       setUser(null);
       setPublicApiToken(null);
+      setAuthToken(null);
       return;
     }
     localStorage.setItem(
@@ -52,6 +58,7 @@ export function AuthProvider({ children }) {
     );
     setUser(nextUser);
     setPublicApiToken(nextToken);
+    setAuthToken(nextToken);
   }, []);
 
   // Inicia sesión contra el backend (empleados administrativos).
