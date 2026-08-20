@@ -11,9 +11,9 @@ import ordersRoutes from "./src/routes/orders.js";
 
 const app = express();
 
-app.use(
-  cors({
-    origin: [
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+  : [
       "http://localhost:5175",
       "http://localhost:5176",
       // private/frontend (panel administrativo): administra el catálogo
@@ -21,7 +21,11 @@ app.use(
       // employeeAuthMiddleware.js.
       "http://localhost:5173",
       "http://localhost:5174",
-    ],
+    ];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
     credentials: true,
   }),
 );

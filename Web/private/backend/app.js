@@ -26,9 +26,13 @@ const openapiDoc = JSON.parse(
 //Ejecutar express
 const app = express();
 
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+  : ["http://localhost:5173", "http://localhost:5174"];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: allowedOrigins,
     //Permitir el envío de cookies y credenciales
     credentials: true,
   }),
