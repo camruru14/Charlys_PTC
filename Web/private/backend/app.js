@@ -30,9 +30,23 @@ const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
   : ["http://localhost:5173", "http://localhost:5174"];
 
+// Además de las URLs exactas de arriba, aceptamos cualquier URL que Vercel
+// genere para estos 2 proyectos (cada deployment/preview tiene un hash
+// distinto en el dominio, ej. charly-private-frontend-ghi92n8y8-ptc4.vercel.app),
+// para no tener que actualizar CORS_ORIGINS manualmente en cada deploy nuevo.
+const vercelPreviewPattern =
+  /^https:\/\/charly-(public|private)-frontend(-[a-z0-9-]+)?\.vercel\.app$/;
+
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Peticiones sin header Origin (ej. Postman, servidor a servidor) -> permitir
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Origen no permitido por CORS: " + origin));
+    },
     //Permitir el envío de cookies y credenciales
     credentials: true,
   }),
