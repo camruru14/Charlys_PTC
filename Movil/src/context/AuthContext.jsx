@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { api, setTokenGetter } from "../lib/api";
+import { setPublicTokenGetter } from "../lib/publicApi";
 import { onUnauthorized } from "../lib/sessionEvents";
 
 // Contexto global de autenticación de la app móvil. Equivalente a
@@ -32,6 +33,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setTokenGetter(() => tokenRef.current);
+    // Mismo JWT (mismo JWT_Secret_key en ambos backends, ver comentario en
+    // publicApi.js) sirve para autenticar contra el backend público del
+    // Catálogo, así que comparte la misma referencia en memoria.
+    setPublicTokenGetter(() => tokenRef.current);
   }, []);
 
   // Al montar la app, intenta recuperar la sesión guardada para no pedir

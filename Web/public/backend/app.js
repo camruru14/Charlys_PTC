@@ -64,4 +64,17 @@ app.use("/api/products", productsRoutes);
 // Pedidos del e-commerce (checkout con cobro directo a Wompi, historial del cliente)
 app.use("/api/orders", ordersRoutes);
 
+// Manejador de errores global: sin esto, un error lanzado por un middleware
+// ANTES del controlador (ej. multer/Cloudinary rechazando el archivo por
+// formato, límite de tamaño, etc. en uploadProductImages) nunca pasa por el
+// try/catch del controlador — Express usa su handler por defecto, que
+// responde 500 sin cuerpo. Los clientes (api.js/publicApi.js en Movil,
+// private/frontend) esperan JSON con "message", así que sin esto el error
+// nunca es legible del lado del cliente.
+app.use((err, _req, res, _next) => {
+  console.log("error " + err);
+  const status = err.status || err.http_code || 500;
+  res.status(status).json({ message: err.message || "Error interno del servidor." });
+});
+
 export default app;
