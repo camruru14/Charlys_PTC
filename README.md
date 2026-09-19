@@ -45,5 +45,11 @@ Cada carpeta (`private/backend`, `private/frontend`, `public/backend`,
 `public/frontend`) tiene su propio `README.md`/`.env` y corre de forma
 independiente. `public` y `private` comparten la misma base de datos MongoDB.
 
+Pagina de admin: 
+https://charly-private-frontend.vercel.app
+
+Pagina de cliente:
+https://charly-public-frontend.vercel.app
+
 ---
 *© 2026 - PlastiGest para Industrias Charly. Todos los derechos reservados.*
