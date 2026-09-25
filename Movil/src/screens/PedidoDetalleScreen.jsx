@@ -68,7 +68,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     return <ErrorState message="No se encontró el pedido" />;
   }
 
-  const requested = Boolean(order.inventoryRequestedAt);
+  const requested = Boolean(order.sentToInventoryAt);
 
   const handleRequestInventory = async () => {
     setBusyKey("request");

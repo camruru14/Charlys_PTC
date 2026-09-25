@@ -1,48 +1,52 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
-import KpiCard from "../components/ui/KpiCard";
-import StatusPill from "../components/ui/StatusPill";
-import Modal from "../components/ui/Modal";
-import ConfirmModal from "../components/ui/ConfirmModal";
-import { Field, SelectField, FilterSelect } from "../components/ui/Field";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
-import { blockNegativeKey, blockWheel } from "../lib/numberInput";
-import { IconOrders, IconTruck, IconCheck, IconPlus, IconClose, IconSearch } from "../lib/icons";
-import { buttonClass } from "../lib/buttonStyles";
+import { useUrlState } from "../hooks/useUrlState";
 import PageHeader from "../components/ui/PageHeader";
 import Button from "../components/ui/Button";
-import { getPageMeta } from "../lib/nav";
-
-// Mismas categorías que ya mostraba el dropdown de Estado antes de que
-// pasara a ser un StatusPill de solo lectura — acá se usan solo como
-// opciones del filtro, no para editar el pedido.
-const STATUSES = ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
+import StatusPill from "../components/ui/StatusPill";
+import SearchInput from "../components/ui/SearchInput";
+import FilterChips from "../components/ui/FilterChips";
+import Stepper from "../components/ui/Stepper";
+import StatTile from "../components/ui/StatTile";
+import EmptyState from "../components/ui/EmptyState";
+import { MasterDetail, ListPanel, DetailPanel, ListRow } from "../components/ui/MasterDetail";
+import Modal from "../components/ui/Modal";
+import ConfirmModal from "../components/ui/ConfirmModal";
+import { Field, SelectField } from "../components/ui/Field";
+import { blockNegativeKey, blockWheel } from "../lib/numberInput";
+import { buttonClass } from "../lib/buttonStyles";
+import { fmtMoney, fmtNumber, fmtDate, fmtDateYear } from "../lib/format";
+import { orderJourneySteps, lastStatusEntry } from "../lib/orderJourney";
+import { PRODUCT_COLOR_HEX } from "../lib/catalogOptions";
+import { IconPlus, IconClose, IconMore, IconOrders } from "../lib/icons";
 
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
 
-// Mismo estilo que los filtros de Logística/Inventario/Fabricación, para que
-// todas las barras de filtros del panel se vean iguales.
-const selectFilterClass =
-  "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
+// Chips de la lista: key -> filtro sobre el pedido.
+const CHIP_FILTERS = {
+  all: () => true,
+  pendientes: (o) => o.status === "Pendiente",
+  enRuta: (o) => o.status === "En Tránsito",
+  sinPago: (o) => o.paymentStatus === "Pendiente",
+};
 
 // Campo de texto más chico que Field, solo para la fila de "agregar
 // producto" del modal de pedido (esa fila no necesita casillas tan grandes).
-// El desplegable de esa misma fila usa SelectField size="sm" (ver más abajo),
-// que ya trae su propia variante compacta.
-const compactLabelClass = "mb-1 block text-xs font-medium text-slate-600";
-const compactControlClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
-
+// El desplegable de esa misma fila usa SelectField size="sm", que ya trae su
+// propia variante compacta con estas mismas medidas.
 function CompactField({ label, ...rest }) {
   return (
     <label className="block">
-      <span className={compactLabelClass}>{label}</span>
-      <input className={compactControlClass} {...rest} />
+      <span className="mb-1 block text-[11.5px] font-semibold text-muted">{label}</span>
+      <input
+        className="w-full rounded-[8px] border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft"
+        {...rest}
+      />
     </label>
   );
 }
@@ -72,60 +76,241 @@ function previewOrderNumber(list) {
   return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
 }
 
+// Muestra de color de 11px junto al nombre del producto.
+function ColorSwatch({ color }) {
+  const hex = color ? PRODUCT_COLOR_HEX[color] : null;
+  return (
+    <span
+      className={`inline-block h-[11px] w-[11px] shrink-0 rounded-[3px] border border-line ${hex ? "" : "bg-line-soft"}`}
+      style={hex ? { backgroundColor: hex } : undefined}
+    />
+  );
+}
+
+// Menú «…» de la ficha con las acciones destructivas.
+function OrderActionsMenu({ onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Más acciones"
+        aria-expanded={open}
+        className={`${buttonClass("secondary", "detail")} w-[34px] !px-0`}
+      >
+        <IconMore width={17} height={17} />
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-30 mt-1.5 w-48 rounded-[12px] border border-line bg-surface p-1.5 shadow-modal">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="flex w-full items-center rounded-[8px] px-2.5 py-2 text-left text-[13px] font-semibold text-tone-rose-text transition hover:bg-tone-rose"
+          >
+            Eliminar pedido
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OrderRow({ order, selected, onSelect }) {
+  return (
+    <ListRow selected={selected} onClick={onSelect}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+        <StatusPill status={order.status} domain="pedido" variant="dot" />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <span className="truncate text-[12.5px] text-ink-2">{order.customer?.name || "—"}</span>
+        <span className="shrink-0 text-[12.5px] tabular-nums text-ink-2">{fmtMoney(order.total)}</span>
+      </div>
+    </ListRow>
+  );
+}
+
+function OrderDetail({ order, onEdit, onDelete }) {
+  const steps = orderJourneySteps(order);
+  const last = lastStatusEntry(order);
+  const items = order.items || [];
+  const units = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+  const address = order.delivery?.address || order.customer?.address;
+
+  return (
+    <DetailPanel
+      header={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="mr-1 text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-ink">{order.orderNumber}</h2>
+            <StatusPill status={order.status} domain="pedido" size="lg" />
+            <StatusPill status={order.paymentStatus} domain="pago" />
+            {order.sentToInventoryAt ? (
+              <span className="inline-flex h-[22px] items-center rounded-[7px] bg-primary-soft px-2 text-[11px] font-semibold text-primary-soft-text">
+                Pasó solo a Inventario
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="detail" onClick={onEdit}>
+              Editar
+            </Button>
+            <OrderActionsMenu onDelete={onDelete} />
+          </div>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <section className="flex flex-col gap-3">
+          <p className="t-label">Recorrido del pedido</p>
+          <div className="overflow-x-auto pb-1">
+            <div className="min-w-[540px]">
+              <Stepper steps={steps} />
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <StatTile label="Cliente">
+            <p className="text-[14px] font-bold text-ink">{order.customer?.name || "—"}</p>
+            <p className="mt-0.5 break-words text-[12.5px] text-ink-2">{order.customer?.email || "—"}</p>
+            <p className="text-[12.5px] tabular-nums text-ink-2">{order.customer?.phone || "—"}</p>
+          </StatTile>
+          <StatTile label="Entrega">
+            <p className="break-words text-[13px] text-ink">{address || "—"}</p>
+            {/* La zona y la ruta llegan con el modelo de rutas de Logística. */}
+            <p className="t-aux mt-0.5">sin asignar</p>
+          </StatTile>
+          <StatTile label="Fechas">
+            <p className="text-[12.5px] tabular-nums text-ink-2">
+              <span className="text-muted">Solicitado · </span>
+              {fmtDateYear(order.createdAt)}
+            </p>
+            <p className="mt-0.5 text-[12.5px] tabular-nums text-ink-2">
+              <span className="text-muted">Última acción · </span>
+              {last ? `${fmtDate(last.at)} · ${last.status.toLowerCase()}` : "—"}
+            </p>
+          </StatTile>
+        </div>
+
+        <section className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="t-label">Productos del pedido</p>
+            <p className="t-aux tabular-nums">
+              {fmtNumber(items.length)} {items.length === 1 ? "línea" : "líneas"} · {fmtNumber(units)}{" "}
+              {units === 1 ? "unidad" : "unidades"}
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-[12px] border border-line">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] border-collapse text-left">
+                <thead>
+                  <tr className="h-8 bg-band text-[10.5px] font-bold uppercase tracking-[0.1em] text-band-text">
+                    <th className="px-4 font-bold">Producto</th>
+                    <th className="px-3 font-bold">Color</th>
+                    <th className="px-3 text-right font-bold">Cant.</th>
+                    <th className="px-3 text-right font-bold">Unitario</th>
+                    <th className="px-4 text-right font-bold">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="t-aux px-4 py-4 text-center">
+                        Este pedido no tiene productos.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((it, idx) => (
+                      <tr key={idx} className="h-11 border-b border-line-soft last:border-0">
+                        <td className="px-4">
+                          <span className="flex items-center gap-2 t-row-name">
+                            <ColorSwatch color={it.color} />
+                            {it.product}
+                          </span>
+                        </td>
+                        <td className="t-row px-3">{it.color || "—"}</td>
+                        <td className="t-row px-3 text-right tabular-nums">{fmtNumber(it.quantity)}</td>
+                        <td className="t-row px-3 text-right tabular-nums">{fmtMoney(it.unitPrice)}</td>
+                        <td className="t-row px-4 text-right tabular-nums">{fmtMoney(it.subtotal)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-line-soft bg-surface-2 px-4 py-3">
+              <span className="text-[13px] font-semibold text-ink-2">Total del pedido</span>
+              <span className="text-[16px] font-bold tabular-nums text-ink">{fmtMoney(order.total)}</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </DetailPanel>
+  );
+}
+
 function Pedidos() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/orders");
+  const [selectedId, setSelectedId] = useUrlState("id");
+  const [search, setSearch] = useState("");
+  const [chip, setChip] = useState("all");
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [items, setItems] = useState([]);
   const [lineForm, setLineForm] = useState(emptyLine);
   const [saving, setSaving] = useState(false);
-  // Pedido cuyos productos se muestran en el modal "Ver productos" de la tabla.
-  const [viewTarget, setViewTarget] = useState(null);
-  const [requestModalOpen, setRequestModalOpen] = useState(false);
-  const [requestTarget, setRequestTarget] = useState(null);
-  const [requesting, setRequesting] = useState(false);
 
-  // Filtros de la tabla "Pedidos del e-commerce".
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState("");
-
+  const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const total = useMemo(() => items.reduce((s, i) => s + i.subtotal, 0), [items]);
+  const activeCount = useMemo(() => list.filter((o) => o.status !== "Entregado").length, [list]);
 
-  const list = Array.isArray(data) ? data : [];
+  const chipOptions = useMemo(
+    () => [
+      { key: "all", label: "Todos", count: list.length },
+      { key: "pendientes", label: "Pendientes", count: list.filter(CHIP_FILTERS.pendientes).length, tone: "gray" },
+      { key: "enRuta", label: "En ruta", count: list.filter(CHIP_FILTERS.enRuta).length, tone: "teal" },
+      { key: "sinPago", label: "Sin pago", count: list.filter(CHIP_FILTERS.sinPago).length, tone: "amber" },
+    ],
+    [list],
+  );
 
-  const kpis = useMemo(() => ({
-    total: list.length,
-    pending: list.filter((o) => o.status === "Pendiente").length,
-    transit: list.filter((o) => o.status === "En Tránsito").length,
-    delivered: list.filter((o) => o.status === "Entregado").length,
-  }), [list]);
-
-  // Búsqueda por N° de pedido, cliente o correo + filtros de Estado/Pago.
-  // Los KPI de arriba se quedan calculados sobre `list` completa, no
-  // filtrada, mismo patrón que Logística/Inventario/Fabricación.
+  // Búsqueda por N° de pedido, cliente o correo + chip activo.
   const filteredList = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const byChip = CHIP_FILTERS[chip] || CHIP_FILTERS.all;
     return list.filter((o) => {
-      if (q) {
-        const haystack = `${o.orderNumber || ""} ${o.customer?.name || ""} ${o.customer?.email || ""}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      if (statusFilter && o.status !== statusFilter) return false;
-      if (paymentFilter && o.paymentStatus !== paymentFilter) return false;
-      return true;
+      if (!byChip(o)) return false;
+      if (!q) return true;
+      const haystack = `${o.orderNumber || ""} ${o.customer?.name || ""} ${o.customer?.email || ""}`.toLowerCase();
+      return haystack.includes(q);
     });
-  }, [list, search, statusFilter, paymentFilter]);
+  }, [list, search, chip]);
 
-  const hasActiveFilters = Boolean(search || statusFilter || paymentFilter);
-
-  function clearFilters() {
-    setSearch("");
-    setStatusFilter("");
-    setPaymentFilter("");
-  }
+  const selected = useMemo(() => list.find((o) => o._id === selectedId) || null, [list, selectedId]);
 
   function openCreate() {
     setEditingId(null);
@@ -146,13 +331,16 @@ function Pedidos() {
       status: o.status || "Pendiente",
       paymentStatus: o.paymentStatus || "Pendiente",
     });
+    // Se conservan los campos de avance de cada línea (verificado, empacado,
+    // enviado a fabricación, lote…) para que editar datos del cliente o del
+    // pago no borre el progreso en Inventario/Fabricación. El lote viene
+    // populado: se manda solo su id para que el backend lo castee.
     setItems(
       (o.items || []).map((i) => ({
-        product: i.product,
+        ...i,
         color: i.color || "",
-        quantity: i.quantity,
-        unitPrice: i.unitPrice,
         subtotal: i.subtotal ?? i.quantity * i.unitPrice,
+        manufacturingBatch: i.manufacturingBatch?._id || i.manufacturingBatch || undefined,
       })),
     );
     setLineForm(emptyLine);
@@ -209,6 +397,7 @@ function Pedidos() {
       } else {
         const res = await api.post("/orders", payload);
         toast.success(res?.orderNumber ? `Pedido ${res.orderNumber} creado` : "Pedido creado");
+        if (res?._id) setSelectedId(res._id);
       }
       setModalOpen(false);
       refetch();
@@ -224,148 +413,67 @@ function Pedidos() {
     try {
       await api.del(`/orders/${o._id}`);
       toast.success("Pedido eliminado");
+      if (selectedId === o._id) setSelectedId(null);
       refetch();
     } catch (err) {
       toast.error(err.message);
-    }
-  }
-
-  function openRequest(o) {
-    setRequestTarget(o);
-    setRequestModalOpen(true);
-  }
-
-  // Solicita a Inventario los productos de este pedido: no descuenta ni
-  // reserva stock, solo hace que el pedido aparezca en Inventario > Pedidos.
-  async function confirmRequest() {
-    setRequesting(true);
-    try {
-      await api.patch(`/orders/${requestTarget._id}/request-inventory`);
-      toast.success(`${requestTarget.orderNumber} solicitado a inventario`);
-      setRequestModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setRequesting(false);
     }
   }
 
   return (
     <div className="flex flex-col gap-3.5">
       <PageHeader
-        {...getPageMeta("/pedidos")}
+        title="Pedidos"
+        subtitle={`${fmtNumber(activeCount)} activos · selecciona un pedido para ver su ficha completa`}
         actions={
           <Button icon={IconPlus} onClick={openCreate}>
             Nuevo pedido
           </Button>
         }
       />
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total de pedidos" value={kpis.total} icon={IconOrders} trend={{ tone: "blue", label: "en sistema" }} />
-        <KpiCard label="Pendientes" value={kpis.pending} icon={IconOrders} trend={{ tone: kpis.pending ? "yellow" : "green", label: kpis.pending ? "Por procesar" : "Al día" }} />
-        <KpiCard label="En tránsito" value={kpis.transit} icon={IconTruck} trend={{ tone: "yellow", label: "en ruta" }} />
-        <KpiCard label="Entregados" value={kpis.delivered} icon={IconCheck} trend={{ tone: "green", label: "completados" }} />
-      </div>
 
-      <SectionCard title="Pedidos del e-commerce">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <IconSearch width={16} height={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar pedido, cliente, correo…"
-              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-brand-400"
-            />
-          </div>
-          <FilterSelect
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={selectFilterClass}
-            options={[{ value: "", label: "Estado: Todos" }, ...STATUSES.map((s) => ({ value: s, label: s }))]}
-          />
-          <FilterSelect
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value)}
-            className={selectFilterClass}
-            options={[{ value: "", label: "Pago: Todos" }, ...PAYMENT.map((p) => ({ value: p, label: p }))]}
-          />
-          {hasActiveFilters ? (
-            <button
-              onClick={clearFilters}
-              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50"
-            >
-              Limpiar filtros
-            </button>
-          ) : null}
-        </div>
-        <AsyncState
-          loading={loading}
-          error={error}
-          empty={!loading && filteredList.length === 0}
-          emptyText={hasActiveFilters ? "Ningún pedido coincide con los filtros." : "No hay pedidos."}
+      <MasterDetail listWidth={452}>
+        <ListPanel
+          header={
+            <>
+              <SearchInput value={search} onChange={setSearch} placeholder="Buscar pedido" />
+              <FilterChips options={chipOptions} value={chip} onChange={setChip} />
+            </>
+          }
         >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1480px] table-fixed text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-400">
-                  <th className="w-[150px] pb-3 pr-4 font-semibold">Pedido</th>
-                  <th className="w-[140px] pb-3 pr-4 font-semibold">Cliente</th>
-                  <th className="w-[150px] pb-3 pr-8 font-semibold">Correo</th>
-                  <th className="w-[120px] pb-3 pr-8 font-semibold">Teléfono</th>
-                  <th className="w-[200px] pb-3 pr-4 font-semibold">Dirección</th>
-                  <th className="w-[100px] pb-3 pr-8 font-semibold">Productos</th>
-                  <th className="w-[90px] pb-3 pr-4 font-semibold">Total</th>
-                  <th className="w-[110px] pb-3 pr-4 font-semibold">Pago</th>
-                  <th className="w-[160px] pb-3 pr-4 font-semibold">Estado</th>
-                  <th className="w-[260px] pb-3 font-semibold text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredList.map((o) => {
-                  return (
-                    <tr key={o._id} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4 font-semibold text-slate-800 whitespace-nowrap">{o.orderNumber}</td>
-                      <td className="py-3 pr-4">{o.customer?.name || "—"}</td>
-                      <td className="py-3 pr-8 w-[16ch] max-w-[16ch] whitespace-normal break-words">{o.customer?.email || "—"}</td>
-                      <td className="py-3 pr-8">{o.customer?.phone || "—"}</td>
-                      <td className="py-3 pr-4 w-[22ch] max-w-[22ch] whitespace-normal break-words">{o.customer?.address || "—"}</td>
-                      <td className="py-3 pr-8">
-                        <button onClick={() => setViewTarget(o)} className="block w-full rounded-lg bg-slate-100 px-3 py-1 text-center text-xs font-semibold text-slate-600 hover:bg-slate-200">
-                          Ver
-                        </button>
-                      </td>
-                      <td className="py-3 pr-4 tabular-nums">${Number(o.total || 0).toFixed(2)}</td>
-                      <td className="py-3 pr-4"><StatusPill status={o.paymentStatus} domain="pago" /></td>
-                      <td className="py-3 pr-4"><StatusPill status={o.status} domain="pedido" /></td>
-                      <td className="py-3">
-                        <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
-                          {o.inventoryRequestedAt ? (
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-tone-green px-2.5 py-1 text-tone-green-text">
-                              <IconCheck width={14} height={14} /> Solicitado
-                            </span>
-                          ) : (
-                            <button onClick={() => openRequest(o)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Solicitar</button>
-                          )}
-                          <button onClick={() => openEdit(o)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
-                          <button onClick={() => handleDelete(o)} className="rounded-lg bg-tone-rose px-2.5 py-1 text-tone-rose-text hover:brightness-95">Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </AsyncState>
-      </SectionCard>
+          {loading && !data ? (
+            <EmptyState title="Cargando pedidos…" />
+          ) : error ? (
+            <EmptyState title="No se pudieron cargar los pedidos" description={error} />
+          ) : filteredList.length === 0 ? (
+            <EmptyState
+              title={list.length === 0 ? "No hay pedidos." : "Ningún pedido coincide con la búsqueda."}
+            />
+          ) : (
+            filteredList.map((o) => (
+              <OrderRow key={o._id} order={o} selected={o._id === selectedId} onSelect={() => setSelectedId(o._id)} />
+            ))
+          )}
+        </ListPanel>
+
+        {selected ? (
+          <OrderDetail order={selected} onEdit={() => openEdit(selected)} onDelete={() => handleDelete(selected)} />
+        ) : (
+          <DetailPanel>
+            <EmptyState
+              icon={IconOrders}
+              title={selectedId && !loading ? "Este pedido ya no existe" : "Selecciona un pedido"}
+              description="Su ficha completa aparece aquí: recorrido, cliente, entrega y productos."
+            />
+          </DetailPanel>
+        )}
+      </MasterDetail>
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? "Editar pedido" : "Nuevo pedido"}
+        subtitle={form.orderNumber}
         size="lg"
         footer={
           <>
@@ -375,71 +483,63 @@ function Pedidos() {
         }
       >
         <form id="order-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* N° de pedido autogenerado (solo lectura) */}
-          <div className="sm:col-span-2">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Número de pedido</span>
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-              <span className="text-sm font-semibold text-slate-800">{form.orderNumber}</span>
-            </div>
-          </div>
           <Field label="Cliente" name="customerName" value={form.customerName} onChange={handleChange} required />
           <Field label="Correo del cliente" name="customerEmail" type="email" value={form.customerEmail} onChange={handleChange} />
           <Field label="Teléfono" name="customerPhone" value={form.customerPhone} onChange={handleChange} />
           <Field label="Dirección" name="customerAddress" value={form.customerAddress} onChange={handleChange} />
-          {/* El estado del pedido ya no se elige a mano acá: avanza solo según
-              lo que pasa en Inventario/Fabricación/Logística (ver
+          {/* El estado del pedido no se elige a mano: avanza solo según lo
+              que pasa en Inventario/Fabricación/Logística (ver
               computeOrderStatus en el backend). Un pedido nuevo siempre
               arranca en "Pendiente" (ver emptyForm); al editar, se muestra
               nada más de referencia. */}
           <div>
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Estado</span>
-            <div className="flex items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Estado</span>
+            <div className="flex h-[38px] items-center rounded-[10px] border border-dashed border-line bg-surface-2 px-3">
               <StatusPill status={form.status} domain="pedido" />
             </div>
           </div>
           <SelectField label="Estado de pago" name="paymentStatus" value={form.paymentStatus} onChange={handleChange} options={PAYMENT} />
 
-          {/* Productos del pedido: se arman en esta mini tabla en vez de ser
-              un solo Producto/Color/Cantidad/Precio unitario fijos, así un
-              mismo pedido puede llevar varios productos. */}
-          <div className="sm:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
-            <span className="block text-sm font-medium text-slate-700">Productos del pedido</span>
+          {/* Productos del pedido: se arman en esta mini tabla, así un mismo
+              pedido puede llevar varios productos. */}
+          <div className="flex flex-col gap-3 rounded-[12px] border border-line p-4 sm:col-span-2">
+            <span className="t-label">Productos del pedido</span>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.3fr_1fr_0.8fr_1fr_auto] sm:items-end">
               <SelectField size="sm" label="Producto" name="product" value={lineForm.product} onChange={handleLineChange} options={PRODUCTS} />
               <SelectField size="sm" label="Color" name="color" value={lineForm.color} onChange={handleLineChange} options={COLORS} placeholder="Sin color" />
               <CompactField label="Cantidad" name="quantity" type="number" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.quantity} onChange={handleLineChange} />
               <CompactField label="Precio unitario" name="unitPrice" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} onWheel={blockWheel} value={lineForm.unitPrice} onChange={handleLineChange} />
-              <button type="button" onClick={addLine} className="h-fit rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
+              <Button size="row" onClick={addLine}>
                 Agregar
-              </button>
+              </Button>
             </div>
 
             {items.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left">
                   <thead>
-                    <tr className="text-xs uppercase tracking-wide text-slate-400">
-                      <th className="pb-2 pr-3 font-semibold">Producto</th>
-                      <th className="pb-2 pr-3 font-semibold">Color</th>
-                      <th className="pb-2 pr-3 font-semibold">Cantidad</th>
-                      <th className="pb-2 pr-3 font-semibold">Precio unitario</th>
-                      <th className="pb-2 pr-3 font-semibold">Subtotal</th>
-                      <th className="pb-2 font-semibold text-right">Quitar</th>
+                    <tr className="h-8 border-b border-line-soft">
+                      <th className="t-label pr-3">Producto</th>
+                      <th className="t-label pr-3">Color</th>
+                      <th className="t-label pr-3 text-right">Cant.</th>
+                      <th className="t-label pr-3 text-right">Unitario</th>
+                      <th className="t-label pr-3 text-right">Subtotal</th>
+                      <th className="t-label text-right">Quitar</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {items.map((it, idx) => (
-                      <tr key={idx} className="text-slate-600">
-                        <td className="py-2 pr-3 font-semibold text-slate-800">{it.product}</td>
-                        <td className="py-2 pr-3">{it.color || "—"}</td>
-                        <td className="py-2 pr-3 tabular-nums">{it.quantity}</td>
-                        <td className="py-2 pr-3 tabular-nums">${it.unitPrice.toFixed(2)}</td>
-                        <td className="py-2 pr-3 tabular-nums">${it.subtotal.toFixed(2)}</td>
-                        <td className="py-2 text-right">
+                      <tr key={idx} className="h-10 border-b border-line-soft last:border-0">
+                        <td className="t-row-name pr-3">{it.product}</td>
+                        <td className="t-row pr-3">{it.color || "—"}</td>
+                        <td className="t-row pr-3 text-right tabular-nums">{fmtNumber(it.quantity)}</td>
+                        <td className="t-row pr-3 text-right tabular-nums">{fmtMoney(it.unitPrice)}</td>
+                        <td className="t-row pr-3 text-right tabular-nums">{fmtMoney(it.subtotal)}</td>
+                        <td className="text-right">
                           <button
                             type="button"
                             onClick={() => removeLine(idx)}
-                            className="rounded-lg p-1 text-red-500 transition hover:bg-red-50"
+                            className="rounded-[8px] p-1 text-tone-rose-text transition hover:bg-tone-rose"
                             aria-label={`Quitar ${it.product}`}
                           >
                             <IconClose width={14} height={14} />
@@ -451,75 +551,15 @@ function Pedidos() {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-slate-400">Aún no hay productos agregados a este pedido.</p>
+              <p className="t-aux">Aún no hay productos agregados a este pedido.</p>
             )}
           </div>
 
-          <div className="sm:col-span-2 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Total del pedido: <b className="text-slate-900">${total.toFixed(2)}</b>
+          <div className="flex items-center justify-between rounded-[12px] bg-surface-2 px-4 py-3 sm:col-span-2">
+            <span className="text-[13px] font-semibold text-ink-2">Total del pedido</span>
+            <span className="text-[16px] font-bold tabular-nums text-ink">{fmtMoney(total)}</span>
           </div>
         </form>
-      </Modal>
-
-      <Modal
-        open={!!viewTarget}
-        onClose={() => setViewTarget(null)}
-        title={`Productos del pedido ${viewTarget?.orderNumber || ""}`}
-        footer={
-          <button onClick={() => setViewTarget(null)} className={buttonClass("secondary", "modal")}>Cerrar</button>
-        }
-      >
-        {viewTarget?.items?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-400">
-                  <th className="pb-2 pr-3 font-semibold">Producto</th>
-                  <th className="pb-2 pr-3 font-semibold">Color</th>
-                  <th className="pb-2 pr-3 font-semibold">Cantidad</th>
-                  <th className="pb-2 pr-3 font-semibold">Precio unitario</th>
-                  <th className="pb-2 font-semibold">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {viewTarget.items.map((it, idx) => (
-                  <tr key={idx} className="text-slate-600">
-                    <td className="py-2 pr-3 font-semibold text-slate-800">{it.product}</td>
-                    <td className="py-2 pr-3">{it.color || "—"}</td>
-                    <td className="py-2 pr-3 tabular-nums">{it.quantity}</td>
-                    <td className="py-2 pr-3 tabular-nums">${Number(it.unitPrice || 0).toFixed(2)}</td>
-                    <td className="py-2 tabular-nums">${Number(it.subtotal || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-3 rounded-xl bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
-              Total del pedido: <b className="text-slate-900">${Number(viewTarget.total || 0).toFixed(2)}</b>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-400">Este pedido no tiene productos.</p>
-        )}
-      </Modal>
-
-      <Modal
-        open={requestModalOpen}
-        onClose={() => setRequestModalOpen(false)}
-        title="Solicitar a inventario"
-        footer={
-          <>
-            <button onClick={() => setRequestModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
-            <button onClick={confirmRequest} disabled={requesting} className={buttonClass("primary", "modal")}>
-              {requesting ? "Solicitando…" : "Confirmar"}
-            </button>
-          </>
-        }
-      >
-        {requestTarget ? (
-          <p className="rounded-xl bg-brand-50 px-3.5 py-2.5 text-sm text-brand-800">
-            Solicitar a inventario los productos para este pedido ({requestTarget.orderNumber}).
-          </p>
-        ) : null}
       </Modal>
 
       <ConfirmModal {...confirmProps} />

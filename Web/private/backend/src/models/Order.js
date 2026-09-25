@@ -63,6 +63,15 @@ const deliverySchema = new Schema(
   { _id: false },
 );
 
+// Un registro del historial de estados del pedido.
+const statusHistorySchema = new Schema(
+  {
+    status: { type: String, required: true },
+    at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     orderNumber: {
@@ -110,11 +119,19 @@ const orderSchema = new Schema(
     notes: {
       type: String,
     },
-    // Se llena al confirmar "Solicitar" en Pedidos: marca que los productos de
-    // este pedido se solicitaron a Inventario. Ahí aparece en la pestaña
-    // "Pedidos" hasta que alguien lo quite de la lista (no afecta stock).
-    inventoryRequestedAt: {
+    // Fecha en que el pedido pasó a Inventario. Se llena sola al crearse el
+    // pedido (aquí en insertOrder y en el checkout de public/backend); el
+    // PATCH /orders/:id/request-inventory solo la vuelve a poner si falta.
+    // Inventario > Pedidos la usa para listar el pedido y el panel la
+    // muestra como «Pasó solo a Inventario». No afecta stock.
+    sentToInventoryAt: {
       type: Date,
+    },
+    // Registro de cada cambio de status (incluida la creación). Solo se
+    // escribe a través de setOrderStatus (src/lib/orderStatus.js).
+    statusHistory: {
+      type: [statusHistorySchema],
+      default: [],
     },
   },
   {

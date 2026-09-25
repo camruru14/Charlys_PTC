@@ -3,6 +3,7 @@
     fmtNumber(1234)        -> "1,234"
     fmtMoney(1234.5)       -> "$1,234.50"
     fmtDate(d)             -> "19 sep"
+    fmtDateYear(d)         -> "19 sep 2026"
     fmtDateTime(d)         -> "19 sep · 14:10"
     fmtTime(d)             -> "09:40"
     fmtRelativeDay(d)      -> "hoy" | "ayer" | "19 sep"
@@ -31,6 +32,12 @@ export function fmtDate(value) {
   const d = toDate(value);
   if (!d) return "—";
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+export function fmtDateYear(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return `${fmtDate(d)} ${d.getFullYear()}`;
 }
 
 export function fmtTime(value) {

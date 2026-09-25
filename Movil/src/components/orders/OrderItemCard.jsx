@@ -8,7 +8,7 @@ import { formatCurrency } from "../../lib/format";
 // Una línea de un pedido, con los botones de acción que correspondan a su
 // estado ACTUAL — nunca se muestra un botón para una acción que no aplica
 // en ese momento (ver PARTE 1 de la Fase 4):
-//   1. Pedido sin `inventoryRequestedAt`: sin botones todavía.
+//   1. Pedido sin `sentToInventoryAt`: sin botones todavía.
 //   2. Línea empacada: badge "Empacado ✓", listo.
 //   3. Con lote de fabricación sin completar: solo texto informativo.
 //   4. Con lote de fabricación completado y sin empacar: "Empacar (de

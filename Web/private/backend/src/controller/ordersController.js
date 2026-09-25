@@ -6,6 +6,7 @@ import batchModel from "../models/ProductionBatch.js";
 import transactionModel from "../models/Transaction.js";
 import { generateBatchNumber } from "./productionBatchesController.js";
 import { generateReference } from "./transactionsController.js";
+import { setOrderStatus } from "../lib/orderStatus.js";
 
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...)
 async function generateOrderNumber() {
@@ -124,19 +125,23 @@ ordersController.insertOrder = async (req, res) => {
 
     const orderNumber = await generateOrderNumber();
 
+    // El pedido pasa solo a Inventario al crearse (sentToInventoryAt) y su
+    // status inicial queda como primer registro de statusHistory.
+    const createdAt = new Date();
     const newOrder = new orderModel({
       orderNumber,
       customer,
       items,
       total,
-      status,
       paymentStatus,
       notes,
+      sentToInventoryAt: createdAt,
     });
+    setOrderStatus(newOrder, status || "Pendiente", createdAt);
 
     await newOrder.save();
 
-    res.json({ message: "Order saved", orderNumber });
+    res.json({ message: "Order saved", orderNumber, _id: newOrder._id });
   } catch (error) {
     console.log("error " + error);
     res.status(500).json({ message: "Error interno del servidor." });
@@ -152,22 +157,30 @@ ordersController.updateOrder = async (req, res) => {
     if (!existing) {
       return res.status(404).json({ message: "Order not found" });
     }
+    const previousPaymentStatus = existing.paymentStatus;
+
+    // Solo se pisan los campos que llegan en el body (igual que el $set
+    // anterior, que ignoraba los undefined).
+    const fields = { customer, items, total, paymentStatus, notes };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) existing.set(key, value);
+    }
+    setOrderStatus(existing, status);
 
     // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
     // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
     // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
-    const update = { $set: { customer, items, total, status, paymentStatus, notes } };
     if (status !== "En Tránsito" && status !== "Entregado") {
-      update.$unset = { delivery: "" };
+      existing.delivery = undefined;
     }
 
-    await orderModel.findByIdAndUpdate(req.params.id, update, { returnDocument: "after" });
+    await existing.save();
 
     // Si paymentStatus acaba de cambiar a "Pagado"/"Reembolsado" (y antes no lo
     // era), genera la transacción de Finanzas correspondiente automáticamente.
-    // Se compara contra existing.paymentStatus (el valor antes de este guardado)
-    // para que solo dispare en la transición real, no en cada guardado posterior.
-    if (paymentStatus && paymentStatus !== existing.paymentStatus) {
+    // Se compara contra el paymentStatus de antes de este guardado para que
+    // solo dispare en la transición real, no en cada guardado posterior.
+    if (paymentStatus && paymentStatus !== previousPaymentStatus) {
       const orderTotal = total ?? existing.total;
       if (paymentStatus === "Pagado") {
         await createOrderPaymentTransaction(
@@ -196,15 +209,20 @@ ordersController.updateStatus = async (req, res) => {
   try {
     const { status } = req.body;
 
+    const order = await orderModel.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    setOrderStatus(order, status);
     // Si el pedido sale del flujo de despacho activo (deja de estar "En Tránsito" o "Entregado"),
     // se limpia la asignación de logística previa: motorista, vehículo, etc. Así, si más adelante
     // vuelve a "En Tránsito", aparece sin asignar en vez de arrastrar al motorista anterior.
-    const update = { $set: { status } };
     if (status !== "En Tránsito" && status !== "Entregado") {
-      update.$unset = { delivery: "" };
+      order.delivery = undefined;
     }
 
-    await orderModel.findByIdAndUpdate(req.params.id, update, { returnDocument: "after" });
+    await order.save();
 
     res.json({ message: "Order status updated" });
   } catch (error) {
@@ -258,7 +276,7 @@ ordersController.assignDelivery = async (req, res) => {
     }
 
     order.delivery = delivery;
-    order.status = status;
+    setOrderStatus(order, status);
     order.markModified("delivery");
     await order.save();
 
@@ -280,12 +298,15 @@ ordersController.deleteOrder = async (req, res) => {
   }
 };
 
-// Solicitar a Inventario los productos de este pedido (botón "Solicitar" en
-// Pedidos): solo marca la fecha de solicitud, así aparece en Inventario >
-// Pedidos. No reserva ni descuenta stock.
+// Reenvía el aviso a Inventario: pone sentToInventoryAt solo si falta
+// (idempotente; todo pedido ya lo recibe al crearse). No reserva ni
+// descuenta stock y no se dispara automáticamente desde ningún otro punto.
 ordersController.requestInventory = async (req, res) => {
   try {
-    await orderModel.findByIdAndUpdate(req.params.id, { inventoryRequestedAt: new Date() });
+    await orderModel.updateOne(
+      { _id: req.params.id, sentToInventoryAt: { $exists: false } },
+      { $set: { sentToInventoryAt: new Date() } },
+    );
     res.json({ message: "Inventory requested" });
   } catch (error) {
     console.log("error " + error);
@@ -300,6 +321,8 @@ ordersController.requestInventory = async (req, res) => {
 // desmarca verified/packed de todos los productos. Así, si el pedido se
 // vuelve a solicitar más adelante, aparece limpio ("Sin Verificar") en vez
 // de arrastrar un estado viejo, y el stock no se descuenta dos veces.
+// Como sentToInventoryAt se borra, el pedido sale de Inventario > Pedidos
+// hasta que se reenvíe con PATCH request-inventory.
 ordersController.cancelInventoryRequest = async (req, res) => {
   try {
     const order = await orderModel.findById(req.params.id);
@@ -346,12 +369,12 @@ ordersController.cancelInventoryRequest = async (req, res) => {
     }
 
     order.markModified("items");
-    order.inventoryRequestedAt = undefined;
+    order.sentToInventoryAt = undefined;
     // Si "Empacar" o "Enviar a fabricación" habían avanzado el estado, se
     // revierte junto con el resto del rastro (ya no queda nada verificado,
     // empacado ni enviado a fabricación).
     if (order.status === "Empacado" || order.status === "En Fabricación") {
-      order.status = "Pendiente";
+      setOrderStatus(order, "Pendiente");
     }
 
     await order.save();
@@ -418,7 +441,7 @@ ordersController.verifyOrderItem = async (req, res) => {
     item.verifiedWarehouse = warehouse;
     item.verifiedAt = new Date();
     order.markModified("items");
-    order.status = computeOrderStatus(order);
+    setOrderStatus(order, computeOrderStatus(order));
     await order.save();
 
     res.json({ message: "Order item verified" });
@@ -452,7 +475,7 @@ ordersController.packOrderItem = async (req, res) => {
     item.packedAt = new Date();
     item.packedLocation = "Almacén";
     order.markModified("items");
-    order.status = computeOrderStatus(order);
+    setOrderStatus(order, computeOrderStatus(order));
     // Mismo criterio que updateStatus: si no hay motorista asignado, se limpia
     // cualquier resto de una asignación de logística vieja. Si ya hay
     // motorista (Logística puede asignar apenas el primer producto quede
@@ -492,7 +515,7 @@ ordersController.sendItemToManufacturing = async (req, res) => {
     item.sentToManufacturing = true;
     item.sentToManufacturingAt = new Date();
     order.markModified("items");
-    order.status = computeOrderStatus(order);
+    setOrderStatus(order, computeOrderStatus(order));
     await order.save();
 
     res.json({ message: "Order item sent to manufacturing" });
@@ -526,7 +549,7 @@ ordersController.cancelManufacturingRequest = async (req, res) => {
     item.manufacturingBatch = undefined;
     item.manufacturedAt = undefined;
     order.markModified("items");
-    order.status = computeOrderStatus(order);
+    setOrderStatus(order, computeOrderStatus(order));
 
     await order.save();
 
@@ -610,7 +633,7 @@ ordersController.packManufacturedItem = async (req, res) => {
     item.packedAt = new Date();
     item.packedLocation = "Fabricación";
     order.markModified("items");
-    order.status = computeOrderStatus(order);
+    setOrderStatus(order, computeOrderStatus(order));
     await order.save();
 
     res.json({ message: "Order item packed from manufacturing" });
@@ -649,7 +672,7 @@ ordersController.confirmPickup = async (req, res) => {
     // despacho" a "en tránsito" (salvo que ya estuviera "Entregado", que no
     // debería retroceder por confirmar una parada tardía).
     if (isFullyCollected(order, order.delivery) && order.delivery.dispatchStatus !== "Entregado") {
-      order.status = "En Tránsito";
+      setOrderStatus(order, "En Tránsito");
     }
 
     order.markModified("delivery");

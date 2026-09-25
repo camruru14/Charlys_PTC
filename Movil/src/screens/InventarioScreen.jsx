@@ -128,8 +128,8 @@ export default function InventarioScreen({ navigation }) {
   const requestedOrders = useMemo(
     () =>
       orders
-        .filter((o) => o.inventoryRequestedAt)
-        .sort((a, b) => new Date(b.inventoryRequestedAt) - new Date(a.inventoryRequestedAt)),
+        .filter((o) => o.sentToInventoryAt)
+        .sort((a, b) => new Date(b.sentToInventoryAt) - new Date(a.sentToInventoryAt)),
     [orders],
   );
   const pedidoInfoOrder = useMemo(

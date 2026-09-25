@@ -253,8 +253,8 @@ function Inventario() {
   const requestedOrders = useMemo(
     () =>
       orders
-        .filter((o) => o.inventoryRequestedAt)
-        .sort((a, b) => new Date(b.inventoryRequestedAt) - new Date(a.inventoryRequestedAt)),
+        .filter((o) => o.sentToInventoryAt)
+        .sort((a, b) => new Date(b.sentToInventoryAt) - new Date(a.sentToInventoryAt)),
     [orders]
   );
 
@@ -762,7 +762,7 @@ function Inventario() {
                             <p className="mt-1 text-[11px] leading-tight text-slate-500">{caption || "Sin productos"}</p>
                           </div>
                         </td>
-                        <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(order.inventoryRequestedAt)}</td>
+                        <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(order.sentToInventoryAt)}</td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
                             <button onClick={() => handleCancelRequest(order)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>

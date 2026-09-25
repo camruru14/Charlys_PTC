@@ -140,6 +140,10 @@ ordersController.checkout = async (req, res) => {
     // 3) Pago aprobado: ahora sí se crea el pedido, ya marcado como pagado.
     const orderNumber = await generateOrderNumber();
 
+    // El pedido pasa solo a Inventario al crearse: sentToInventoryAt y el
+    // primer registro de statusHistory llevan la misma fecha de creación
+    // (ver private/backend/src/lib/orderStatus.js para el resto del ciclo).
+    const createdAt = new Date();
     const order = new orderModel({
       orderNumber,
       customer: {
@@ -154,6 +158,8 @@ ordersController.checkout = async (req, res) => {
       notes: req.body.notes,
       status: "Procesando",
       paymentStatus: "Pagado",
+      statusHistory: [{ status: "Procesando", at: createdAt }],
+      sentToInventoryAt: createdAt,
     });
     await order.save();
 

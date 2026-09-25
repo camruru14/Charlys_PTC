@@ -53,6 +53,14 @@ const deliverySchema = new Schema(
   { _id: false },
 );
 
+const statusHistorySchema = new Schema(
+  {
+    status: { type: String, required: true },
+    at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     orderNumber: {
@@ -100,8 +108,14 @@ const orderSchema = new Schema(
     notes: {
       type: String,
     },
-    inventoryRequestedAt: {
+    // Ver private/backend/src/models/Order.js: fecha en que el pedido pasó
+    // a Inventario (aquí, la misma de creación) e historial de estados.
+    sentToInventoryAt: {
       type: Date,
+    },
+    statusHistory: {
+      type: [statusHistorySchema],
+      default: [],
     },
   },
   {

@@ -1157,9 +1157,21 @@
             "type": "string",
             "example": "Entregar en horario de oficina matutino"
           },
-          "inventoryRequestedAt": {
+          "sentToInventoryAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Fecha en que el pedido pasó a Inventario (se llena al crearse)."
+          },
+          "statusHistory": {
+            "type": "array",
+            "description": "Registro de cada cambio de status, incluida la creación.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "example": "Procesando" },
+                "at": { "type": "string", "format": "date-time" }
+              }
+            }
           },
           "createdAt": {
             "type": "string",
@@ -2124,8 +2136,8 @@
     "/api/orders/{id}/request-inventory": {
       "patch": {
         "tags": ["Pedidos"],
-        "summary": "Solicitar productos del pedido a inventario",
-        "description": "Marca la fecha `inventoryRequestedAt` para que el pedido aparezca en la pestaña 'Pedidos' de Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "summary": "Reenviar el pedido a inventario",
+        "description": "Idempotente: pone `sentToInventoryAt` solo si el pedido no la tiene (todo pedido la recibe al crearse), para que aparezca en la pestaña 'Pedidos' de Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
