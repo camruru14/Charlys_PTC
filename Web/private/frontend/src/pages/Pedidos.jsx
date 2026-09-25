@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
@@ -20,8 +20,9 @@ import { blockNegativeKey, blockWheel } from "../lib/numberInput";
 import { buttonClass } from "../lib/buttonStyles";
 import { fmtMoney, fmtNumber, fmtDate, fmtDateYear } from "../lib/format";
 import { orderJourneySteps, lastStatusEntry } from "../lib/orderJourney";
-import { PRODUCT_COLOR_HEX } from "../lib/catalogOptions";
-import { IconPlus, IconClose, IconMore, IconOrders } from "../lib/icons";
+import ColorSwatch from "../components/ui/ColorSwatch";
+import ActionsMenu from "../components/ui/ActionsMenu";
+import { IconPlus, IconClose, IconOrders } from "../lib/icons";
 
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
@@ -76,65 +77,6 @@ function previewOrderNumber(list) {
   return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
 }
 
-// Muestra de color de 11px junto al nombre del producto.
-function ColorSwatch({ color }) {
-  const hex = color ? PRODUCT_COLOR_HEX[color] : null;
-  return (
-    <span
-      className={`inline-block h-[11px] w-[11px] shrink-0 rounded-[3px] border border-line ${hex ? "" : "bg-line-soft"}`}
-      style={hex ? { backgroundColor: hex } : undefined}
-    />
-  );
-}
-
-// Menú «…» de la ficha con las acciones destructivas.
-function OrderActionsMenu({ onDelete }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("mousedown", onClick);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onClick);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Más acciones"
-        aria-expanded={open}
-        className={`${buttonClass("secondary", "detail")} w-[34px] !px-0`}
-      >
-        <IconMore width={17} height={17} />
-      </button>
-      {open ? (
-        <div className="absolute right-0 z-30 mt-1.5 w-48 rounded-[12px] border border-line bg-surface p-1.5 shadow-modal">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            className="flex w-full items-center rounded-[8px] px-2.5 py-2 text-left text-[13px] font-semibold text-tone-rose-text transition hover:bg-tone-rose"
-          >
-            Eliminar pedido
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function OrderRow({ order, selected, onSelect }) {
   return (
     <ListRow selected={selected} onClick={onSelect}>
@@ -175,7 +117,7 @@ function OrderDetail({ order, onEdit, onDelete }) {
             <Button variant="secondary" size="detail" onClick={onEdit}>
               Editar
             </Button>
-            <OrderActionsMenu onDelete={onDelete} />
+            <ActionsMenu items={[{ label: "Eliminar pedido", onClick: onDelete, danger: true }]} />
           </div>
         </div>
       }

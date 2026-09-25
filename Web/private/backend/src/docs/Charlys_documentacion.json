@@ -866,6 +866,15 @@
             "type": "boolean",
             "default": false
           },
+          "lastInbound": {
+            "type": "object",
+            "description": "Último ingreso de stock desde Fabricación (envío de un lote a bodega).",
+            "properties": {
+              "quantity": { "type": "number", "example": 3050 },
+              "batchNumber": { "type": "string", "example": "LOTE-2026-0416" },
+              "at": { "type": "string", "format": "date-time" }
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"

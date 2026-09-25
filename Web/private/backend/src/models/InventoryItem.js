@@ -32,6 +32,14 @@ const inventoryItemSchema = new Schema(
     // y bodega (o se crea uno nuevo si no hay coincidencia). Ver
     // inventoryController.sendToWarehouse.
     sentToWarehouse: { type: Boolean, default: false },
+    // Último ingreso de stock desde Fabricación (lo llena el envío de un lote
+    // a bodega). Inventario lo usa para marcar la fila como «ingreso
+    // reciente» si llegó hoy o ayer.
+    lastInbound: {
+      quantity: { type: Number, min: 0 },
+      batchNumber: { type: String },
+      at: { type: Date },
+    },
   },
   { timestamps: true },
 );

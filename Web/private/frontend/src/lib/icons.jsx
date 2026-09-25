@@ -182,3 +182,17 @@ export const IconMore = (p) => (
     <circle cx="19" cy="12" r="1.2" fill="currentColor" />
   </svg>
 );
+
+export const IconArrowUp = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 19V5" />
+    <path d="m5 12 7-7 7 7" />
+  </svg>
+);
+
+export const IconEdit = (p) => (
+  <svg {...base} {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);

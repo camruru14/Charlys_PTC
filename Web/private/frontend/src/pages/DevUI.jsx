@@ -214,9 +214,9 @@ function DevUI() {
             <MiniStepper segments={[{ tone: "green" }, { tone: "green" }, { tone: "blue" }, { tone: "amber" }, {}]} />
             <ProgressBar value={62} tone="blue" />
             <div className="flex flex-col gap-2">
-              <StockMeter stock={40} min={100} label="40 / 100" />
-              <StockMeter stock={150} min={100} label="150 / 100" />
-              <StockMeter stock={420} min={100} label="420 / 100" />
+              <StockMeter percent={10} tone="rose" label="Bajo mínimo" />
+              <StockMeter percent={45} tone="blue" label="Estable" />
+              <StockMeter percent={100} tone="green" label="Suficiente" />
             </div>
           </Section>
 
