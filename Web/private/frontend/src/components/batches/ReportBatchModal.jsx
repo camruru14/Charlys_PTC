@@ -1,5 +1,6 @@
 import Modal from "../ui/Modal";
 import { SelectField } from "../ui/Field";
+import { buttonClass } from "../../lib/buttonStyles";
 
 /*
   Modal de confirmación para "Reportar" un lote desde Fabricación.
@@ -23,8 +24,8 @@ function ReportBatchModal({ open, onClose, target, form, handleChange, handleSub
       title={`Reportar lote · ${target.batchNumber}`}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button onClick={handleSubmit} disabled={saving || !canReport} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+          <button onClick={onClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving || !canReport} className={buttonClass("primary", "modal")}>
             {saving ? "Reportando…" : "Confirmar reporte"}
           </button>
         </>

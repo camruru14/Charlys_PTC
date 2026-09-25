@@ -5,9 +5,10 @@ import { IconClose } from "../../lib/icons";
   Modal reutilizable. Se cierra con la tecla Escape o el botón de cerrar (la X
   o el de footer) — clic en el fondo NO cierra, para no perder datos de un
   formulario a medio llenar por un clic accidental fuera del modal.
-  Props: open, onClose, title, children, footer, size ("md" | "lg").
+  Props: open, onClose, title, subtitle, children, footer, size ("md" 470px |
+  "lg" 640px, para formularios de 2 columnas).
 */
-function Modal({ open, onClose, title, children, footer, size = "md" }) {
+function Modal({ open, onClose, title, subtitle, children, footer, size = "md" }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && onClose?.();
@@ -17,31 +18,33 @@ function Modal({ open, onClose, title, children, footer, size = "md" }) {
 
   if (!open) return null;
 
-  const maxW = size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const width = size === "lg" ? "max-w-[640px]" : "max-w-[470px]";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/32 p-4 sm:items-center">
       <div
-        className={`app-modal relative z-10 w-full ${maxW} rounded-2xl bg-white shadow-xl`}
+        role="dialog"
+        aria-modal="true"
+        className={`app-modal relative z-10 flex max-h-[calc(100dvh-32px)] w-full ${width} flex-col gap-4 rounded-2xl bg-surface px-6 py-[22px] shadow-modal`}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-[17px] font-bold text-ink">{title}</h3>
+            {subtitle ? <p className="mt-0.5 text-[12.5px] text-muted">{subtitle}</p> : null}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Cerrar"
+            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-canvas text-muted transition hover:text-ink"
           >
-            <IconClose width={18} height={18} />
+            <IconClose width={16} height={16} />
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">{children}</div>
 
-        {footer ? (
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
-            {footer}
-          </div>
-        ) : null}
+        {footer ? <div className="flex items-center justify-end gap-2.5">{footer}</div> : null}
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ function ProductCatalogCard({ product, onEdit, onDelete, onAddImages, uploading 
         ) : null}
         {product.active === false ? (
           <span className="absolute left-2 top-2">
-            <StatusPill status="Inactivo" />
+            <StatusPill status="Inactivo" domain="catalogo" />
           </span>
         ) : null}
       </div>
@@ -65,7 +65,7 @@ function ProductCatalogCard({ product, onEdit, onDelete, onAddImages, uploading 
               <span key={c} className="flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
                 <span
                   className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-slate-900/10"
-                  style={{ backgroundColor: PRODUCT_COLOR_HEX[c] || "#cbd5e1" }}
+                  style={{ backgroundColor: PRODUCT_COLOR_HEX[c] || "var(--color-line)" }}
                 />
                 {c}
               </span>

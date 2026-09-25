@@ -1,10 +1,11 @@
 import Modal from "./Modal";
+import Button from "./Button";
 
 /*
   Modal de confirmación genérico: reemplaza los window.confirm() de todo el
   sistema (ver hooks/useConfirm.js, que arma estas props a partir de un
   simple `await confirm(mensaje, opciones)`).
-  `danger` pinta el botón y el mensaje en rojo, para acciones destructivas
+  `danger` pinta el botón y el mensaje en rosa, para acciones destructivas
   (eliminar) — el resto usa el tono normal de marca.
 */
 function ConfirmModal({ open, title, message, confirmLabel, cancelLabel = "Cancelar", danger, loading, onConfirm, onCancel }) {
@@ -15,22 +16,16 @@ function ConfirmModal({ open, title, message, confirmLabel, cancelLabel = "Cance
       title={title}
       footer={
         <>
-          <button onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          <Button variant="secondary" size="modal" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
-              danger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700"
-            }`}
-          >
+          </Button>
+          <Button variant={danger ? "danger" : "primary"} size="modal" onClick={onConfirm} disabled={loading}>
             {loading ? "Procesando…" : confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >
-      <p className={`rounded-xl px-3.5 py-2.5 text-sm ${danger ? "bg-red-50 text-red-800" : "bg-slate-50 text-slate-700"}`}>{message}</p>
+      <p className={`rounded-[11px] px-3.5 py-2.5 text-[13px] ${danger ? "bg-tone-rose text-tone-rose-text" : "bg-surface-2 text-ink-2"}`}>{message}</p>
     </Modal>
   );
 }

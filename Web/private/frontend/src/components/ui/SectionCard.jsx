@@ -1,14 +1,14 @@
-/* Tarjeta de sección con encabezado y acción opcional. */
+/* Tarjeta de sección (radio 14px, borde line) con encabezado y acción opcional. */
 export function SectionCard({ title, action, children, className = "" }) {
   return (
-    <section className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm ${className}`}>
+    <section className={`overflow-hidden rounded-[14px] border border-line bg-surface ${className}`}>
       {title || action ? (
         <div className="flex items-center justify-between gap-3 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          <h2 className="t-card-title">{title}</h2>
           {action}
         </div>
       ) : null}
-      <div className="px-5 pb-5">{children}</div>
+      <div className={`px-5 pb-5 ${title || action ? "" : "pt-5"}`}>{children}</div>
     </section>
   );
 }
@@ -20,21 +20,21 @@ export function SectionCard({ title, action, children, className = "" }) {
 export function AsyncState({ loading, error, empty, emptyText = "Sin registros.", children }) {
   if (loading) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center text-sm font-medium text-slate-500">
+      <div className="rounded-[12px] border border-dashed border-line bg-surface-2 p-8 text-center text-[13px] font-medium text-muted">
         Cargando…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm font-medium text-red-700">
+      <div className="rounded-[12px] border border-tone-rose-dot/30 bg-tone-rose p-6 text-[13px] font-medium text-tone-rose-text">
         {error}
       </div>
     );
   }
   if (empty) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center text-sm font-medium text-slate-500">
+      <div className="rounded-[12px] border border-dashed border-line bg-surface-2 p-8 text-center text-[13px] font-medium text-muted">
         {emptyText}
       </div>
     );

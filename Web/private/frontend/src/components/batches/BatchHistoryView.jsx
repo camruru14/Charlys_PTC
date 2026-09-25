@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useFetch } from "../../hooks/useFetch";
 import { useBatchForm } from "../../hooks/useBatchForm";
-import { useDateRange, rangeLabel } from "../../context/DateRangeContext";
+import { useDateRange, rangeLabel } from "../../context/dateRange";
 import { SectionCard, AsyncState } from "../ui/SectionCard";
 import BatchToolbar from "./BatchToolbar";
 import BatchTable from "./BatchTable";
@@ -10,17 +10,22 @@ import BatchFormModal from "./BatchFormModal";
 import ConfirmModal from "../ui/ConfirmModal";
 import { defaultBatchFilters, filterBatches } from "../../lib/batchFilters";
 import { IconPlus } from "../../lib/icons";
+import PageHeader from "../ui/PageHeader";
+import DateRangePicker from "../ui/DateRangePicker";
+import Button from "../ui/Button";
+import { getPageMeta } from "../../lib/nav";
 
 /*
   Vista a pantalla completa del historial de lotes.
   Reutilizada por cada apartado que tiene su propio botón "Ver todo"
   (Dashboard y Fabricación), cada uno con su propio botón de "volver".
-  Incluye: filtro por fechas (en el TopBar), búsqueda y todos los filtros
+  Incluye: filtro por fechas (en las acciones del PageHeader), búsqueda y todos los filtros
   (producto, línea, estado, operario y cantidad producida).
   Cuando editable=true (Fabricación) permite editar y eliminar lotes.
 */
 function BatchHistoryView({ backTo, backLabel, editable = false }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const range = useDateRange();
   const { data, loading, error, refetch } = useFetch("/productionBatches");
   const [filters, setFilters] = useState(defaultBatchFilters);
@@ -36,28 +41,29 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
   }, [filtered]);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta(pathname)} actions={<DateRangePicker />} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={() => navigate(backTo)}
-          className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-slate-800"
+          className="flex items-center gap-1.5 text-[13px] font-semibold text-muted transition hover:text-ink"
         >
           ← {backLabel}
         </button>
-        <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+        <span className="rounded-full bg-primary-soft px-3 py-1 text-[12px] font-semibold text-primary-soft-text">
           Rango: {rangeLabel(range)}
         </span>
       </div>
 
       {/* Resumen del subconjunto filtrado */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Lotes encontrados</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{stats.count}</p>
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Lotes encontrados</p>
+          <p className="t-kpi mt-2">{stats.count}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Producción total</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{stats.produced.toLocaleString("es-SV")}</p>
+        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Producción total</p>
+          <p className="t-kpi mt-2">{stats.produced.toLocaleString("es-SV")}</p>
         </div>
       </div>
 
@@ -65,9 +71,9 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
         title="Todos los lotes"
         action={
           editable ? (
-            <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-              <IconPlus width={16} height={16} /> Nuevo Lote
-            </button>
+            <Button size="row" icon={IconPlus} onClick={openCreate}>
+              Nuevo Lote
+            </Button>
           ) : null
         }
       >

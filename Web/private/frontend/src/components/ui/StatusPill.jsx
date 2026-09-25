@@ -1,77 +1,46 @@
+import { normalizeStatus, statusTone } from "../../lib/statusDomains";
+
 /*
-  Etiqueta de estado (Status Pill).
-  Fondo suave + texto en negrita del mismo tono pero más oscuro. Este mapa es
-  la ÚNICA fuente de verdad para el color de cada estado de negocio en todo
-  el panel — cualquier componente que necesite pintar uno de estos conceptos
-  debe usar <StatusPill status="..." /> en vez de armar su propio badge o
-  pasar un tone a mano, así nunca se desincroniza entre pantallas:
-    Gris     -> Sin verificar
-    Azul     -> Verificado / En proceso / Procesando / A tiempo
-    Amarillo -> En Fabricación / Enviado a fabricación / Recolectando / En tránsito / Pendiente
-    Verde    -> Empacado / Entregado / Completado / Pagado
-    Rojo     -> Demorado / Alertas / Detenido
+  Etiqueta de estado (Status Pill). ÚNICA fuente de color de estados en todo
+  el panel: el color sale del mapa por dominio de lib/statusDomains.js, nunca
+  de un tono pasado a mano.
+    <StatusPill status="Empacado" domain="pedido" />
+    size:    "sm" (filas) | "lg" (encabezados de detalle)
+    variant: "pill" (con fondo) | "dot" (solo punto + texto, listas maestro)
 */
 
 const TONES = {
-  green: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  blue: "bg-brand-50 text-brand-700 ring-brand-600/20",
-  red: "bg-red-50 text-red-700 ring-red-600/20",
-  yellow: "bg-amber-50 text-amber-700 ring-amber-600/20",
-  gray: "bg-slate-100 text-slate-600 ring-slate-500/20",
-  // No están en STATUS_TONE a propósito: STATUS_TONE es la fuente de verdad
-  // compartida por toda la app, y estos dos tonos son solo para diferenciar
-  // las 6 etapas del pedido en la tabla de Pedidos.jsx (ver ORDER_STATUS_TONE
-  // ahí), pasados directo como `tone` sin pasar por el mapa global.
-  purple: "bg-purple-50 text-purple-700 ring-purple-600/20",
-  sky: "bg-sky-50 text-sky-700 ring-sky-600/20",
+  gray: { bg: "bg-tone-gray", text: "text-tone-gray-text", dot: "bg-tone-gray-dot", border: "border-tone-gray-dot/30" },
+  blue: { bg: "bg-tone-blue", text: "text-tone-blue-text", dot: "bg-tone-blue-dot", border: "border-tone-blue-dot/30" },
+  amber: { bg: "bg-tone-amber", text: "text-tone-amber-text", dot: "bg-tone-amber-dot", border: "border-tone-amber-dot/30" },
+  green: { bg: "bg-tone-green", text: "text-tone-green-text", dot: "bg-tone-green-dot", border: "border-tone-green-dot/30" },
+  rose: { bg: "bg-tone-rose", text: "text-tone-rose-text", dot: "bg-tone-rose-dot", border: "border-tone-rose-dot/30" },
+  purple: { bg: "bg-tone-purple", text: "text-tone-purple-text", dot: "bg-tone-purple-dot", border: "border-tone-purple-dot/30" },
+  teal: { bg: "bg-tone-teal", text: "text-tone-teal-text", dot: "bg-tone-teal-dot", border: "border-tone-teal-dot/30" },
 };
 
-// Mapa de estados de negocio -> tono de color
-const STATUS_TONE = {
-  // Verde
-  Completado: "green",
-  Entregado: "green",
-  Empacado: "green",
-  Pagado: "green",
-  Activo: "green",
-  Estable: "green",
-  Suficiente: "green",
-  // Azul
-  "En proceso": "blue",
-  "En Proceso": "blue",
-  Procesando: "blue",
-  Verificado: "blue",
-  "A tiempo": "blue",
-  // Rojo
-  Demorado: "red",
-  Detenido: "red",
-  Alerta: "red",
-  Crítico: "red",
-  Cancelado: "red",
-  Insuficiente: "red",
-  // Amarillo (mismo tono para "ámbar" y "amarillo": son el mismo concepto
-  // visual, solo dos nombres distintos según el contexto)
-  "En Tránsito": "yellow",
-  "En tránsito": "yellow",
-  "En Fabricación": "yellow",
-  Recolectando: "yellow",
-  Saliendo: "yellow",
-  Mantenimiento: "yellow",
-  Pendiente: "yellow",
-  Programado: "yellow",
-  // Gris
-  "Sin Verificar": "gray",
-};
+function StatusPill({ status, domain, size = "sm", variant = "pill" }) {
+  const label = normalizeStatus(status);
+  const tone = TONES[statusTone(label, domain)];
 
-function StatusPill({ status, tone }) {
-  const resolvedTone = tone || STATUS_TONE[status] || "gray";
+  if (variant === "dot") {
+    return (
+      <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px] font-semibold ${tone.text}`}>
+        <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${tone.dot}`} />
+        {label}
+      </span>
+    );
+  }
+
+  const sizing =
+    size === "lg"
+      ? `h-[26px] gap-1.5 rounded-[8px] border px-2.5 text-xs ${tone.border}`
+      : "h-[22px] gap-1.5 rounded-[7px] px-2 text-[11px]";
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${TONES[resolvedTone]}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-      {status}
+    <span className={`inline-flex items-center whitespace-nowrap font-semibold ${sizing} ${tone.bg} ${tone.text}`}>
+      <span className={`shrink-0 rounded-full ${size === "lg" ? "h-[7px] w-[7px]" : "h-1.5 w-1.5"} ${tone.dot}`} />
+      {label}
     </span>
   );
 }

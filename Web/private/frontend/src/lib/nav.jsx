@@ -10,6 +10,7 @@ import {
   IconTag,
 } from "./icons";
 
+// Módulos del menú lateral, en el orden en que aparecen en el riel.
 export const NAV_ITEMS = [
   {
     to: "/",
@@ -43,28 +44,28 @@ export const NAV_ITEMS = [
     to: "/logistica",
     label: "Logística",
     icon: IconTruck,
-    title: "Logística — Gestión de Flotas",
+    title: "Logística",
     subtitle: "Asignación de motoristas, vehículos y seguimiento de entregas",
   },
   {
     to: "/inventario",
     label: "Inventario",
     icon: IconBox,
-    title: "Inventario / Almacén",
+    title: "Inventario",
     subtitle: "Materia prima y stock de productos terminados",
   },
   {
     to: "/catalogo",
     label: "Catálogo",
     icon: IconTag,
-    title: "Catálogo — Tienda pública",
+    title: "Catálogo",
     subtitle: "Productos, precios, colores e imágenes de la tienda en línea",
   },
   {
     to: "/empleados",
     label: "Empleados",
     icon: IconUsers,
-    title: "Empleados — RRHH",
+    title: "Empleados",
     subtitle: "Asistencia, horas extra y planillas",
   },
 ];
@@ -87,13 +88,19 @@ export const EXTRA_META = [
     subtitle: "Todos los lotes con búsqueda, filtros y rango de fechas",
   },
   {
+    to: "/fabricacion/historial",
+    title: "Historial de Lotes",
+    subtitle: "Todos los lotes con búsqueda, filtros y rango de fechas",
+  },
+  {
     to: "/historial-transacciones",
     title: "Historial de Transacciones",
     subtitle: "Todas las transacciones con búsqueda, filtros y rango de fechas",
   },
 ];
 
-// Devuelve el encabezado (title/subtitle) que corresponde a una ruta.
+// Devuelve el encabezado (title/subtitle) que corresponde a una ruta. Cada
+// página lo pasa a <PageHeader {...getPageMeta("/ruta")} />.
 export function getPageMeta(pathname) {
   const all = [...NAV_ITEMS, ...BOTTOM_ITEMS, ...EXTRA_META];
   const match = all.find((item) => item.to === pathname);

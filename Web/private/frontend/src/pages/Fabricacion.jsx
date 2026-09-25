@@ -6,7 +6,7 @@ import { useFetch } from "../hooks/useFetch";
 import { useBatchForm } from "../hooks/useBatchForm";
 import { useDailyBatchForm } from "../hooks/useDailyBatchForm";
 import { useConfirm } from "../hooks/useConfirm";
-import { useDateRange } from "../context/DateRangeContext";
+import { useDateRange } from "../context/dateRange";
 import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import KpiCard from "../components/ui/KpiCard";
 import StatusPill from "../components/ui/StatusPill";
@@ -20,6 +20,12 @@ import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { FilterSelect } from "../components/ui/Field";
 import { IconFactory, IconAlert, IconCheck, IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import Tabs from "../components/ui/Tabs";
+import DateRangePicker from "../components/ui/DateRangePicker";
+import { useUrlState } from "../hooks/useUrlState";
+import { getPageMeta } from "../lib/nav";
 import {
   getManufacturingCounts,
   manufacturingMacroStatus,
@@ -36,6 +42,13 @@ import {
 const MANUFACTURING_STATUS_FILTERS = ["enCola", "enFabricacion", "parcial"];
 const PEDIDO_BATCH_STATUS_FILTERS = ["programado", "enProceso", "completado", "detenido", "parcial"];
 
+const TABS = [
+  { key: "fabricacion", label: "Lotes de fabricación" },
+  { key: "diario", label: "Lotes Diarios" },
+  { key: "pedidos", label: "Por fabricar" },
+  { key: "fabricacionPedidos", label: "Fabricación de pedidos" },
+];
+
 // Mismo alto que el buscador (py-1.5 text-xs), igual que selectFilterClass en Inventario.jsx.
 const selectFilterClass =
   "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
@@ -47,7 +60,7 @@ function Fabricacion() {
   const { data: dailyBatches, loading: dailyLoading, error: dailyError, refetch: refetchDaily } = useFetch("/dailyBatches");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchManufacturingOrders } = useFetch("/orders");
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("fabricacion");
+  const [activeTab, setActiveTab] = useUrlState("tab", "fabricacion", { allowed: TABS.map((t) => t.key) });
   // Se guarda el id del pedido, no el objeto, para que el modal "Ver" de
   // "Por fabricar" siempre refleje el estado más reciente de orders.
   const [manufacturingInfoOrderId, setManufacturingInfoOrderId] = useState(null);
@@ -234,14 +247,20 @@ function Fabricacion() {
   // Fabricación > Pedidos), separadas de las de useBatchForm/useDailyBatchForm.
   const { confirm, confirmProps: pageConfirmProps } = useConfirm();
 
-  // Abrir el modal automáticamente si venimos de "+ Nuevo Lote" del Sidebar
+  // Abrir el modal de nuevo lote si se llega con /fabricacion?nuevo=1
+  // (batchModalVariant ya arranca en "diario"). El parámetro se quita de la
+  // URL para que recargar la página no vuelva a abrirlo.
   useEffect(() => {
-    if (searchParams.get("new") === "1") {
-      setBatchModalVariant("diario");
-      openCreate();
-      searchParams.delete("new");
-      setSearchParams(searchParams, { replace: true });
-    }
+    if (searchParams.get("nuevo") !== "1") return;
+    openCreate();
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete("nuevo");
+        return params;
+      },
+      { replace: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -331,54 +350,15 @@ function Fabricacion() {
   }, [rangeList]);
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/fabricacion")} actions={<DateRangePicker />} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard label="Producción total" value={kpis.produced.toLocaleString("es-SV")} icon={IconFactory} trend={{ tone: "blue", label: `${rangeList.length} lotes` }} />
         <KpiCard label="Lotes en proceso" value={kpis.inProcess} icon={IconCheck} trend={{ tone: "blue", label: "activos" }} />
         <KpiCard label="Lotes detenidos" value={kpis.stopped} icon={IconAlert} trend={{ tone: kpis.stopped ? "red" : "green", label: kpis.stopped ? "Alerta" : "OK" }} />
       </div>
 
-      {/* Selector de tabla: Lotes de fabricación / Lotes Diarios / Por
-          fabricar / Fabricación de pedidos. Con 4 pestañas (la última
-          bastante larga) no cabe en pantallas chicas — overflow-x-auto lo
-          deja como scroll horizontal contenido en vez de desbordar la
-          página, mismo criterio que las tablas. */}
-      <div className="overflow-x-auto">
-        <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-          <button
-            onClick={() => setActiveTab("fabricacion")}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "fabricacion" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Lotes de fabricación
-          </button>
-          <button
-            onClick={() => setActiveTab("diario")}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "diario" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Lotes Diarios
-          </button>
-          <button
-            onClick={() => setActiveTab("pedidos")}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "pedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Por fabricar
-          </button>
-          <button
-            onClick={() => setActiveTab("fabricacionPedidos")}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "fabricacionPedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Fabricación de pedidos
-          </button>
-        </div>
-      </div>
+      <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === "fabricacion" ? (
         <SectionCard
@@ -421,7 +401,7 @@ function Fabricacion() {
                       <td className="py-3 pr-4">{b.color || "—"}</td>
                       <td className="py-3 pr-4">{b.productionLine || "—"}</td>
                       <td className="py-3 pr-4 tabular-nums">{(b.producedQuantity || 0).toLocaleString("es-SV")}</td>
-                      <td className="py-3 pr-4"><StatusPill status={b.status} /></td>
+                      <td className="py-3 pr-4"><StatusPill status={b.status} domain="lote" /></td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
                           {b.lastReportedAt ? (
@@ -723,7 +703,7 @@ function Fabricacion() {
         title={`Productos enviados a fabricar · ${manufacturingInfoGroup?.order?.orderNumber || ""}`}
         size="lg"
         footer={
-          <button onClick={() => setManufacturingInfoOrderId(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+          <button onClick={() => setManufacturingInfoOrderId(null)} className={buttonClass("secondary", "modal")}>Cerrar</button>
         }
       >
         {manufacturingInfoGroup?.lines?.length ? (
@@ -761,7 +741,7 @@ function Fabricacion() {
         title={`Lotes del pedido ${pedidoBatchInfoGroup?.order?.orderNumber || ""}`}
         size="lg"
         footer={
-          <button onClick={() => setPedidoBatchInfoOrderId(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+          <button onClick={() => setPedidoBatchInfoOrderId(null)} className={buttonClass("secondary", "modal")}>Cerrar</button>
         }
       >
         {pedidoBatchInfoGroup?.batches?.length ? (
@@ -775,7 +755,7 @@ function Fabricacion() {
                       <p className="font-semibold text-slate-800">{b.batchNumber}</p>
                       <p className="text-xs text-slate-500">{b.product} · {b.color || "—"} · {b.productionLine || "—"}</p>
                     </div>
-                    <StatusPill status={b.status} />
+                    <StatusPill status={b.status} domain="lote" />
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs text-slate-500">
@@ -785,7 +765,7 @@ function Fabricacion() {
                       {!pedidoLine ? (
                         <span className="text-slate-400">Sin pedido vinculado</span>
                       ) : pedidoLine.item.packed ? (
-                        <StatusPill status="Empacado" />
+                        <StatusPill status="Empacado" domain="lote" />
                       ) : b.status === "Completado" ? (
                         <button onClick={() => handlePackManufactured(pedidoLine)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Empacar</button>
                       ) : (

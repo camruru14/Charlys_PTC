@@ -1,6 +1,6 @@
 /*
   Gráfico de dona (donut chart) construido con SVG puro, sin librerías.
-  Recibe: data = [{ label, value, color }]
+  Recibe: data = [{ label, value, color }] (color: CHART_COLORS de lib/tones.js)
 */
 
 function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
@@ -8,7 +8,13 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  let offset = 0;
+  // Largo de cada arco y su desplazamiento acumulado, calculados antes de pintar.
+  const arcs = data.reduce((acc, d) => {
+    const dash = (d.value / total) * circumference;
+    const offset = acc.length ? acc[acc.length - 1].offset + acc[acc.length - 1].dash : 0;
+    acc.push({ ...d, dash, offset });
+    return acc;
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-6">
@@ -19,31 +25,26 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="#eef2f7"
+            stroke="var(--color-chart-grid)"
             strokeWidth={thickness}
           />
-          {data.map((d, i) => {
-            const fraction = d.value / total;
-            const dash = fraction * circumference;
+          {arcs.map((a, i) =>
             // Con value 0, un trazo de largo 0 + strokeLinecap="round" dibuja un punto fantasma; se omite.
-            if (dash <= 0) return null;
-            const circle = (
+            a.dash <= 0 ? null : (
               <circle
                 key={i}
                 cx={size / 2}
                 cy={size / 2}
                 r={radius}
                 fill="none"
-                stroke={d.color}
+                stroke={a.color}
                 strokeWidth={thickness}
-                strokeDasharray={`${dash} ${circumference - dash}`}
-                strokeDashoffset={-offset}
+                strokeDasharray={`${a.dash} ${circumference - a.dash}`}
+                strokeDashoffset={-a.offset}
                 strokeLinecap="round"
               />
-            );
-            offset += dash;
-            return circle;
-          })}
+            ),
+          )}
         </g>
         {centerLabel ? (
           <text
@@ -51,8 +52,8 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
             y="50%"
             textAnchor="middle"
             dominantBaseline="central"
-            className="fill-slate-900"
-            style={{ fontSize: 22, fontWeight: 700 }}
+            className="fill-ink"
+            style={{ fontSize: 22, fontWeight: 600 }}
           >
             {centerLabel}
           </text>
@@ -61,15 +62,12 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
 
       <ul className="w-full space-y-2">
         {data.map((d, i) => (
-          <li key={i} className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2 text-slate-600">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: d.color }}
-              />
+          <li key={i} className="flex items-center justify-between text-[13px]">
+            <span className="flex items-center gap-2 text-ink-2">
+              <span className="h-2 w-2 rounded-[3px]" style={{ backgroundColor: d.color }} />
               {d.label}
             </span>
-            <span className="font-semibold text-slate-900">
+            <span className="font-semibold tabular-nums text-ink">
               {Math.round((d.value / total) * 100)}%
             </span>
           </li>

@@ -11,27 +11,15 @@ import { Field, SelectField, FilterSelect } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { blockNegativeKey, blockWheel } from "../lib/numberInput";
 import { IconOrders, IconTruck, IconCheck, IconPlus, IconClose, IconSearch } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import Button from "../components/ui/Button";
+import { getPageMeta } from "../lib/nav";
 
 // Mismas categorías que ya mostraba el dropdown de Estado antes de que
 // pasara a ser un StatusPill de solo lectura — acá se usan solo como
 // opciones del filtro, no para editar el pedido.
 const STATUSES = ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
-
-// Un color por cada una de las 6 etapas, exclusivo de esta tabla: el mapa
-// global STATUS_TONE (StatusPill.jsx) comparte ámbar entre "Pendiente"/"En
-// Fabricación"/"En Tránsito" y verde entre "Empacado"/"Entregado" porque esas
-// mismas palabras significan otra cosa en otras pantallas (ej. "Empacado" a
-// nivel de producto individual en Inventario > Pedidos, que debe seguir
-// verde). Acá se pasa como `tone` explícito, que StatusPill prioriza sobre
-// STATUS_TONE, así que no afecta a nadie más.
-const ORDER_STATUS_TONE = {
-  Pendiente: "gray",
-  Procesando: "blue",
-  "En Fabricación": "yellow",
-  Empacado: "purple",
-  "En Tránsito": "sky",
-  Entregado: "green",
-};
 
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
@@ -264,22 +252,23 @@ function Pedidos() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader
+        {...getPageMeta("/pedidos")}
+        actions={
+          <Button icon={IconPlus} onClick={openCreate}>
+            Nuevo pedido
+          </Button>
+        }
+      />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total de pedidos" value={kpis.total} icon={IconOrders} trend={{ tone: "blue", label: "en sistema" }} />
         <KpiCard label="Pendientes" value={kpis.pending} icon={IconOrders} trend={{ tone: kpis.pending ? "yellow" : "green", label: kpis.pending ? "Por procesar" : "Al día" }} />
         <KpiCard label="En tránsito" value={kpis.transit} icon={IconTruck} trend={{ tone: "yellow", label: "en ruta" }} />
         <KpiCard label="Entregados" value={kpis.delivered} icon={IconCheck} trend={{ tone: "green", label: "completados" }} />
       </div>
 
-      <SectionCard
-        title="Pedidos del e-commerce"
-        action={
-          <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-            <IconPlus width={16} height={16} /> Nuevo pedido
-          </button>
-        }
-      >
+      <SectionCard title="Pedidos del e-commerce">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:max-w-xs">
             <IconSearch width={16} height={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -349,19 +338,19 @@ function Pedidos() {
                         </button>
                       </td>
                       <td className="py-3 pr-4 tabular-nums">${Number(o.total || 0).toFixed(2)}</td>
-                      <td className="py-3 pr-4"><StatusPill status={o.paymentStatus} /></td>
-                      <td className="py-3 pr-4"><StatusPill status={o.status} tone={ORDER_STATUS_TONE[o.status]} /></td>
+                      <td className="py-3 pr-4"><StatusPill status={o.paymentStatus} domain="pago" /></td>
+                      <td className="py-3 pr-4"><StatusPill status={o.status} domain="pedido" /></td>
                       <td className="py-3">
                         <div className="flex flex-wrap justify-end gap-1.5 text-xs font-semibold">
                           {o.inventoryRequestedAt ? (
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-tone-green px-2.5 py-1 text-tone-green-text">
                               <IconCheck width={14} height={14} /> Solicitado
                             </span>
                           ) : (
                             <button onClick={() => openRequest(o)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Solicitar</button>
                           )}
                           <button onClick={() => openEdit(o)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
-                          <button onClick={() => handleDelete(o)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
+                          <button onClick={() => handleDelete(o)} className="rounded-lg bg-tone-rose px-2.5 py-1 text-tone-rose-text hover:brightness-95">Eliminar</button>
                         </div>
                       </td>
                     </tr>
@@ -380,8 +369,8 @@ function Pedidos() {
         size="lg"
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="order-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="order-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >
@@ -405,7 +394,7 @@ function Pedidos() {
           <div>
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Estado</span>
             <div className="flex items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-              <StatusPill status={form.status} tone={ORDER_STATUS_TONE[form.status]} />
+              <StatusPill status={form.status} domain="pedido" />
             </div>
           </div>
           <SelectField label="Estado de pago" name="paymentStatus" value={form.paymentStatus} onChange={handleChange} options={PAYMENT} />
@@ -477,7 +466,7 @@ function Pedidos() {
         onClose={() => setViewTarget(null)}
         title={`Productos del pedido ${viewTarget?.orderNumber || ""}`}
         footer={
-          <button onClick={() => setViewTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+          <button onClick={() => setViewTarget(null)} className={buttonClass("secondary", "modal")}>Cerrar</button>
         }
       >
         {viewTarget?.items?.length ? (
@@ -519,8 +508,8 @@ function Pedidos() {
         title="Solicitar a inventario"
         footer={
           <>
-            <button onClick={() => setRequestModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button onClick={confirmRequest} disabled={requesting} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <button onClick={() => setRequestModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button onClick={confirmRequest} disabled={requesting} className={buttonClass("primary", "modal")}>
               {requesting ? "Solicitando…" : "Confirmar"}
             </button>
           </>

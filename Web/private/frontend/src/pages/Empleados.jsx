@@ -11,6 +11,16 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field, SelectField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconUsers, IconCheck, IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import { getPageMeta } from "../lib/nav";
+import Tabs from "../components/ui/Tabs";
+import { useUrlState } from "../hooks/useUrlState";
+
+const TABS = [
+  { key: "personal", label: "Personal" },
+  { key: "asistencia", label: "Asistencia" },
+];
 
 const DEPARTMENTS = ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"];
 
@@ -36,7 +46,7 @@ const emptyForm = {
 function Empleados() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/employees");
-  const [activeTab, setActiveTab] = useState("personal");
+  const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -184,33 +194,16 @@ function Empleados() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/empleados")} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Empleados" value={kpis.total} icon={IconUsers} trend={{ tone: "blue", label: "en planilla" }} />
         <KpiCard label="Activos" value={kpis.active} icon={IconCheck} trend={{ tone: "green", label: "trabajando" }} />
         <KpiCard label="Operarios" value={kpis.operators} icon={IconUsers} trend={{ tone: "blue", label: "Fabricación" }} />
         <KpiCard label="Motoristas" value={kpis.drivers} icon={IconUsers} trend={{ tone: "blue", label: "Logística" }} />
       </div>
 
-      {/* Selector de tabla: Personal / Asistencia */}
-      <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-        <button
-          onClick={() => setActiveTab("personal")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "personal" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Personal
-        </button>
-        <button
-          onClick={() => setActiveTab("asistencia")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "asistencia" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Asistencia
-        </button>
-      </div>
+      <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === "personal" ? (
         <SectionCard
@@ -244,7 +237,7 @@ function Empleados() {
                       <td className="py-3 pr-4 tabular-nums">{formatDui(emp.dui)}</td>
                       <td className="py-3 pr-4">{emp.position || "—"}</td>
                       <td className="py-3 pr-4">{emp.department || "—"}</td>
-                      <td className="py-3 pr-4"><StatusPill status={emp.isActive !== false ? "Activo" : "Cancelado"} /></td>
+                      <td className="py-3 pr-4"><StatusPill status={emp.isActive !== false ? "Activo" : "Inactivo"} domain="empleado" /></td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
                           <button onClick={() => openEdit(emp)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
@@ -305,8 +298,8 @@ function Empleados() {
         size="lg"
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="emp-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="emp-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >
@@ -343,8 +336,8 @@ function Empleados() {
         title="Registrar marcación"
         footer={
           <>
-            <button onClick={() => setAttendanceModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="attendance-form" disabled={savingAttendance} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{savingAttendance ? "Guardando…" : "Registrar"}</button>
+            <button onClick={() => setAttendanceModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="attendance-form" disabled={savingAttendance} className={buttonClass("primary", "modal")}>{savingAttendance ? "Guardando…" : "Registrar"}</button>
           </>
         }
       >

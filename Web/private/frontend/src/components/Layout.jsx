@@ -1,37 +1,25 @@
-import { useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import Sidebar from "./Sidebar";
-import TopBar from "./TopBar";
-import { getPageMeta } from "../lib/nav";
+import { useMemo, useState } from "react";
+import { Outlet } from "react-router-dom";
+import { Rail, Drawer } from "./Rail";
 
+/*
+  Estructura del panel: riel de 68px a la izquierda (>= 1024px) o cajón
+  deslizable (< 1024px) y el contenido de cada página. Cada página pinta su
+  propio <PageHeader />; el botón de menú del header abre el cajón a través
+  del contexto del <Outlet>.
+*/
 function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { title, subtitle } = getPageMeta(location.pathname);
-
-  const handleNewBatch = () => {
-    setSidebarOpen(false);
-    navigate("/fabricacion?new=1");
-  };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const outletContext = useMemo(() => ({ openMenu: () => setMenuOpen(true) }), []);
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb]">
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onNewBatch={handleNewBatch}
-      />
+    <div className="min-h-screen bg-canvas">
+      <Rail />
+      <Drawer open={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* Contenido: se desplaza a la derecha del sidebar en escritorio */}
-      <div className="lg:pl-72">
-        <TopBar
-          title={title}
-          subtitle={subtitle}
-          onOpenMenu={() => setSidebarOpen(true)}
-        />
-        <main className="px-4 py-6 sm:px-6 lg:px-8">
-          <Outlet />
+      <div className="lg:pl-[68px]">
+        <main className="flex flex-col gap-3.5 px-4 py-6 sm:px-7">
+          <Outlet context={outletContext} />
         </main>
       </div>
     </div>

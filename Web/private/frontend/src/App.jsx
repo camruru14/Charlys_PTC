@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import PrivateRoute from "./components/PrivateRoute";
 import Layout from "./components/Layout";
@@ -15,6 +16,10 @@ import Finanzas from "./pages/Finanzas";
 import HistorialTransacciones from "./pages/HistorialTransacciones";
 import Configuracion from "./pages/Configuracion";
 import NotFound from "./pages/NotFound";
+
+// Página de muestra del sistema visual: solo existe en desarrollo (en el
+// build de producción esta rama se elimina y DevUI no se incluye).
+const DevUI = import.meta.env.DEV ? lazy(() => import("./pages/DevUI")) : null;
 
 function App() {
   return (
@@ -37,6 +42,16 @@ function App() {
           <Route path="/catalogo" element={<Catalogo />} />
           <Route path="/empleados" element={<Empleados />} />
           <Route path="/configuracion" element={<Configuracion />} />
+          {DevUI ? (
+            <Route
+              path="/dev/ui"
+              element={
+                <Suspense fallback={null}>
+                  <DevUI />
+                </Suspense>
+              }
+            />
+          ) : null}
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

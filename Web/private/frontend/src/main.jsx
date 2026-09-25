@@ -18,11 +18,11 @@ createRoot(document.getElementById("root")).render(
           toastOptions={{
             duration: 2200,
             style: {
-              border: "1px solid #e2e8f0",
+              border: "1px solid var(--color-line)",
               borderRadius: "12px",
-              background: "#ffffff",
-              color: "#0f172a",
-              fontSize: "14px",
+              background: "var(--color-surface)",
+              color: "var(--color-ink)",
+              fontSize: "13px",
             },
           }}
         />

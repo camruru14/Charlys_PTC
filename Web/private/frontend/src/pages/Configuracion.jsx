@@ -9,6 +9,9 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconSettings, IconBox, IconTruck, IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import { getPageMeta } from "../lib/nav";
 
 // Datos de la empresa: todavía no hay un modelo/endpoint dedicado en el
 // backend para esto (solo se pidió el de Bodegas y el de Vehículos), así que
@@ -151,8 +154,9 @@ function Configuracion() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/configuracion")} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Bodegas configuradas" value={warehouses.length} icon={IconBox} trend={{ tone: "blue", label: "activas" }} />
         <KpiCard label="Vehículos configurados" value={vehicles.length} icon={IconTruck} trend={{ tone: "blue", label: "activos" }} />
         <KpiCard label="Empresa" value={company.name || "—"} icon={IconSettings} trend={{ tone: "green", label: "configurado" }} />
@@ -165,7 +169,7 @@ function Configuracion() {
           <Field label="Teléfono" name="phone" value={company.phone} onChange={handleCompanyChange} />
           <Field label="Dirección" name="address" value={company.address} onChange={handleCompanyChange} />
           <div className="sm:col-span-2">
-            <button type="submit" disabled={savingCompany} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <button type="submit" disabled={savingCompany} className={buttonClass("primary", "modal")}>
               {savingCompany ? "Guardando…" : "Guardar datos de la empresa"}
             </button>
           </div>
@@ -254,8 +258,8 @@ function Configuracion() {
         title={editingId ? "Editar bodega" : "Agregar bodega"}
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="warehouse-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="warehouse-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >
@@ -270,8 +274,8 @@ function Configuracion() {
         title={editingVehicleId ? "Editar vehículo" : "Agregar vehículo"}
         footer={
           <>
-            <button onClick={() => setVehicleModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="vehicle-form" disabled={savingVehicle} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{savingVehicle ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setVehicleModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="vehicle-form" disabled={savingVehicle} className={buttonClass("primary", "modal")}>{savingVehicle ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >

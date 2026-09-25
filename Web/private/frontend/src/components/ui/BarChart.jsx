@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
   Gráfico de barras agrupadas (ej. Ingresos vs Gastos).
   Recibe:
     data   = [{ label: "Ene", values: [12000, 8000] }, ...]
-    series = [{ name: "Ingresos", color: "#2563eb" }, { name: "Gastos", color: "#f59e0b" }]
+    series = [{ name: "Ingresos", color: CHART_COLORS[0] }, { name: "Gastos", color: CHART_COLORS[1] }]
+    (color: cualquier valor CSS; usar CHART_COLORS de lib/tones.js)
 
   Usa alturas en píxeles (no porcentajes) para que las barras siempre se rendericen
   de forma predecible, independientemente del contexto flex del contenedor.
@@ -73,7 +74,7 @@ function BarChart({ data = [], series = [], height = 240, formatValue }) {
             {gridLines.map((g) => (
               <div
                 key={g}
-                className="absolute inset-x-0 border-t border-dashed border-slate-100"
+                className="absolute inset-x-0 border-t border-chart-grid"
                 style={{ bottom: g * barsAreaH }}
               />
             ))}
@@ -88,7 +89,7 @@ function BarChart({ data = [], series = [], height = 240, formatValue }) {
                       className={`${barWidthClass(data.length)} rounded-t-md transition-all`}
                       style={{
                         height: v > 0 ? Math.max((v / max) * barsAreaH, 3) : 0,
-                        backgroundColor: series[j]?.color || "#94a3b8",
+                        backgroundColor: series[j]?.color || "var(--color-chart-history)",
                       }}
                     />
                   ))}
@@ -102,7 +103,7 @@ function BarChart({ data = [], series = [], height = 240, formatValue }) {
             {data.map((d, i) => (
               <span
                 key={i}
-                className="flex-1 pt-2 text-center text-xs font-medium text-slate-400"
+                className="flex-1 pt-2 text-center text-[11px] font-medium text-subtle"
               >
                 {d.label}
               </span>
@@ -114,8 +115,8 @@ function BarChart({ data = [], series = [], height = 240, formatValue }) {
       {/* Leyenda */}
       <div className="mt-3 flex flex-wrap items-center gap-4">
         {series.map((s, i) => (
-          <span key={i} className="flex items-center gap-2 text-sm text-slate-600">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+          <span key={i} className="flex items-center gap-2 text-[12px] font-semibold text-muted">
+            <span className="h-2 w-2 rounded-[3px]" style={{ backgroundColor: s.color }} />
             {s.name}
           </span>
         ))}

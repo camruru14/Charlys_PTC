@@ -1,20 +1,155 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 /*
-  Tokens de marca de Industrias Charly.
-  Al declararlos en @theme, Tailwind v4 genera utilidades como
-  bg-brand-600, text-brand-700, ring-brand-500, etc.
+  Tokens del sistema visual de Industrias Charly.
+  Al declararlos en @theme, Tailwind v4 genera utilidades como bg-canvas,
+  text-ink, border-line, bg-tone-blue, etc. `static` hace que todas las
+  variables se emitan en :root aunque ninguna clase las use, porque los
+  gráficos (BarChart, DonutChart) las leen como var(--color-chart-N).
+  Ningún componente debe usar un hex suelto: todo color sale de aquí.
 */
-@theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --font-sans: "Inter", "Roboto", ui-sans-serif, system-ui, sans-serif;
+@theme static {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+
+  /* Texto */
+  --color-ink: #16203a;
+  --color-ink-2: #4a5468;
+  --color-muted: #6b7689;
+  --color-subtle: #8a93a6;
+  --color-faint: #a3acbd;
+
+  /* Superficies y bordes */
+  --color-canvas: #f2f5fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #fafbfd;
+  --color-line: #e3e8f1;
+  --color-line-soft: #f0f3f8;
+
+  /* Riel de navegación */
+  --color-rail: #24406f;
+  --color-rail-active: #3a5b92;
+  --color-rail-icon: #93a6c8;
+
+  /* Acción principal */
+  --color-primary: #3168d4;
+  --color-primary-hover: #2a5bbc;
+  --color-primary-soft: #e9f0fb;
+  --color-primary-soft-text: #2c5ca8;
+
+  /* Selección, banda y filas destacadas */
+  --color-select-bg: #f3f7fd;
+  --color-select-bar: #4a7fd4;
+  --color-band: #4a6fa5;
+  --color-band-text: #e4ecf7;
+  --color-row-alert: #fdf7f8;
+  --color-row-new: #f6fbf8;
+
+  /* Pastilla "ocupada" (PillSelector) y flecha desplegable */
+  --color-busy: #f5f7fa;
+  --color-busy-line: #d7dee9;
+  --color-chevron: #c3cbda;
+
+  /* Tonos de estado: fondo / texto / punto */
+  --color-tone-gray: #eff1f5;
+  --color-tone-gray-text: #5c6579;
+  --color-tone-gray-dot: #8a93a6;
+  --color-tone-blue: #e9f0fb;
+  --color-tone-blue-text: #2c5ca8;
+  --color-tone-blue-dot: #4a7fd4;
+  --color-tone-amber: #faf1df;
+  --color-tone-amber-text: #96661a;
+  --color-tone-amber-dot: #d9a441;
+  --color-tone-green: #eaf4ee;
+  --color-tone-green-text: #3b7d55;
+  --color-tone-green-dot: #5aa872;
+  --color-tone-rose: #f8edef;
+  --color-tone-rose-text: #9e4a5e;
+  --color-tone-rose-dot: #c2697c;
+  --color-tone-purple: #f1ecfa;
+  --color-tone-purple-text: #6a4fa3;
+  --color-tone-purple-dot: #8f74c9;
+  --color-tone-teal: #e8f3f7;
+  --color-tone-teal-text: #2c7189;
+  --color-tone-teal-dot: #4e9cb5;
+
+  /* Gráficos */
+  --color-chart-1: #3d6fc9;
+  --color-chart-2: #c4841c;
+  --color-chart-3: #3c8f5e;
+  --color-chart-4: #7f5fc7;
+  --color-chart-5: #b85268;
+  --color-chart-history: #b9c6e0;
+  --color-chart-ref: #c3cbda;
+  --color-chart-grid: #f0f3f8;
+
+  /* Alias temporales: las clases brand-* existentes apuntan a primary. */
+  --color-brand-50: var(--color-primary-soft);
+  --color-brand-100: var(--color-primary-soft);
+  --color-brand-200: var(--color-line);
+  --color-brand-400: var(--color-select-bar);
+  --color-brand-500: var(--color-select-bar);
+  --color-brand-600: var(--color-primary);
+  --color-brand-700: var(--color-primary-hover);
+  --color-brand-800: var(--color-primary-soft-text);
+
+  --shadow-modal: 0 24px 60px rgb(22 32 58 / 0.28);
+}
+
+/* Escala tipográfica */
+@utility t-page-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--color-ink);
+}
+@utility t-page-sub {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+@utility t-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+@utility t-detail-title {
+  font-size: 19.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+@utility t-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-subtle);
+}
+@utility t-row {
+  font-size: 13px;
+  color: var(--color-ink);
+}
+@utility t-row-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+@utility t-kpi {
+  font-size: 25px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+@utility t-kpi-inline {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+@utility t-aux {
+  font-size: 11.5px;
+  color: var(--color-muted);
 }
 
 html,
@@ -25,28 +160,30 @@ body,
 
 body {
   font-family: var(--font-sans);
-  background-color: #f6f8fb;
-  color: #0f172a;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  /* Cifras (montos, cantidades, IDs, fechas) siempre alineadas */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Scrollbar sutil y minimalista */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--color-line) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: var(--color-line);
   border-radius: 9999px;
 }
 
 /* Los <button> no traen cursor "manita" por defecto del navegador (a diferencia
    de los <a>, que sí); lo forzamos para que el header y el contenido principal
-   se sientan igual de clicables que el sidebar. */
+   se sientan igual de clicables que el menú. */
 button:not(:disabled),
 [role="button"] {
   cursor: pointer;

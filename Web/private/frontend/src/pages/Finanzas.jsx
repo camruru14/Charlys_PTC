@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
-import { useDateRange } from "../context/DateRangeContext";
+import { useDateRange } from "../context/dateRange";
 import KpiCard from "../components/ui/KpiCard";
 import BarChart from "../components/ui/BarChart";
 import Modal from "../components/ui/Modal";
@@ -17,6 +17,11 @@ import { defaultTransactionFilters, filterTransactions, txDate, txDateParts } fr
 import { todayInput } from "../hooks/useBatchForm";
 import { blockNegativeKey } from "../lib/numberInput";
 import { IconFinance, IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import { getPageMeta } from "../lib/nav";
+import DateRangePicker from "../components/ui/DateRangePicker";
+import { CHART_COLORS } from "../lib/tones";
 
 const TYPES = ["Ingreso", "Gasto"];
 const STATUSES = ["Pendiente", "Completado"];
@@ -244,8 +249,9 @@ function Finanzas() {
   const fmt = (v) => `$${v.toLocaleString("es-SV", { maximumFractionDigits: 0 })}`;
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/finanzas")} actions={<DateRangePicker />} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Ingresos" value={fmt(kpis.income)} icon={IconFinance} trend={{ tone: "green", label: "en el rango" }} />
         <KpiCard label="Gastos" value={fmt(kpis.expense)} icon={IconFinance} trend={{ tone: "yellow", label: "en el rango" }} />
         <KpiCard label="Rentabilidad neta" value={fmt(kpis.net)} icon={IconFinance} trend={{ tone: kpis.net >= 0 ? "green" : "red", label: kpis.net >= 0 ? "Positiva" : "Negativa" }} />
@@ -257,7 +263,7 @@ function Finanzas() {
         <AsyncState loading={loading} error={error} empty={!loading && chart.data.length === 0} emptyText="Sin movimientos en el rango.">
           <BarChart
             data={chart.data}
-            series={[{ name: "Ingresos", color: "#2563eb" }, { name: "Gastos", color: "#ef4444" }]}
+            series={[{ name: "Ingresos", color: CHART_COLORS[0] }, { name: "Gastos", color: CHART_COLORS[1] }]}
             formatValue={fmt}
           />
         </AsyncState>
@@ -293,8 +299,8 @@ function Finanzas() {
         size="lg"
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="trx-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="trx-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >

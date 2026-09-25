@@ -8,8 +8,27 @@ import Modal from "../components/ui/Modal";
 import { Field, SelectField, FilterSelect } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconTruck, IconCheck, IconAlert, IconOrders } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import Tabs from "../components/ui/Tabs";
+import { useUrlState } from "../hooks/useUrlState";
+import { getPageMeta } from "../lib/nav";
 
 const DISPATCH = ["Saliendo", "A tiempo", "Demorado", "Entregado"];
+
+const TABS = [
+  { key: "transito", label: "Pedidos en Tránsito" },
+  { key: "despacho", label: "Pedidos para despacho" },
+];
+
+// delivery.dispatchStatus -> estado del dominio "ruta" de StatusPill, mientras
+// Logística no tenga su propio modelo de rutas.
+const DISPATCH_ROUTE_STATUS = {
+  Saliendo: "Pendiente",
+  "A tiempo": "En tránsito",
+  Demorado: "Demorada",
+  Entregado: "Completada",
+};
 
 // Mismo estilo que los filtros de Inventario, para que ambas barras de
 // filtros se vean iguales en todo el panel.
@@ -84,7 +103,10 @@ function Logistica() {
   const { data: orders, loading, error, refetch } = useFetch("/orders");
   const { data: employees } = useFetch("/employees");
   const { data: vehiclesData } = useFetch("/vehicles");
-  const vehicleOptions = (Array.isArray(vehiclesData) ? vehiclesData : []).map((v) => v.plate);
+  const vehicleOptions = useMemo(
+    () => (Array.isArray(vehiclesData) ? vehiclesData : []).map((v) => v.plate),
+    [vehiclesData]
+  );
   // Si el vehículo ya guardado en el pedido no está (o ya no está) en
   // Configuración > Vehículos, se agrega igual a las opciones para no perder
   // ni ocultar el valor existente al editar.
@@ -103,7 +125,7 @@ function Logistica() {
 
   // "En Tránsito" primero: es lo que Logística revisa más seguido una vez el
   // pedido ya tiene motorista y todo recogido.
-  const [activeTab, setActiveTab] = useState("transito");
+  const [activeTab, setActiveTab] = useUrlState("tab", "transito", { allowed: TABS.map((t) => t.key) });
 
   // Filtros de "Pedidos para despacho".
   const [filterDriver, setFilterDriver] = useState("");
@@ -310,32 +332,16 @@ function Logistica() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/logistica")} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Entregas en ruta" value={kpis.inTransit} icon={IconTruck} trend={{ tone: "blue", label: "En tránsito" }} />
         <KpiCard label="Motoristas disponibles" value={availableDrivers.length} icon={IconOrders} trend={{ tone: "blue", label: "libres" }} />
         <KpiCard label="Vehículos disponibles" value={availableVehicles.length} icon={IconTruck} trend={{ tone: "blue", label: "libres" }} />
         <KpiCard label="Entregas demoradas" value={kpis.delayed} icon={IconAlert} trend={{ tone: kpis.delayed ? "red" : "green", label: kpis.delayed ? "Atención" : "OK" }} />
       </div>
 
-      <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-        <button
-          onClick={() => setActiveTab("transito")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "transito" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Pedidos en Tránsito
-        </button>
-        <button
-          onClick={() => setActiveTab("despacho")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "despacho" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Pedidos para despacho
-        </button>
-      </div>
+      <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
       <SectionCard title={activeTab === "transito" ? "Pedidos en Tránsito" : "Pedidos para despacho"}>
         {activeTab === "despacho" ? (
@@ -420,9 +426,9 @@ function Logistica() {
                           </td>
                           <td className="py-3 pr-4">
                             {o.delivery?.driver ? (
-                              <StatusPill status="Recolectando" />
+                              <StatusPill status="Recolectando" domain="ruta" />
                             ) : (
-                              <StatusPill status={o.status} />
+                              <StatusPill status={o.status} domain="pedido" />
                             )}
                           </td>
                           <td className="py-3 text-right">
@@ -501,9 +507,9 @@ function Logistica() {
                         <td className="py-3 pr-4">{o.delivery?.address || o.customer?.address || "—"}</td>
                         <td className="py-3 pr-4">
                           {o.delivery?.dispatchStatus ? (
-                            <StatusPill status={o.delivery.dispatchStatus} />
+                            <StatusPill status={DISPATCH_ROUTE_STATUS[o.delivery.dispatchStatus]} domain="ruta" />
                           ) : (
-                            <StatusPill status={o.status} />
+                            <StatusPill status={o.status} domain="pedido" />
                           )}
                         </td>
                         <td className="py-3 text-right">
@@ -527,8 +533,8 @@ function Logistica() {
         title={`Asignar entrega · ${target?.orderNumber || ""}`}
         footer={
           <>
-            <button onClick={() => setAssignModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="assign-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Asignar"}</button>
+            <button onClick={() => setAssignModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="assign-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Asignar"}</button>
           </>
         }
       >
@@ -560,8 +566,8 @@ function Logistica() {
         title={`Editar entrega · ${target?.orderNumber || ""}`}
         footer={
           <>
-            <button onClick={() => setEditModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="edit-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setEditModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="edit-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >
@@ -602,7 +608,7 @@ function Logistica() {
                     <strong className="font-semibold text-slate-800">{loc}</strong> · {count} producto{count === 1 ? "" : "s"}
                   </span>
                   {pickedUpAt ? (
-                    <StatusPill status="Recogido" tone="green" />
+                    <StatusPill status="Listo" domain="parada" />
                   ) : (
                     <button
                       onClick={() => handleConfirmPickup(loc)}

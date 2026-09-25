@@ -1,4 +1,5 @@
 import Modal from "../ui/Modal";
+import { buttonClass } from "../../lib/buttonStyles";
 
 /*
   Modal de confirmación para deshacer el reporte de un lote (clic en la
@@ -18,8 +19,8 @@ function UndoReportModal({ open, onClose, target, handleConfirm, undoing }) {
       title={`Deshacer reporte · ${target.batchNumber}`}
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button onClick={handleConfirm} disabled={undoing} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+          <button onClick={onClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
+          <button onClick={handleConfirm} disabled={undoing} className={buttonClass("danger", "modal")}>
             {undoing ? "Deshaciendo…" : "Deshacer reporte"}
           </button>
         </>

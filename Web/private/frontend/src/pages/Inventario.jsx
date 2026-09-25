@@ -12,6 +12,26 @@ import { Field, SelectField, FilterSelect } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { IconBox, IconAlert, IconPlus, IconCheck, IconExpand, IconCollapse, IconSearch } from "../lib/icons";
 import { macroStatus, getItemStatusCounts, progressSegments, progressCaption, MACRO_STATUS_LABELS } from "../lib/orderProgress";
+import { buttonClass } from "../lib/buttonStyles";
+import PageHeader from "../components/ui/PageHeader";
+import Tabs from "../components/ui/Tabs";
+import { useUrlState } from "../hooks/useUrlState";
+import { getPageMeta } from "../lib/nav";
+
+const TABS = [
+  { key: "articulos", label: "Artículos en almacén" },
+  { key: "lotes", label: "Lotes Reportados" },
+  { key: "pedidos", label: "Pedidos" },
+];
+
+// Estado de una línea de pedido (Info pedido) -> etiqueta del dominio
+// linea-inventario de StatusPill. "Entregado" es del pedido completo.
+const LINE_STATUS_LABEL = {
+  "Sin Verificar": "Por verificar",
+  "En Fabricación": "En fabricación",
+  Verificado: "Verificado",
+  Empacado: "Empacado",
+};
 
 // Opciones del filtro de estado de la pestaña Inventario > Pedidos (valor -> macroStatus).
 const PEDIDOS_STATUS_FILTERS = ["sinVerificar", "verificado", "enviado", "empacado", "parcial", "entregado"];
@@ -29,15 +49,15 @@ const emptyForm = {
 const selectFilterClass =
   "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
 
-const STOCK_STATUSES = ["Suficiente", "Insuficiente"];
+const STOCK_STATUSES = ["Suficiente", "Bajo mínimo"];
 
 // Umbral mínimo de existencia según la unidad del artículo: por debajo de
-// este número se marca como Insuficiente, de lo contrario Suficiente.
+// este número se marca como Bajo mínimo, de lo contrario Suficiente.
 const STOCK_THRESHOLDS = { kg: 11, litro: 11, unidad: 100, caja: 100 };
 
 function stockStatus(item) {
   const threshold = STOCK_THRESHOLDS[item.unit] ?? 0;
-  if ((item.stock || 0) < threshold) return "Insuficiente";
+  if ((item.stock || 0) < threshold) return "Bajo mínimo";
   return "Suficiente";
 }
 
@@ -171,7 +191,7 @@ function WarehouseItemsTable({ items, loading, error, emptyText, onEdit, onDelet
                   {showType ? <td className="py-3 pr-4">{i.materialType || "—"}</td> : null}
                   <td className="py-3 pr-4 tabular-nums">{(i.stock || 0).toLocaleString("es-SV")} {i.unit}</td>
                   <td className="py-3 pr-4">{i.location || "—"}</td>
-                  <td className="py-3 pr-4"><StatusPill status={stockStatus(i)} /></td>
+                  <td className="py-3 pr-4"><StatusPill status={stockStatus(i)} domain="stock" /></td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-2 text-xs font-semibold">
                       <button onClick={() => onEdit(i)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
@@ -197,7 +217,7 @@ function Inventario() {
   // arreglo fijo que antes vivía en hooks/useBatchForm.js.
   const { data: warehousesData } = useFetch("/warehouses");
   const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
-  const [activeTab, setActiveTab] = useState("articulos");
+  const [activeTab, setActiveTab] = useUrlState("tab", "articulos", { allowed: TABS.map((t) => t.key) });
   // Cuál de las dos tablas de "Artículos en almacén" está ampliada a pantalla
   // completa (ocupa todo el ancho); null = las dos en columnas, lado a lado.
   const [expandedWarehouseTable, setExpandedWarehouseTable] = useState(null);
@@ -318,7 +338,7 @@ function Inventario() {
   const kpis = useMemo(() => {
     const raw = warehouseItems.filter((i) => i.category === "Materia Prima").length;
     const finished = warehouseItems.filter((i) => i.category === "Producto Terminado").length;
-    const low = warehouseItems.filter((i) => stockStatus(i) === "Insuficiente").length;
+    const low = warehouseItems.filter((i) => stockStatus(i) === "Bajo mínimo").length;
     const value = warehouseItems.reduce((s, i) => s + (i.stock || 0) * (i.unitCost || 0), 0);
     return { raw, finished, low, value };
   }, [warehouseItems]);
@@ -528,44 +548,19 @@ function Inventario() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/inventario")} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Materia prima" value={kpis.raw} icon={IconBox} trend={{ tone: "blue", label: "insumos" }} />
         <KpiCard label="Productos terminados" value={kpis.finished} icon={IconBox} trend={{ tone: "blue", label: "referencias" }} />
         <KpiCard label="Stock bajo" value={kpis.low} icon={IconAlert} trend={{ tone: kpis.low ? "yellow" : "green", label: kpis.low ? "Reponer" : "OK" }} />
         <KpiCard label="Valor del inventario" value={`$${kpis.value.toLocaleString("es-SV", { maximumFractionDigits: 0 })}`} icon={IconBox} trend={{ tone: "green", label: "estimado" }} />
       </div>
 
-      {/* Selector de tabla: Artículos en almacén / Lotes Reportados */}
-      <div className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-        <button
-          onClick={() => setActiveTab("articulos")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "articulos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Artículos en almacén
-        </button>
-        <button
-          onClick={() => setActiveTab("lotes")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "lotes" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Lotes Reportados
-        </button>
-        <button
-          onClick={() => setActiveTab("pedidos")}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "pedidos" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          Pedidos
-        </button>
-      </div>
+      <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
 
       {activeTab === "articulos" ? (
-        <div className={expandedWarehouseTable ? "space-y-6" : "grid grid-cols-1 items-start gap-4 lg:grid-cols-2"}>
+        <div className={expandedWarehouseTable ? "flex flex-col gap-3.5" : "grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2"}>
           {expandedWarehouseTable !== "finished" ? (
             <SectionCard
               title="Materia Prima"
@@ -670,7 +665,7 @@ function Inventario() {
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2 text-xs font-semibold">
                           {i.sentToWarehouse ? (
-                            <StatusPill status="Enviado" tone="green" />
+                            <StatusPill status="En bodega" domain="lote" />
                           ) : (
                             <button onClick={() => openSend(i)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Enviar</button>
                           )}
@@ -793,8 +788,8 @@ function Inventario() {
         size="lg"
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button type="submit" form="inv-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="submit" form="inv-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
       >
@@ -817,8 +812,8 @@ function Inventario() {
         title="Enviar a Artículos en almacén"
         footer={
           <>
-            <button onClick={() => setSendModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button onClick={confirmSend} disabled={sending} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <button onClick={() => setSendModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button onClick={confirmSend} disabled={sending} className={buttonClass("primary", "modal")}>
               {sending ? "Enviando…" : "Confirmar envío"}
             </button>
           </>
@@ -839,8 +834,8 @@ function Inventario() {
         title="Eliminar lote reportado"
         footer={
           <>
-            <button onClick={() => setDeleteReportModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-            <button onClick={confirmDeleteReport} disabled={deletingReport} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+            <button onClick={() => setDeleteReportModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button onClick={confirmDeleteReport} disabled={deletingReport} className={buttonClass("danger", "modal")}>
               {deletingReport ? "Eliminando…" : "Eliminar"}
             </button>
           </>
@@ -863,12 +858,12 @@ function Inventario() {
         title="Verificar producto en inventario"
         footer={
           <>
-            <button onClick={() => setVerifyModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+            <button onClick={() => setVerifyModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
             {!verifyHasSufficientStock ? (
               <button
                 onClick={sendToManufacturing}
                 disabled={sendingToManufacturing}
-                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+                className={buttonClass("warning", "modal")}
               >
                 {sendingToManufacturing ? "Enviando…" : "Enviar a fabricación"}
               </button>
@@ -876,7 +871,7 @@ function Inventario() {
             <button
               onClick={confirmVerify}
               disabled={verifying || !verifyWarehouse || verifyInsufficientSelected}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              className={buttonClass("primary", "modal")}
             >
               {verifying ? "Verificando…" : "Confirmar"}
             </button>
@@ -935,7 +930,7 @@ function Inventario() {
         title={`Productos del pedido ${pedidoInfoOrder?.orderNumber || ""}`}
         size="lg"
         footer={
-          <button onClick={() => setPedidoInfoOrderId(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cerrar</button>
+          <button onClick={() => setPedidoInfoOrderId(null)} className={buttonClass("secondary", "modal")}>Cerrar</button>
         }
       >
         {pedidoInfoOrder?.items?.length ? (
@@ -964,9 +959,13 @@ function Inventario() {
                   </div>
                   <div className="flex items-center gap-2">
                     {itemStatus === "Empacado" || itemStatus === "Entregado" ? (
-                      <IconCheck width={14} height={14} className="text-emerald-600" />
+                      <IconCheck width={14} height={14} className="text-tone-green-dot" />
                     ) : null}
-                    <StatusPill status={itemStatus} />
+                    {itemStatus === "Entregado" ? (
+                      <StatusPill status="Entregado" domain="pedido" />
+                    ) : (
+                      <StatusPill status={LINE_STATUS_LABEL[itemStatus]} domain="linea-inventario" />
+                    )}
                     {itemStatus === "Sin Verificar" ? (
                       <button onClick={() => openVerify(row)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Verificar</button>
                     ) : itemStatus === "En Fabricación" ? (

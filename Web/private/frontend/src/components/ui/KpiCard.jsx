@@ -1,46 +1,32 @@
 /*
-  Tarjeta de métrica (KPI Card).
-  Bordes redondeados, sombra sutil, número grande, etiqueta descriptiva
-  y un "pill" de porcentaje/estado (verde positivo, rojo alerta, amarillo acción).
+  Indicador en tarjeta (KpiCard): etiqueta en mayúsculas 11px, valor 25px/600
+  y nota 12px. `trend` ({ tone, label }) se mantiene por compatibilidad con las
+  páginas existentes y se muestra como la nota, en el color de texto del tono.
 */
 
-const TREND_TONES = {
-  green: "bg-emerald-50 text-emerald-700",
-  red: "bg-red-50 text-red-700",
-  yellow: "bg-amber-50 text-amber-700",
-  blue: "bg-brand-50 text-brand-700",
+const NOTE_TONES = {
+  green: "text-tone-green-text",
+  red: "text-tone-rose-text",
+  rose: "text-tone-rose-text",
+  yellow: "text-tone-amber-text",
+  amber: "text-tone-amber-text",
+  blue: "text-tone-blue-text",
+  gray: "text-muted",
 };
 
-function KpiCard({ label, value, icon: Icon, trend }) {
+function KpiCard({ label, value, note, icon: Icon, trend }) {
+  const noteText = note ?? trend?.label;
+  const noteClass = note ? "text-muted" : NOTE_TONES[trend?.tone] || "text-muted";
+
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
-        {Icon ? (
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-            <Icon width={18} height={18} />
-          </span>
-        ) : null}
+    <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">{label}</p>
+        {Icon ? <Icon width={16} height={16} className="shrink-0 text-faint" /> : null}
       </div>
-
-      <div className="mt-3 flex items-end justify-between gap-2">
-        <p className="text-3xl font-bold tracking-tight text-slate-900">
-          {value}
-        </p>
-        {trend ? (
-          <span
-            className={`mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-              TREND_TONES[trend.tone] || TREND_TONES.blue
-            }`}
-          >
-            {trend.label}
-          </span>
-        ) : null}
-      </div>
-
-      {trend?.caption ? (
-        <p className="mt-1 text-xs text-slate-400">{trend.caption}</p>
-      ) : null}
+      <p className="t-kpi mt-2 truncate">{value}</p>
+      {noteText ? <p className={`mt-0.5 text-xs ${noteClass}`}>{noteText}</p> : null}
+      {trend?.caption ? <p className="mt-0.5 text-xs text-muted">{trend.caption}</p> : null}
     </div>
   );
 }

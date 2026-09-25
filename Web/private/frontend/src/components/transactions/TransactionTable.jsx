@@ -58,7 +58,7 @@ function TransactionTable({ transactions = [], onEdit, onDelete }) {
               <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-red-600"}`}>
                 {t.type === "Ingreso" ? "+" : "-"}${Number(t.amount || 0).toFixed(2)}
               </td>
-              <td className="py-3 pr-6"><StatusPill status={t.status} tone={t.status === "Pagado" ? "blue" : undefined} /></td>
+              <td className="py-3 pr-6"><StatusPill status={t.status} domain="transaccion" /></td>
               {showActions ? (
                 <td className="py-3 text-right">
                   <div className="flex justify-end gap-2">

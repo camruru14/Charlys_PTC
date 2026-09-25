@@ -1,10 +1,9 @@
-import { createContext, useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { API_URL, setAuthToken } from "../lib/api";
 import { setPublicApiToken } from "../lib/publicApi";
+import { AuthContext } from "./authContextValue";
 
-// Contexto global de autenticación del panel administrativo.
-// Evita "prop drilling" al compartir la sesión entre todas las vistas.
-const AuthContext = createContext(null);
+// Provider de la sesión: evita "prop drilling" al compartirla entre todas las vistas.
 
 const SESSION_STORAGE_KEY = "charly:auth-session";
 
@@ -24,13 +23,11 @@ function readStoredSession() {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Recuperamos la sesión una sola vez al montar el provider.
-  useEffect(() => {
+  // Recuperamos la sesión una sola vez, al crear el estado inicial del
+  // provider (localStorage es síncrono, así que no hace falta un efecto ni
+  // un estado de carga intermedio).
+  const [user, setUser] = useState(() => {
     const stored = readStoredSession();
-    if (stored?.user) setUser(stored.user);
     // El token también se restaura -- tanto para publicApi.js (usado por
     // Catalogo.jsx) como para api.js (todo el resto del panel): en
     // Safari/iPhone la cookie httpOnly del login no persiste (ver
@@ -40,8 +37,9 @@ export function AuthProvider({ children }) {
       setPublicApiToken(stored.token);
       setAuthToken(stored.token);
     }
-    setLoading(false);
-  }, []);
+    return stored?.user || null;
+  });
+  const loading = false;
 
   // Guarda o limpia la sesión en estado + localStorage.
   const persistSession = useCallback((nextUser, nextToken) => {
@@ -111,5 +109,4 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export { AuthContext };
-export default AuthContext;
+export default AuthProvider;

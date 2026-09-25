@@ -4,6 +4,7 @@ import { Field, SelectField, TextareaField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { PRODUCT_COLORS, PRODUCT_COLOR_HEX } from "../../lib/catalogOptions";
 import { IconClose } from "../../lib/icons";
+import { buttonClass } from "../../lib/buttonStyles";
 
 const CATEGORIES = ["Pelotas", "Pajillas"];
 
@@ -46,8 +47,8 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
       size="lg"
       footer={
         <>
-          <button onClick={handleClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button type="submit" form="product-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+          <button onClick={handleClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
+          <button type="submit" form="product-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
         </>
       }
     >

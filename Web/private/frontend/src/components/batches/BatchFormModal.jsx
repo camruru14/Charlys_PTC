@@ -1,7 +1,7 @@
 import Modal from "../ui/Modal";
 import { Field, SelectField } from "../ui/Field";
-import { todayInput } from "../../hooks/useBatchForm";
 import { blockNegativeKey } from "../../lib/numberInput";
+import { buttonClass } from "../../lib/buttonStyles";
 
 const PRODUCTS = ["Pajilla", "Pelota"];
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
@@ -24,8 +24,8 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
       size="lg"
       footer={
         <>
-          <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button type="submit" form="batch-form" disabled={saving} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{saving ? "Guardando…" : "Guardar"}</button>
+          <button onClick={onClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
+          <button type="submit" form="batch-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
         </>
       }
     >

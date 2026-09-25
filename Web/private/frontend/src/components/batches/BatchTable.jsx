@@ -56,7 +56,7 @@ function BatchTable({ batches = [], showOperator = false, onEdit, onDelete }) {
               <td className="py-3 pr-4">{b.color || "—"}</td>
               <td className="py-3 pr-4">{b.productionLine || "—"}</td>
               <td className="py-3 pr-4 tabular-nums">{fmt(b.producedQuantity)}</td>
-              <td className="py-3 pr-4"><StatusPill status={b.status} /></td>
+              <td className="py-3 pr-4"><StatusPill status={b.status} domain="lote" /></td>
               {showOperator ? <td className="py-3 pr-4">{fmtOperator(b)}</td> : null}
               {showActions ? (
                 <td className="py-3 text-right">

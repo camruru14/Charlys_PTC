@@ -18,22 +18,22 @@
 import { useEffect, useRef, useState } from "react";
 import { IconChevronDown } from "../../lib/icons";
 
-const labelClass = "mb-1.5 block text-sm font-medium text-slate-700";
+const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
 const controlClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-[10px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft";
 
 // Variante compacta de labelClass/controlClass (antes vivía como
 // compactLabelClass/compactControlClass solo en Pedidos.jsx, para la fila de
 // "agregar producto" del modal de pedido).
-const compactLabelClass = "mb-1 block text-xs font-medium text-slate-600";
+const compactLabelClass = "mb-1 block text-[11.5px] font-semibold text-muted";
 const compactControlClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100";
+  "w-full rounded-[8px] border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft";
 
 export function Field({ label, name, type = "text", value, onChange, required, placeholder, ...rest }) {
   return (
     <label className="block">
       <span className={labelClass}>
-        {label} {required ? <span className="text-red-500">*</span> : null}
+        {label} {required ? <span className="text-tone-rose-text">*</span> : null}
       </span>
       <input
         name={name}
@@ -104,10 +104,10 @@ function DropdownOptions({ rect, options, value, onSelect }) {
   return (
     <div
       style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}
-      className="z-[60] max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+      className="z-[60] max-h-52 overflow-y-auto rounded-[10px] border border-line bg-surface py-1 shadow-modal"
     >
       {options.length === 0 ? (
-        <p className="px-3.5 py-2 text-sm text-slate-400">Sin opciones</p>
+        <p className="px-3.5 py-2 text-[13px] text-faint">Sin opciones</p>
       ) : (
         options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
@@ -117,8 +117,8 @@ function DropdownOptions({ rect, options, value, onSelect }) {
               key={val}
               type="button"
               onClick={() => onSelect(opt)}
-              className={`block w-full px-3.5 py-2 text-left text-sm hover:bg-slate-50 ${
-                val === value ? "bg-brand-50 font-semibold text-brand-700" : "text-slate-700"
+              className={`block w-full px-3.5 py-2 text-left text-[13px] hover:bg-surface-2 ${
+                val === value ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"
               }`}
             >
               {text}
@@ -149,7 +149,7 @@ export function SelectField({ label, name, value, onChange, options = [], requir
   return (
     <div className="relative" ref={rootRef}>
       <span className={compact ? compactLabelClass : labelClass}>
-        {label} {required ? <span className="text-red-500">*</span> : null}
+        {label} {required ? <span className="text-tone-rose-text">*</span> : null}
       </span>
       <button
         type="button"
@@ -157,10 +157,10 @@ export function SelectField({ label, name, value, onChange, options = [], requir
         onClick={toggleOpen}
         className={`${compact ? compactControlClass : controlClass} flex items-center justify-between gap-2 text-left`}
       >
-        <span className={selectedLabel ? "text-slate-800" : "text-slate-400"}>
+        <span className={selectedLabel ? "text-ink" : "text-faint"}>
           {selectedLabel || placeholder || "Selecciona…"}
         </span>
-        <IconChevronDown width={16} height={16} className={`shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`} />
+        <IconChevronDown width={16} height={16} className={`shrink-0 text-subtle transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? <DropdownOptions rect={rect} options={options} value={value} onSelect={selectOption} /> : null}
     </div>
@@ -192,7 +192,7 @@ export function FilterSelect({ value, onChange, options = [], className = "" }) 
         className={`flex items-center justify-between gap-1.5 text-left ${className}`}
       >
         <span>{selectedLabel}</span>
-        <IconChevronDown width={14} height={14} className={`shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`} />
+        <IconChevronDown width={14} height={14} className={`shrink-0 text-subtle transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? <DropdownOptions rect={rect} options={options} value={value} onSelect={selectOption} /> : null}
     </div>

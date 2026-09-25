@@ -10,6 +10,8 @@ import ProductCatalogCard from "../components/catalog/ProductCatalogCard";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import { FilterSelect } from "../components/ui/Field";
 import { IconTag, IconBox, IconCheck, IconPlus } from "../lib/icons";
+import PageHeader from "../components/ui/PageHeader";
+import { getPageMeta } from "../lib/nav";
 
 const CATEGORY_FILTERS = ["Todas", "Pelotas", "Pajillas"];
 
@@ -176,8 +178,9 @@ function Catalogo() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="flex flex-col gap-3.5">
+      <PageHeader {...getPageMeta("/catalogo")} />
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
         <KpiCard label="Productos" value={kpis.total} icon={IconTag} trend={{ tone: "blue", label: "en catálogo" }} />
         <KpiCard label="Visibles" value={kpis.active} icon={IconCheck} trend={{ tone: "green", label: "en la tienda" }} />
         <KpiCard label="Destacados" value={kpis.featured} icon={IconBox} trend={{ tone: "yellow", label: "en Inicio" }} />
