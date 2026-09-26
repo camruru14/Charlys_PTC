@@ -4,18 +4,19 @@ import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { todayInput } from "../hooks/useBatchForm";
 import { useConfirm } from "../hooks/useConfirm";
-import KpiCard from "../components/ui/KpiCard";
-import StatusPill from "../components/ui/StatusPill";
+import { useUrlState } from "../hooks/useUrlState";
+import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
-import { Field, SelectField } from "../components/ui/Field";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
-import { IconUsers, IconCheck, IconPlus } from "../lib/icons";
-import { buttonClass } from "../lib/buttonStyles";
 import PageHeader from "../components/ui/PageHeader";
-import { getPageMeta } from "../lib/nav";
 import Tabs from "../components/ui/Tabs";
-import { useUrlState } from "../hooks/useUrlState";
+import Button from "../components/ui/Button";
+import { Field, SelectField } from "../components/ui/Field";
+import { IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import { attendanceDays, attendanceMonths, defaultMonth } from "../lib/attendance";
+import Personal from "./empleados/Personal";
+import Asistencia from "./empleados/Asistencia";
 
 const TABS = [
   { key: "personal", label: "Personal" },
@@ -24,29 +25,32 @@ const TABS = [
 
 const DEPARTMENTS = ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"];
 
-// Jornada de referencia para calcular horas extra en la marcación manual
-// (horas trabajadas por encima de esto cuentan como extra). Ajustable si el
-// día laboral estándar cambia.
-const STANDARD_WORKDAY_HOURS = 8;
-
 const emptyAttendanceForm = { employee: "", date: "", checkIn: "", checkOut: "" };
-
-// DUI se guarda como 9 dígitos; se muestra con guion antes del último dígito (8-1)
-function formatDui(dui) {
-  const digits = String(dui || "").replace(/\D/g, "");
-  if (digits.length !== 9) return dui || "—";
-  return `${digits.slice(0, 8)}-${digits.slice(8)}`;
-}
 
 const emptyForm = {
   name: "", lastName: "", dui: "", phone: "", email: "", password: "",
   position: "", department: "Fabricación", hourlyRate: "", isActive: true,
 };
 
+/*
+  Empleados: Personal (maestro-detalle) y Asistencia (franja horaria por día).
+  URL: ?tab= (personal | asistencia), ?id= (empleado abierto), ?mes= (AAAA-MM).
+  «Tarde» y las horas extra salen del horario laboral de Configuración.
+*/
 function Empleados() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/employees");
+  const { schedule } = useWorkSchedule();
   const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
+  const [selectedId, setSelectedId] = useUrlState("id");
+
+  const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const months = useMemo(() => attendanceMonths(list), [list]);
+  const fallbackMonth = defaultMonth(list);
+  const [rawMonth, setMonth] = useUrlState("mes", fallbackMonth);
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth) ? rawMonth : fallbackMonth;
+  const days = useMemo(() => attendanceDays(list, month), [list, month]);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -55,41 +59,6 @@ function Empleados() {
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState(emptyAttendanceForm);
   const [savingAttendance, setSavingAttendance] = useState(false);
-
-  const list = Array.isArray(data) ? data : [];
-
-  // El sistema ya no maneja roles: el Área de cada empleado es lo que ahora
-  // distingue motoristas (Logística) de operarios (Fabricación).
-  const kpis = useMemo(() => ({
-    total: list.length,
-    active: list.filter((e) => e.isActive !== false).length,
-    drivers: list.filter((e) => e.department === "Logística").length,
-    operators: list.filter((e) => e.department === "Fabricación").length,
-  }), [list]);
-
-  // Cada empleado trae su propio arreglo `attendance` (Employee.attendance);
-  // se aplana en filas para la tabla, más reciente primero.
-  const attendanceRows = useMemo(() => {
-    const rows = [];
-    list.forEach((emp) => {
-      (emp.attendance || []).forEach((record, idx) => {
-        rows.push({ key: `${emp._id}-${idx}`, employee: emp, record });
-      });
-    });
-    return rows.sort((a, b) => new Date(b.record.date) - new Date(a.record.date));
-  }, [list]);
-
-  const fmtDate = (raw) => {
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString("es-SV", { day: "2-digit", month: "short", year: "numeric" });
-  };
-  const fmtTime = (raw) => {
-    if (!raw) return "—";
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit" });
-  };
 
   function openCreate() {
     setEditingId(null);
@@ -140,19 +109,23 @@ function Empleados() {
     }
   }
 
-  async function handleDelete(emp) {
+  async function handleDelete() {
+    const emp = list.find((e) => e._id === editingId);
+    if (!emp) return;
     if (!(await confirm(`¿Eliminar a ${emp.name} ${emp.lastName}?`, { danger: true }))) return;
     try {
       await api.del(`/employees/${emp._id}`);
       toast.success("Empleado eliminado");
+      setModalOpen(false);
+      if (selectedId === String(emp._id)) setSelectedId(null);
       refetch();
     } catch (err) {
       toast.error(err.message);
     }
   }
 
-  function openAttendance() {
-    setAttendanceForm({ ...emptyAttendanceForm, date: todayInput() });
+  function openAttendance(emp) {
+    setAttendanceForm({ ...emptyAttendanceForm, employee: emp?._id || "", date: todayInput() });
     setAttendanceModalOpen(true);
   }
 
@@ -160,7 +133,8 @@ function Empleados() {
 
   // Marcación manual (todavía no hay app móvil de marcación): entrada/salida
   // se capturan como hora del día elegido, y de ahí se calculan solas las
-  // horas trabajadas y las horas extra (por encima de STANDARD_WORKDAY_HOURS).
+  // horas trabajadas y las horas extra (por encima de las horas de jornada
+  // del horario laboral).
   async function handleAttendanceSubmit(e) {
     e.preventDefault();
     if (!attendanceForm.employee) return toast.error("Selecciona un empleado");
@@ -172,7 +146,7 @@ function Empleados() {
     if (checkOut <= checkIn) return toast.error("La salida debe ser después de la entrada");
 
     const workedHours = Number(((checkOut - checkIn) / 3600000).toFixed(2));
-    const overtimeHours = Number(Math.max(0, workedHours - STANDARD_WORKDAY_HOURS).toFixed(2));
+    const overtimeHours = Number(Math.max(0, workedHours - schedule.workdayHours).toFixed(2));
 
     setSavingAttendance(true);
     try {
@@ -195,110 +169,63 @@ function Empleados() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <PageHeader {...getPageMeta("/empleados")} />
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Empleados" value={kpis.total} icon={IconUsers} trend={{ tone: "blue", label: "en planilla" }} />
-        <KpiCard label="Activos" value={kpis.active} icon={IconCheck} trend={{ tone: "green", label: "trabajando" }} />
-        <KpiCard label="Operarios" value={kpis.operators} icon={IconUsers} trend={{ tone: "blue", label: "Fabricación" }} />
-        <KpiCard label="Motoristas" value={kpis.drivers} icon={IconUsers} trend={{ tone: "blue", label: "Logística" }} />
-      </div>
-
-      <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+      <PageHeader
+        title="Empleados"
+        subtitle="Asistencia, horas extra y planillas"
+        actions={
+          <>
+            <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+            {activeTab === "personal" ? (
+              <Button icon={IconPlus} onClick={openCreate}>
+                Nuevo empleado
+              </Button>
+            ) : (
+              <Button icon={IconPlus} onClick={() => openAttendance(null)}>
+                Registrar marcación
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {activeTab === "personal" ? (
-        <SectionCard
-          title="Personal"
-          action={
-            <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-              <IconPlus width={16} height={16} /> Registrar empleado
-            </button>
-          }
-        >
-          <AsyncState loading={loading} error={error} empty={!loading && list.length === 0} emptyText="No hay empleados.">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] text-left text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-slate-400">
-                    <th className="pb-3 pr-4 font-semibold">Nombre</th>
-                    <th className="pb-3 pr-4 font-semibold">DUI</th>
-                    <th className="pb-3 pr-4 font-semibold">Puesto</th>
-                    <th className="pb-3 pr-4 font-semibold">Área</th>
-                    <th className="pb-3 pr-4 font-semibold">Estado</th>
-                    <th className="pb-3 font-semibold text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {list.map((emp) => (
-                    <tr key={emp._id} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4">
-                        <p className="font-semibold text-slate-800">{emp.name} {emp.lastName}</p>
-                        <p className="text-xs text-slate-400">{emp.email}</p>
-                      </td>
-                      <td className="py-3 pr-4 tabular-nums">{formatDui(emp.dui)}</td>
-                      <td className="py-3 pr-4">{emp.position || "—"}</td>
-                      <td className="py-3 pr-4">{emp.department || "—"}</td>
-                      <td className="py-3 pr-4"><StatusPill status={emp.isActive !== false ? "Activo" : "Inactivo"} domain="empleado" /></td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2 text-xs font-semibold">
-                          <button onClick={() => openEdit(emp)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">Editar</button>
-                          <button onClick={() => handleDelete(emp)} className="rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </AsyncState>
-        </SectionCard>
+        <Personal
+          employees={list}
+          days={days}
+          month={month}
+          schedule={schedule}
+          loading={loading}
+          error={error}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onEdit={openEdit}
+          onRegister={openAttendance}
+        />
       ) : (
-        <SectionCard
-          title="Asistencia"
-          action={
-            <button onClick={openAttendance} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-              <IconPlus width={16} height={16} /> Registrar marcación
-            </button>
-          }
-        >
-          <AsyncState loading={loading} error={error} empty={!loading && attendanceRows.length === 0} emptyText="Aún no hay marcaciones registradas.">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-slate-400">
-                    <th className="pb-3 pr-4 font-semibold">Empleado</th>
-                    <th className="pb-3 pr-4 font-semibold">Fecha</th>
-                    <th className="pb-3 pr-4 font-semibold">Entrada</th>
-                    <th className="pb-3 pr-4 font-semibold">Salida</th>
-                    <th className="pb-3 pr-4 font-semibold">Horas trabajadas</th>
-                    <th className="pb-3 font-semibold">Horas extra</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {attendanceRows.map(({ key, employee, record }) => (
-                    <tr key={key} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4 font-semibold text-slate-800">{employee.name} {employee.lastName}</td>
-                      <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(record.date)}</td>
-                      <td className="py-3 pr-4">{fmtTime(record.checkIn)}</td>
-                      <td className="py-3 pr-4">{fmtTime(record.checkOut)}</td>
-                      <td className="py-3 pr-4 tabular-nums">{(record.workedHours || 0).toLocaleString("es-SV")}</td>
-                      <td className="py-3 tabular-nums">{(record.overtimeHours || 0).toLocaleString("es-SV")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </AsyncState>
-        </SectionCard>
+        <Asistencia
+          days={days}
+          months={months}
+          month={month}
+          onMonth={setMonth}
+          schedule={schedule}
+          loading={loading}
+          error={error}
+        />
       )}
 
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? "Editar empleado" : "Registrar empleado"}
+        title={editingId ? "Editar empleado" : "Nuevo empleado"}
         size="lg"
         footer={
           <>
-            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            {editingId ? (
+              <button type="button" onClick={handleDelete} className={`${buttonClass("danger", "modal")} mr-auto`}>
+                Eliminar
+              </button>
+            ) : null}
+            <button type="button" onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
             <button type="submit" form="emp-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
           </>
         }
@@ -323,8 +250,8 @@ function Empleados() {
           <Field label="Puesto" name="position" value={form.position} onChange={handleChange} />
           <SelectField label="Área" name="department" value={form.department} onChange={handleChange} options={DEPARTMENTS} />
           <Field label="Valor por hora ($)" name="hourlyRate" type="number" step="0.01" value={form.hourlyRate} onChange={handleChange} />
-          <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
-            <input type="checkbox" name="isActive" checked={form.isActive} onChange={handleChange} className="h-4 w-4 rounded border-slate-300" />
+          <label className="flex items-center gap-2 text-[13px] font-medium text-ink-2 sm:col-span-2">
+            <input type="checkbox" name="isActive" checked={form.isActive} onChange={handleChange} className="h-4 w-4 rounded border-line accent-primary" />
             Empleado activo
           </label>
         </form>
@@ -336,7 +263,7 @@ function Empleados() {
         title="Registrar marcación"
         footer={
           <>
-            <button onClick={() => setAttendanceModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
+            <button type="button" onClick={() => setAttendanceModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
             <button type="submit" form="attendance-form" disabled={savingAttendance} className={buttonClass("primary", "modal")}>{savingAttendance ? "Guardando…" : "Registrar"}</button>
           </>
         }
@@ -356,7 +283,7 @@ function Empleados() {
             <Field label="Entrada" name="checkIn" type="time" value={attendanceForm.checkIn} onChange={handleAttendanceChange} required />
             <Field label="Salida" name="checkOut" type="time" value={attendanceForm.checkOut} onChange={handleAttendanceChange} required />
           </div>
-          <p className="text-xs text-slate-400">Las horas trabajadas y las horas extra se calculan solas a partir de la entrada y la salida.</p>
+          <p className="t-aux">Las horas trabajadas y las horas extra se calculan solas a partir de la entrada y la salida.</p>
         </form>
       </Modal>
 

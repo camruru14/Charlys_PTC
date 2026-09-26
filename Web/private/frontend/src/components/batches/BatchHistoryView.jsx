@@ -14,6 +14,7 @@ import PageHeader from "../ui/PageHeader";
 import DateRangePicker from "../ui/DateRangePicker";
 import Button from "../ui/Button";
 import { getPageMeta } from "../../lib/nav";
+import { fmtNumber } from "../../lib/format";
 
 /*
   Vista a pantalla completa del historial de lotes.
@@ -30,7 +31,7 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
   const { data, loading, error, refetch } = useFetch("/productionBatches");
   const [filters, setFilters] = useState(defaultBatchFilters);
 
-  const all = Array.isArray(data) ? data : [];
+  const all = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const { modalOpen, setModalOpen, editingId, form, saving, operators, openCreate, openEdit, handleChange, handleSubmit, handleDelete, confirmProps } =
     useBatchForm(all, refetch);
   const filtered = useMemo(() => filterBatches(all, filters, range), [all, filters, range]);
@@ -59,11 +60,11 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Lotes encontrados</p>
-          <p className="t-kpi mt-2">{stats.count}</p>
+          <p className="t-kpi mt-2">{fmtNumber(stats.count)}</p>
         </div>
         <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Producción total</p>
-          <p className="t-kpi mt-2">{stats.produced.toLocaleString("es-SV")}</p>
+          <p className="t-kpi mt-2">{fmtNumber(stats.produced)}</p>
         </div>
       </div>
 
@@ -79,12 +80,14 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
       >
         <BatchToolbar list={all} filters={filters} setFilters={setFilters} />
         <AsyncState loading={loading} error={error}>
-          <BatchTable
-            batches={filtered}
-            showOperator
-            onEdit={editable ? openEdit : undefined}
-            onDelete={editable ? handleDelete : undefined}
-          />
+          <div className="-mx-5 -mb-5 border-t border-line-soft">
+            <BatchTable
+              batches={filtered}
+              showOperator
+              onEdit={editable ? openEdit : undefined}
+              onDelete={editable ? handleDelete : undefined}
+            />
+          </div>
         </AsyncState>
       </SectionCard>
 

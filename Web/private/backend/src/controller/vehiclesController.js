@@ -1,6 +1,8 @@
 const vehiclesController = {};
 
 import vehicleModel from "../models/Vehicle.js";
+import routeModel from "../models/Route.js";
+import { parseDay } from "../lib/routes.js";
 
 // SELECT - todos los vehículos
 vehiclesController.getVehicles = async (req, res) => {
@@ -39,9 +41,18 @@ vehiclesController.updateVehicle = async (req, res) => {
   }
 };
 
-// Eliminar
+// Eliminar. No se permite si el vehículo está en una ruta activa de hoy (misma
+// regla que GET /routes/availability).
 vehiclesController.deleteVehicle = async (req, res) => {
-  await vehicleModel.findByIdAndDelete(req.params.id);
+  const vehicle = await vehicleModel.findById(req.params.id);
+  if (!vehicle) return res.status(404).json({ message: "Vehículo no encontrado" });
+
+  const onRoute = await routeModel.exists({ date: parseDay(), status: { $ne: "Completada" }, vehicle: vehicle.plate });
+  if (onRoute) {
+    return res.status(409).json({ message: `No se puede eliminar «${vehicle.plate}»: está en una ruta de hoy` });
+  }
+
+  await vehicle.deleteOne();
   res.json({ message: "Vehicle deleted" });
 };
 

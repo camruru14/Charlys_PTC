@@ -10,6 +10,8 @@
     fmtElapsed(d)          -> "hace 2 h 10 min"
     fmtDay2(d)           -> "02 sep" (día con dos dígitos, ejes de gráficas)
     fmtMonth(d)            -> "septiembre"
+    fmtWeekdayDate(d)      -> "vie 19 sep"
+    fmtDayLong(d)          -> "Viernes 19 de septiembre"
     fromDateOnly(d)        -> fecha guardada sin hora (medianoche UTC, p. ej.
                               startDate de un lote) como Date local del mismo día
     fmtRange(a, b)         -> "1 – 19 sep 2026" | "22 sep – 3 oct 2026"
@@ -75,6 +77,21 @@ export function fmtMonth(value) {
   const d = toDate(value);
   if (!d) return "—";
   return MONTHS_LONG[d.getMonth()];
+}
+
+const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+export function fmtWeekdayDate(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return `${WEEKDAYS[d.getDay()].slice(0, 3)} ${fmtDate(d)}`;
+}
+
+export function fmtDayLong(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  const weekday = WEEKDAYS[d.getDay()];
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d.getDate()} de ${MONTHS_LONG[d.getMonth()]}`;
 }
 
 export function fromDateOnly(value) {

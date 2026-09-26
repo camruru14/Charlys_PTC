@@ -1,6 +1,7 @@
 const warehousesController = {};
 
 import warehouseModel from "../models/Warehouse.js";
+import inventoryModel from "../models/InventoryItem.js";
 
 // SELECT - todas las bodegas
 warehousesController.getWarehouses = async (req, res) => {
@@ -39,9 +40,18 @@ warehousesController.updateWarehouse = async (req, res) => {
   }
 };
 
-// Eliminar
+// Eliminar. No se permite si la bodega todavía tiene existencia (artículos
+// con esa ubicación y stock > 0).
 warehousesController.deleteWarehouse = async (req, res) => {
-  await warehouseModel.findByIdAndDelete(req.params.id);
+  const warehouse = await warehouseModel.findById(req.params.id);
+  if (!warehouse) return res.status(404).json({ message: "Bodega no encontrada" });
+
+  const withStock = await inventoryModel.countDocuments({ location: warehouse.name, stock: { $gt: 0 } });
+  if (withStock > 0) {
+    return res.status(409).json({ message: `No se puede eliminar «${warehouse.name}»: todavía tiene existencia` });
+  }
+
+  await warehouse.deleteOne();
   res.json({ message: "Warehouse deleted" });
 };
 

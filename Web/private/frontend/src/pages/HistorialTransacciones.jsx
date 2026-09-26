@@ -9,6 +9,7 @@ import { defaultTransactionFilters, filterTransactions } from "../lib/transactio
 import PageHeader from "../components/ui/PageHeader";
 import DateRangePicker from "../components/ui/DateRangePicker";
 import { getPageMeta } from "../lib/nav";
+import { fmtMoney, fmtNumber } from "../lib/format";
 
 function HistorialTransacciones() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ function HistorialTransacciones() {
     return { count: filtered.length, income, expense, net: income - expense };
   }, [filtered]);
 
-  const fmt = (v) => `$${v.toLocaleString("es-SV", { maximumFractionDigits: 0 })}`;
+  const fmt = (v) => fmtMoney(v, 0);
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -42,7 +43,7 @@ function HistorialTransacciones() {
       <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
         <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Transacciones</p>
-          <p className="t-kpi mt-2">{stats.count}</p>
+          <p className="t-kpi mt-2">{fmtNumber(stats.count)}</p>
         </div>
         <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Ingresos</p>

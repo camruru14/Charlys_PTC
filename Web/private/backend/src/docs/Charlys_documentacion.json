@@ -49,6 +49,10 @@
       "description": "Métricas clave de rendimiento (KPIs), mezcla de producción, alertas de stock y conteos consolidados"
     },
     {
+      "name": "Configuración",
+      "description": "Preferencias del sistema compartidas entre usuarios, como el horario laboral"
+    },
+    {
       "name": "Documentación",
       "description": "Endpoints de documentación Swagger UI y especificación OpenAPI (protegidos para rol admin)"
     }
@@ -1092,6 +1096,22 @@
           }
         },
         "required": ["name"]
+      },
+      "WorkSchedule": {
+        "type": "object",
+        "description": "Horario laboral de la empresa. Se usa para calcular las marcaciones tardías y las horas extra.",
+        "properties": {
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "07:00"
+          },
+          "workdayHours": {
+            "type": "number",
+            "example": 8
+          }
+        },
+        "required": ["startTime", "workdayHours"]
       },
       "CustomerInfo": {
         "type": "object",
@@ -6771,6 +6791,93 @@
           },
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/settings/work-schedule": {
+      "get": {
+        "tags": ["Configuración"],
+        "summary": "Obtener el horario laboral",
+        "description": "Devuelve la hora de entrada y las horas de jornada. Si nunca se ha guardado, responde los valores por defecto (07:00 y 8 horas).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Horario laboral",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkSchedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Configuración"],
+        "summary": "Guardar el horario laboral",
+        "description": "Guarda la hora de entrada (HH:MM) y las horas de jornada (mayor que 0 y hasta 24).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkSchedule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Horario laboral guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Hora de entrada u horas de jornada inválidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "La hora de entrada debe tener el formato HH:MM"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"

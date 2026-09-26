@@ -5,7 +5,8 @@ import { buttonClass } from "../../lib/buttonStyles";
 /*
   Menú «…» con acciones secundarias (normalmente las destructivas, que piden
   confirmación en quien las llama).
-    items = [{ label, onClick, danger }]
+    items = [{ label, onClick, danger, disabled, hint }]
+            (hint: motivo que se muestra al pasar sobre una acción desactivada)
     size  = "detail" (34×34, encabezado de detalle) | "row" (30×30, fila)
             | "card" (32×32 con borde, pie de tarjeta)
 */
@@ -46,12 +47,14 @@ function ActionsMenu({ items, size = "detail", label = "Más acciones" }) {
             <button
               key={item.label}
               type="button"
+              disabled={item.disabled}
+              title={item.disabled ? item.hint : undefined}
               onClick={() => {
                 setOpen(false);
                 item.onClick();
               }}
-              className={`flex w-full items-center rounded-[8px] px-2.5 py-2 text-left text-[13px] font-semibold transition ${
-                item.danger ? "text-tone-rose-text hover:bg-tone-rose" : "text-ink-2 hover:bg-surface-2"
+              className={`flex w-full items-center rounded-[8px] px-2.5 py-2 text-left text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                item.danger ? "text-tone-rose-text enabled:hover:bg-tone-rose" : "text-ink-2 enabled:hover:bg-surface-2"
               }`}
             >
               {item.label}
