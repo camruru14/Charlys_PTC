@@ -36,6 +36,16 @@ const orderItemSchema = new Schema(
     // queda enlazado aquí.
     manufacturingBatch: { type: Schema.Types.ObjectId, ref: "ProductionBatch" },
     manufacturedAt: { type: Date },
+    // Línea dividida por existencia parcial («Tomar X y fabricar Y» en
+    // Inventario > Pedidos): fromStockQty se tomó de verifiedWarehouse y
+    // toManufactureQty se mandó a fabricar (manufacturingBatch). Siempre
+    // suman quantity, así que totales y subtotales no cambian.
+    fromStockQty: { type: Number, min: 1 },
+    toManufactureQty: { type: Number, min: 1 },
+    // Empaque de cada parte de una línea dividida: la de bodega en Almacén y
+    // la fabricada en Fabricación. `packed` solo es true con las dos.
+    stockPackedAt: { type: Date },
+    manufacturePackedAt: { type: Date },
   },
   { _id: false },
 );

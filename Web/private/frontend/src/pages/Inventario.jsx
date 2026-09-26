@@ -225,7 +225,11 @@ function Inventario() {
     <div className="flex flex-col gap-3.5">
       <PageHeader
         title="Inventario"
-        subtitle="Materia prima y stock de productos terminados"
+        subtitle={
+          activeTab === "pedidos"
+            ? "Pedidos — llegan solos, se verifican de una vez y se empacan sin confirmación"
+            : "Materia prima y stock de productos terminados"
+        }
         actions={
           <Button icon={IconPlus} onClick={openCreate}>
             Nuevo artículo

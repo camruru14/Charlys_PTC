@@ -8,6 +8,10 @@ router
   .get(ordersController.getOrders)
   .post(ordersController.insertOrder);
 
+// Verificar varias líneas de uno o varios pedidos, todo o nada (Inventario >
+// Pedidos: «Verificar todo» y «Verificar seleccionados»).
+router.route("/verify-bulk").post(ordersController.verifyBulk);
+
 router
   .route("/:id")
   .get(ordersController.getOrder)
@@ -26,19 +30,29 @@ router
   .patch(ordersController.requestInventory)
   .delete(ordersController.cancelInventoryRequest);
 
-// Verificar / empacar un producto del pedido (Inventario > Pedidos)
+// Verificar / empacar un producto del pedido (Inventario > Pedidos), con su
+// deshacer: unverify devuelve el stock; unpack solo si no se recogió.
 router.route("/:id/items/:index/verify").patch(ordersController.verifyOrderItem);
+router.route("/:id/items/:index/unverify").patch(ordersController.unverifyOrderItem);
 router.route("/:id/items/:index/pack").patch(ordersController.packOrderItem);
+router.route("/:id/items/:index/unpack").patch(ordersController.unpackOrderItem);
 
-// Enviar / quitar un producto del pedido de Fabricación (Inventario >
-// Pedidos lo envía; Fabricación > Pedidos lo puede quitar con "Eliminar").
+// Existencia parcial: tomar parte de una bodega y fabricar el resto en la
+// misma línea (DELETE lo deshace mientras el lote siga Programado).
+router
+  .route("/:id/items/:index/split-partial")
+  .patch(ordersController.splitPartialItem)
+  .delete(ordersController.unsplitPartialItem);
+
+// Enviar a fabricación (crea el lote Programado en el mismo clic). DELETE lo
+// deshace: borra el lote si sigue Programado y la línea vuelve a sin procesar.
 router
   .route("/:id/items/:index/send-manufacturing")
   .patch(ordersController.sendItemToManufacturing)
   .delete(ordersController.cancelManufacturingRequest);
 
-// Fabricar un producto enviado a Fabricación (Fabricación > Pedidos): crea
-// el lote correspondiente en Lotes de fabricación.
+// Alias de send-manufacturing (también crea el lote de una línea enviada
+// antes sin lote).
 router.route("/:id/items/:index/manufacture").patch(ordersController.manufactureOrderItem);
 
 // Empacar un producto ya fabricado para este pedido (Fabricación > Fabricación

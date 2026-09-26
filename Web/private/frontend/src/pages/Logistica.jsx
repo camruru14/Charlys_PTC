@@ -35,12 +35,21 @@ const DISPATCH_ROUTE_STATUS = {
 const selectFilterClass =
   "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400";
 
-// Al menos una línea ya empacada (en Almacén o Fabricación, ver
-// packedLocation en Order.js): con eso basta para que Logística pueda
-// asignar motorista, aunque el pedido no esté "Empacado" completo todavía
+// Al menos una línea (o una parte de una línea dividida) ya empacada, en
+// Almacén o Fabricación: con eso basta para que Logística pueda asignar
+// motorista, aunque el pedido no esté "Empacado" completo todavía
 // (order.status solo llega a "Empacado" cuando TODAS las líneas lo están).
 function hasPackedItems(order) {
-  return (order.items || []).some((i) => i.packed);
+  return (order.items || []).some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);
+}
+
+// La línea tiene algo empacado esperando al motorista en esa ubicación. Una
+// línea dividida (fromStockQty/toManufactureQty) empaca su parte de bodega en
+// Almacén (stockPackedAt) y su parte fabricada en Fabricación
+// (manufacturePackedAt); mismo criterio que packedLocations() del backend.
+function isPackedAt(item, location) {
+  if (location === "Almacén") return Boolean((item.packed && item.packedLocation === "Almacén") || item.stockPackedAt);
+  return Boolean((item.packed && item.packedLocation === "Fabricación") || item.manufacturePackedAt);
 }
 
 // Ubicaciones donde el pedido tiene algo empacado esperando a que el
@@ -50,8 +59,8 @@ function hasPackedItems(order) {
 function getRequiredPickups(order) {
   const items = order.items || [];
   const locations = [];
-  if (items.some((i) => i.packedLocation === "Almacén")) locations.push("Almacén");
-  if (items.some((i) => i.packedLocation === "Fabricación")) locations.push("Fabricación");
+  if (items.some((i) => isPackedAt(i, "Almacén"))) locations.push("Almacén");
+  if (items.some((i) => isPackedAt(i, "Fabricación"))) locations.push("Fabricación");
   return locations;
 }
 
@@ -600,7 +609,7 @@ function Logistica() {
           <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
             <span className="block text-sm font-medium text-slate-700">Paradas de recolección</span>
             {getRequiredPickups(target).map((loc) => {
-              const count = (target.items || []).filter((i) => i.packedLocation === loc).length;
+              const count = (target.items || []).filter((i) => isPackedAt(i, loc)).length;
               const pickedUpAt = pickupDateFor(target, loc);
               return (
                 <div key={loc} className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm">

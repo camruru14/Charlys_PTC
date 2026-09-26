@@ -277,9 +277,13 @@ function Pedidos() {
     // enviado a fabricación, lote…) para que editar datos del cliente o del
     // pago no borre el progreso en Inventario/Fabricación. El lote viene
     // populado: se manda solo su id para que el backend lo castee.
+    // sourceIndex le dice al backend de qué línea original viene cada una:
+    // si al guardar se quita o se cambia una línea con stock tomado, el
+    // backend lo devuelve a su bodega (o rechaza si ya está empacada).
     setItems(
-      (o.items || []).map((i) => ({
+      (o.items || []).map((i, idx) => ({
         ...i,
+        sourceIndex: idx,
         color: i.color || "",
         subtotal: i.subtotal ?? i.quantity * i.unitPrice,
         manufacturingBatch: i.manufacturingBatch?._id || i.manufacturingBatch || undefined,

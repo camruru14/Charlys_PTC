@@ -13,7 +13,9 @@ export function getItemStatusCounts(order) {
 }
 
 export function macroStatus(order) {
-  if (order?.delivery?.driver) return "entregado";
+  // Solo el status del pedido marca "entregado" (tener motorista asignado no
+  // significa que ya se entregó).
+  if (order?.status === "Entregado") return "entregado";
   const counts = getItemStatusCounts(order);
   const groupsWithItems = Object.values(counts).filter((n) => n > 0).length;
   if (groupsWithItems === 0) return "sinVerificar";

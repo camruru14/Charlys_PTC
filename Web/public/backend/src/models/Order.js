@@ -31,6 +31,10 @@ const orderItemSchema = new Schema(
     sentToManufacturingAt: { type: Date },
     manufacturingBatch: { type: Schema.Types.ObjectId, ref: "ProductionBatch" },
     manufacturedAt: { type: Date },
+    fromStockQty: { type: Number, min: 1 },
+    toManufactureQty: { type: Number, min: 1 },
+    stockPackedAt: { type: Date },
+    manufacturePackedAt: { type: Date },
   },
   { _id: false },
 );

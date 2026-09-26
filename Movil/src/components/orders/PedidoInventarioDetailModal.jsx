@@ -6,7 +6,9 @@ export default function PedidoInventarioDetailModal({ visible, order, onClose, o
   const items = order?.items || [];
 
   const itemStatus = (it) => {
-    if (order?.delivery?.driver) return "Entregado";
+    // "Entregado" sale del status del pedido, no de que tenga motorista
+    // asignado (un motorista asignado todavía puede estar recogiendo).
+    if (order?.status === "Entregado") return "Entregado";
     if (it.packed) return "Empacado";
     if (it.verified) return "Verificado";
     if (it.sentToManufacturing) return "En Fabricación";

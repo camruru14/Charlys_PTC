@@ -1,6 +1,6 @@
 // Deriva el "progreso" de los grupos por pedido de las dos tablas de
 // Fabricación que agrupan por pedido (ver Fabricacion.jsx), para pintar sus
-// barras segmentadas y sus filtros. Equivalente a orderProgress.js, pero
+// barras segmentadas y sus filtros (mismo patrón que usaba Inventario), pero
 // para este dominio — dos variantes según qué se está agrupando:
 //
 //   - "Por fabricar" (manufacturingGroups: { order, lines }): cada línea del

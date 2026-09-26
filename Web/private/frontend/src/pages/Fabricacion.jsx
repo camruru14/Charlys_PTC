@@ -764,7 +764,7 @@ function Fabricacion() {
                     <div className="flex items-center gap-2 text-xs font-semibold">
                       {!pedidoLine ? (
                         <span className="text-slate-400">Sin pedido vinculado</span>
-                      ) : pedidoLine.item.packed ? (
+                      ) : pedidoLine.item.packed || pedidoLine.item.manufacturePackedAt ? (
                         <StatusPill status="Empacado" domain="lote" />
                       ) : b.status === "Completado" ? (
                         <button onClick={() => handlePackManufactured(pedidoLine)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Empacar</button>

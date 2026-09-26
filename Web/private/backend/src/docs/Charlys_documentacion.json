@@ -2450,7 +2450,7 @@
       "patch": {
         "tags": ["Pedidos"],
         "summary": "Enviar producto a fabricación por falta de stock",
-        "description": "Marca la línea de pedido para que aparezca en la vista de Fabricación > Pedidos.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Marca la línea como enviada a fabricación y crea en el mismo paso el lote Programado (categoría `Pedido`, meta = cantidad de la línea).\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
@@ -2510,7 +2510,7 @@
       "delete": {
         "tags": ["Pedidos"],
         "summary": "Cancelar envío de producto a fabricación",
-        "description": "Deshace el envío a fabricación para que el producto vuelva a mostrarse 'Sin Verificar' en Inventario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Deshace el envío a fabricación: si el lote sigue Programado lo elimina y la línea vuelve a sin procesar. Si el lote ya empezó, responde 409.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
@@ -2572,7 +2572,7 @@
       "patch": {
         "tags": ["Pedidos"],
         "summary": "Crear lote de fabricación para producto de pedido",
-        "description": "Crea un nuevo lote de producción con categoría `Pedido` y lo asocia a esta línea del pedido.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Alias de `send-manufacturing`: crea el lote Programado (categoría `Pedido`) y lo asocia a la línea; también cubre líneas enviadas antes sin lote.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
@@ -2703,6 +2703,419 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/orders/verify-bulk": {
+      "post": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Verificar varias líneas (todo o nada)",
+        "description": "Verifica en una sola transacción varias líneas de uno o varios pedidos, tomando el stock de la bodega indicada en cada una. Si alguna falla, no se aplica ninguna. Devuelve los pedidos actualizados.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "orders": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "index": {
+                                "type": "integer"
+                              },
+                              "warehouse": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order items verified"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La línea no está en el estado requerido, no hay existencia suficiente o el lote ya empezó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/unverify": {
+      "patch": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Deshacer verificación",
+        "description": "Devuelve a su bodega el stock tomado al verificar. Solo si la línea no está empacada.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item unverified"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La línea no está en el estado requerido, no hay existencia suficiente o el lote ya empezó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/unpack": {
+      "patch": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Deshacer empaque en Almacén",
+        "description": "Desmarca el empaque de la línea (o de la parte de bodega de una línea dividida). Solo si el motorista no recogió en Almacén.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item unpacked"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La línea no está en el estado requerido, no hay existencia suficiente o el lote ya empezó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/items/{index}/split-partial": {
+      "patch": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Dividir línea con existencia parcial",
+        "description": "Toma `quantity` de `warehouse` (fromStockQty, queda verificado) y manda el resto a fabricar (toManufactureQty) creando un lote Programado con meta = resto. La cantidad y el total del pedido no cambian.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "warehouse",
+                  "quantity"
+                ],
+                "properties": {
+                  "warehouse": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item split"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La línea no está en el estado requerido, no hay existencia suficiente o el lote ya empezó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Deshacer división",
+        "description": "Devuelve el stock tomado y elimina el lote si sigue Programado. Rechaza si alguna parte ya está empacada o el lote ya empezó.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea de producto",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item split undone"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La línea no está en el estado requerido, no hay existencia suficiente o el lote ya empezó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }

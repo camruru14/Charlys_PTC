@@ -1,12 +1,31 @@
 const ordersController = {};
 
 import orderModel from "../models/Order.js";
-import inventoryModel from "../models/InventoryItem.js";
-import batchModel from "../models/ProductionBatch.js";
 import transactionModel from "../models/Transaction.js";
-import { generateBatchNumber } from "./productionBatchesController.js";
 import { generateReference } from "./transactionsController.js";
 import { setOrderStatus } from "../lib/orderStatus.js";
+import { HttpError, sendError, withTransaction, returnStock } from "../lib/stock.js";
+import {
+  packedLocations,
+  hasStockTaken,
+  hasCommitment,
+  takenQty,
+  resetLine,
+  releaseLine,
+  verifyLine,
+  unverifyLine,
+  packLine,
+  unpackLine,
+  sendLineToManufacturing,
+  cancelLineManufacturing,
+  splitLine,
+  unsplitLine,
+  packManufacturedLine,
+} from "../lib/orderLines.js";
+
+// Campos del lote que se incluyen al poblar items.manufacturingBatch (la
+// flecha desplegable de Inventario > Pedidos muestra meta y producido).
+const BATCH_FIELDS = "batchNumber status targetQuantity producedQuantity";
 
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...)
 async function generateOrderNumber() {
@@ -29,26 +48,17 @@ async function generateOrderNumber() {
 //      assignDelivery/updateStatus aparte: no se toca.
 //   2. Todas las líneas empacadas -> "Empacado".
 //   3. Alguna línea enviada a fabricación y ninguna empacada -> "En Fabricación".
-//   4. Alguna línea con avance (verified o packed) -> "Procesando".
+//   4. Alguna línea con avance (verificada o empacada) -> "Procesando".
 //   5. Si ninguna línea tiene avance -> "Pendiente".
 function computeOrderStatus(order) {
   if (order.delivery?.driver) return order.status;
 
   const items = order.items || [];
+  const anyPack = items.some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);
   if (items.length > 0 && items.every((i) => i.packed)) return "Empacado";
-  if (items.some((i) => i.sentToManufacturing) && !items.some((i) => i.packed)) return "En Fabricación";
-  if (items.some((i) => i.verified || i.packed)) return "Procesando";
+  if (items.some((i) => i.sentToManufacturing) && !anyPack) return "En Fabricación";
+  if (items.some((i) => i.verified) || anyPack) return "Procesando";
   return "Pendiente";
-}
-
-// Ubicaciones donde el pedido tiene algo empacado esperando a que el
-// motorista lo recoja, equivalente a getRequiredPickups en Logistica.jsx.
-function getRequiredPickupLocations(order) {
-  const items = order.items || [];
-  const locations = [];
-  if (items.some((i) => i.packedLocation === "Almacén")) locations.push("Almacén");
-  if (items.some((i) => i.packedLocation === "Fabricación")) locations.push("Fabricación");
-  return locations;
 }
 
 // El motorista ya pasó por todas las paradas de recolección que este pedido
@@ -56,7 +66,7 @@ function getRequiredPickupLocations(order) {
 // porque a veces se evalúa contra el delivery ya guardado en DB y a veces
 // contra uno recién armado en memoria (ver assignDelivery/confirmPickup).
 function isFullyCollected(order, delivery) {
-  const required = getRequiredPickupLocations(order);
+  const required = packedLocations(order);
   if (required.includes("Almacén") && !delivery?.pickupWarehouseAt) return false;
   if (required.includes("Fabricación") && !delivery?.pickupFactoryAt) return false;
   return true;
@@ -89,18 +99,44 @@ async function createOrderPaymentTransaction(order, type, concept) {
   });
 }
 
+// Carga un pedido y una de sus líneas dentro de una transacción, aplica
+// `fn` sobre la línea, recalcula el status y guarda. Todo o nada: si `fn`
+// lanza (estado inválido, stock insuficiente, lote ya en proceso), no se
+// aplica ningún movimiento de stock ni de lotes.
+function lineAction(fn, okMessage) {
+  return async (req, res) => {
+    try {
+      await withTransaction(async (session) => {
+        const order = await orderModel.findById(req.params.id).session(session);
+        if (!order) throw new HttpError(404, "Pedido no encontrado");
+        const index = Number(req.params.index);
+        const item = Number.isInteger(index) ? order.items[index] : undefined;
+        if (!item) throw new HttpError(404, "Producto del pedido no encontrado");
+
+        await fn({ order, item, index, body: req.body || {}, session });
+
+        order.markModified("items");
+        setOrderStatus(order, computeOrderStatus(order));
+        await order.save({ session });
+      });
+      res.json({ message: okMessage });
+    } catch (error) {
+      sendError(res, error);
+    }
+  };
+}
+
 // SELECT - todos los pedidos
 ordersController.getOrders = async (req, res) => {
   try {
     const orders = await orderModel
       .find()
       .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", "batchNumber status")
+      .populate("items.manufacturingBatch", BATCH_FIELDS)
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -110,11 +146,10 @@ ordersController.getOrder = async (req, res) => {
     const order = await orderModel
       .findById(req.params.id)
       .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", "batchNumber status");
+      .populate("items.manufacturingBatch", BATCH_FIELDS);
     res.json(order);
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -131,7 +166,7 @@ ordersController.insertOrder = async (req, res) => {
     const newOrder = new orderModel({
       orderNumber,
       customer,
-      items,
+      items: (items || []).map(({ sourceIndex: _sourceIndex, ...item }) => item),
       total,
       paymentStatus,
       notes,
@@ -143,38 +178,75 @@ ordersController.insertOrder = async (req, res) => {
 
     res.json({ message: "Order saved", orderNumber, _id: newOrder._id });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
+
+// Al editar las líneas de un pedido, libera lo que tenían comprometido las
+// líneas que se quitan o cambian (producto, color o cantidad): devuelve el
+// stock tomado a su bodega y borra el lote si sigue Programado. Si alguna ya
+// está empacada (o su lote ya empezó), rechaza todo el guardado.
+//
+// Para saber qué línea nueva corresponde a cuál vieja, el panel manda
+// `sourceIndex` en cada línea que venía del pedido original. Si no llega en
+// ninguna (ej. Movil, que reenvía las mismas líneas al cambiar el pago), se
+// emparejan por posición.
+async function reconcileEditedItems(existing, newItems, session) {
+  const oldItems = existing.items || [];
+  const hasSource = newItems.some((n) => n.sourceIndex != null);
+
+  for (let i = 0; i < oldItems.length; i += 1) {
+    const old = oldItems[i];
+    if (!hasCommitment(old)) continue;
+
+    const newIdx = hasSource ? newItems.findIndex((n) => n.sourceIndex === i) : i < newItems.length ? i : -1;
+    const next = newIdx >= 0 ? newItems[newIdx] : null;
+    const changed =
+      !next ||
+      Number(next.quantity) !== old.quantity ||
+      next.product !== old.product ||
+      (next.color || "") !== (old.color || "");
+    if (!changed) continue;
+
+    await releaseLine(old, session);
+    if (next) resetLine(next);
+  }
+
+  return newItems.map(({ sourceIndex: _sourceIndex, ...item }) => item);
+}
 
 // ACTUALIZAR (datos generales del pedido)
 ordersController.updateOrder = async (req, res) => {
   try {
     const { customer, items, total, status, paymentStatus, notes } = req.body;
 
-    const existing = await orderModel.findById(req.params.id);
-    if (!existing) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-    const previousPaymentStatus = existing.paymentStatus;
+    const result = await withTransaction(async (session) => {
+      const existing = await orderModel.findById(req.params.id).session(session);
+      if (!existing) throw new HttpError(404, "Pedido no encontrado");
+      const previousPaymentStatus = existing.paymentStatus;
 
-    // Solo se pisan los campos que llegan en el body (igual que el $set
-    // anterior, que ignoraba los undefined).
-    const fields = { customer, items, total, paymentStatus, notes };
-    for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) existing.set(key, value);
-    }
-    setOrderStatus(existing, status);
+      const nextItems = Array.isArray(items) ? await reconcileEditedItems(existing, items, session) : undefined;
 
-    // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
-    // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
-    // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
-    if (status !== "En Tránsito" && status !== "Entregado") {
-      existing.delivery = undefined;
-    }
+      // Solo se pisan los campos que llegan en el body (igual que el $set
+      // anterior, que ignoraba los undefined).
+      const fields = { customer, items: nextItems, total, paymentStatus, notes };
+      for (const [key, value] of Object.entries(fields)) {
+        if (value !== undefined) existing.set(key, value);
+      }
+      setOrderStatus(existing, status);
 
-    await existing.save();
+      // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
+      // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
+      // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
+      if (status !== "En Tránsito" && status !== "Entregado") {
+        existing.delivery = undefined;
+      }
+
+      await existing.save({ session });
+      return { existing, previousPaymentStatus };
+    });
+
+    const { existing, previousPaymentStatus } = result;
 
     // Si paymentStatus acaba de cambiar a "Pagado"/"Reembolsado" (y antes no lo
     // era), genera la transacción de Finanzas correspondiente automáticamente.
@@ -199,8 +271,7 @@ ordersController.updateOrder = async (req, res) => {
 
     res.json({ message: "Order updated" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -210,9 +281,7 @@ ordersController.updateStatus = async (req, res) => {
     const { status } = req.body;
 
     const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    if (!order) throw new HttpError(404, "Pedido no encontrado");
 
     setOrderStatus(order, status);
     // Si el pedido sale del flujo de despacho activo (deja de estar "En Tránsito" o "Entregado"),
@@ -226,8 +295,7 @@ ordersController.updateStatus = async (req, res) => {
 
     res.json({ message: "Order status updated" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -248,9 +316,7 @@ ordersController.assignDelivery = async (req, res) => {
     const { driver, vehicle, dispatchStatus, address } = req.body;
 
     const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    if (!order) throw new HttpError(404, "Pedido no encontrado");
 
     // Se copian pickupWarehouseAt/pickupFactoryAt del delivery existente en
     // vez de reemplazar todo el subdocumento: reemplazarlo (como antes)
@@ -269,7 +335,7 @@ ordersController.assignDelivery = async (req, res) => {
     let status;
     if (dispatchStatus === "Entregado") {
       status = "Entregado";
-    } else if (getRequiredPickupLocations(order).length === 0 || isFullyCollected(order, order.delivery)) {
+    } else if (packedLocations(order).length === 0 || isFullyCollected(order, order.delivery)) {
       status = "En Tránsito";
     } else {
       status = computeOrderStatus(order);
@@ -282,8 +348,7 @@ ordersController.assignDelivery = async (req, res) => {
 
     res.json({ message: "Delivery assigned" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -293,8 +358,7 @@ ordersController.deleteOrder = async (req, res) => {
     await orderModel.findByIdAndDelete(req.params.id);
     res.json({ message: "Order deleted" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -309,357 +373,157 @@ ordersController.requestInventory = async (req, res) => {
     );
     res.json({ message: "Inventory requested" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
-// Quita un pedido de Inventario > Pedidos (botón "Eliminar" ahí): borra todo
-// su rastro en Inventario, no solo la fecha de solicitud. Por cada producto
-// ya verificado, le devuelve la cantidad al stock de la bodega donde se
-// había restado (recreando el artículo si ya se había agotado y borrado), y
-// desmarca verified/packed de todos los productos. Así, si el pedido se
-// vuelve a solicitar más adelante, aparece limpio ("Sin Verificar") en vez
-// de arrastrar un estado viejo, y el stock no se descuenta dos veces.
-// Como sentToInventoryAt se borra, el pedido sale de Inventario > Pedidos
-// hasta que se reenvíe con PATCH request-inventory.
+// Quita un pedido de Inventario (lo usa Movil): borra todo su rastro de
+// verificación. Por cada producto con stock tomado, le devuelve esa cantidad
+// a la bodega donde se había restado, y desmarca verificado/empacado/enviado
+// a fabricación. Como sentToInventoryAt se borra, el pedido sale de la lista
+// de Inventario de Movil hasta que se reenvíe con PATCH request-inventory.
 ordersController.cancelInventoryRequest = async (req, res) => {
   try {
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    await withTransaction(async (session) => {
+      const order = await orderModel.findById(req.params.id).session(session);
+      if (!order) throw new HttpError(404, "Pedido no encontrado");
 
-    for (const item of order.items) {
-      if (item.verified) {
-        const stockItem = await inventoryModel.findOne({
-          category: "Producto Terminado",
-          name: item.product,
-          color: item.color || { $in: [null, ""] },
-          location: item.verifiedWarehouse,
-          batchNumber: { $exists: false },
-        });
-
-        if (stockItem) {
-          stockItem.stock = (stockItem.stock || 0) + item.quantity;
-          await stockItem.save();
-        } else if (item.verifiedWarehouse) {
-          // El artículo se había agotado y borrado (ver verifyOrderItem): se
-          // recrea con la cantidad que se le había restado a este pedido.
-          await inventoryModel.create({
-            name: item.product,
-            category: "Producto Terminado",
-            color: item.color,
-            stock: item.quantity,
-            location: item.verifiedWarehouse,
-          });
+      for (const item of order.items) {
+        if (hasStockTaken(item)) {
+          await returnStock(
+            { product: item.product, color: item.color, warehouse: item.verifiedWarehouse, quantity: takenQty(item) },
+            session,
+          );
         }
-
-        item.verified = false;
-        item.verifiedWarehouse = undefined;
-        item.verifiedAt = undefined;
-        item.packed = false;
-        item.packedAt = undefined;
+        // Los lotes ya creados no se borran: se conservan en Fabricación, solo
+        // se desvinculan de la línea (mismo criterio de antes).
+        resetLine(item);
       }
 
-      // Si se había enviado a fabricación por falta de stock, también se
-      // desmarca: la línea deja de aparecer en Fabricación > Pedidos.
-      item.sentToManufacturing = false;
-      item.sentToManufacturingAt = undefined;
-    }
-
-    order.markModified("items");
-    order.sentToInventoryAt = undefined;
-    // Si "Empacar" o "Enviar a fabricación" habían avanzado el estado, se
-    // revierte junto con el resto del rastro (ya no queda nada verificado,
-    // empacado ni enviado a fabricación).
-    if (order.status === "Empacado" || order.status === "En Fabricación") {
-      setOrderStatus(order, "Pendiente");
-    }
-
-    await order.save();
+      order.markModified("items");
+      order.sentToInventoryAt = undefined;
+      if (order.status === "Empacado" || order.status === "En Fabricación" || order.status === "Procesando") {
+        setOrderStatus(order, "Pendiente");
+      }
+      await order.save({ session });
+    });
 
     res.json({ message: "Inventory request cancelled" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
-// Verifica un producto del pedido (modal "Verificar producto en inventario"
-// en Inventario > Pedidos): resta la cantidad pedida del stock del producto
-// terminado elegido (mismo artículo + color, en la bodega elegida) y marca
-// esa línea como verificada.
-ordersController.verifyOrderItem = async (req, res) => {
+// Verificar un producto: toma toda la cantidad de la bodega elegida.
+ordersController.verifyOrderItem = lineAction(
+  ({ item, body, session }) => verifyLine(item, body.warehouse, session),
+  "Order item verified",
+);
+
+// Deshacer verificar: devuelve el stock a su bodega (solo si no está empacado).
+ordersController.unverifyOrderItem = lineAction(
+  ({ item, session }) => unverifyLine(item, session),
+  "Order item unverified",
+);
+
+// Verificar varias líneas de uno o varios pedidos, todo o nada.
+// Body: { orders: [{ id, items: [{ index, warehouse }] }] }
+ordersController.verifyBulk = async (req, res) => {
   try {
-    const { warehouse } = req.body;
-    const index = Number(req.params.index);
+    const requested = Array.isArray(req.body?.orders) ? req.body.orders : [];
+    if (requested.length === 0) throw new HttpError(400, "No hay productos para verificar");
 
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-    if (!warehouse) {
-      return res.status(400).json({ message: "Selecciona una bodega" });
-    }
-
-    // Igual que sendToWarehouse: solo cuenta como stock real de almacén el
-    // artículo sin batchNumber. El de Lotes Reportados (con batchNumber) no
-    // debe tocarse aquí, aunque tenga el mismo artículo/color/bodega.
-    const stockItem = await inventoryModel.findOne({
-      category: "Producto Terminado",
-      name: item.product,
-      color: item.color || { $in: [null, ""] },
-      location: warehouse,
-      batchNumber: { $exists: false },
+    const ids = await withTransaction(async (session) => {
+      const touched = [];
+      for (const entry of requested) {
+        const order = await orderModel.findById(entry.id).session(session);
+        if (!order) throw new HttpError(404, "Pedido no encontrado");
+        for (const line of entry.items || []) {
+          const index = Number(line.index);
+          const item = Number.isInteger(index) ? order.items[index] : undefined;
+          if (!item) throw new HttpError(404, `Producto no encontrado en ${order.orderNumber}`);
+          await verifyLine(item, line.warehouse, session);
+        }
+        order.markModified("items");
+        setOrderStatus(order, computeOrderStatus(order));
+        await order.save({ session });
+        touched.push(order._id);
+      }
+      return touched;
     });
 
-    if (!stockItem) {
-      return res.status(404).json({ message: "No hay stock de ese producto en esa bodega" });
-    }
-    if ((stockItem.stock || 0) < item.quantity) {
-      return res.status(400).json({ message: "Stock insuficiente en esa bodega" });
-    }
-
-    // Si al restar la cantidad pedida el producto queda en 0, el registro se
-    // elimina de "Producto Terminado" en vez de dejarlo en 0 (misma idea que
-    // el resto de Inventario: un artículo agotado no se deja como fila vacía).
-    const remaining = (stockItem.stock || 0) - item.quantity;
-    if (remaining <= 0) {
-      await inventoryModel.deleteOne({ _id: stockItem._id });
-    } else {
-      stockItem.stock = remaining;
-      await stockItem.save();
-    }
-
-    item.verified = true;
-    item.verifiedWarehouse = warehouse;
-    item.verifiedAt = new Date();
-    order.markModified("items");
-    setOrderStatus(order, computeOrderStatus(order));
-    await order.save();
-
-    res.json({ message: "Order item verified" });
+    const orders = await orderModel
+      .find({ _id: { $in: ids } })
+      .populate("delivery.driver", "name lastName phone")
+      .populate("items.manufacturingBatch", BATCH_FIELDS);
+    res.json({ message: "Order items verified", orders });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
-// Marca un producto del pedido como empacado (botón "Empacar", solo
-// disponible una vez verificado): además pone todo el pedido en estado
-// "Empacado" para que aparezca listo para despacho en Logística.
-ordersController.packOrderItem = async (req, res) => {
-  try {
-    const index = Number(req.params.index);
+// Empacar en Almacén (toda la línea verificada o la parte de bodega de una
+// línea dividida). Si el pedido no tiene motorista, se limpia cualquier resto
+// de una asignación vieja; si ya lo tiene, no se toca (Logística puede
+// asignar apenas el primer producto queda empacado).
+ordersController.packOrderItem = lineAction(({ order, item }) => {
+  packLine(item);
+  if (!order.delivery?.driver) order.delivery = undefined;
+}, "Order item packed");
 
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+// Deshacer empacar (solo si el motorista no recogió en Almacén).
+ordersController.unpackOrderItem = lineAction(({ order, item }) => unpackLine(item, order), "Order item unpacked");
 
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-    if (!item.verified) {
-      return res.status(400).json({ message: "Verifica el producto antes de empacarlo" });
-    }
+// Enviar a fabricación: crea el lote Programado (meta = cantidad) en el mismo
+// clic. /manufacture queda como alias (también cubre líneas enviadas antes
+// sin lote).
+ordersController.sendItemToManufacturing = lineAction(
+  ({ item, session }) => sendLineToManufacturing(item, session),
+  "Order item sent to manufacturing",
+);
+ordersController.manufactureOrderItem = ordersController.sendItemToManufacturing;
 
-    item.packed = true;
-    item.packedAt = new Date();
-    item.packedLocation = "Almacén";
-    order.markModified("items");
-    setOrderStatus(order, computeOrderStatus(order));
-    // Mismo criterio que updateStatus: si no hay motorista asignado, se limpia
-    // cualquier resto de una asignación de logística vieja. Si ya hay
-    // motorista (Logística puede asignar apenas el primer producto quede
-    // empacado, ver Logistica.jsx), NO se toca: empacar otra línea del mismo
-    // pedido no debe desasignarlo a mitad de la recolección.
-    if (!order.delivery?.driver) {
-      order.delivery = undefined;
-    }
-    await order.save();
+// Deshacer enviar a fabricación: si el lote sigue Programado lo elimina y la
+// línea vuelve a sin procesar; si ya empezó, rechaza.
+ordersController.cancelManufacturingRequest = lineAction(
+  ({ item, session }) => cancelLineManufacturing(item, session),
+  "Manufacturing request cancelled",
+);
 
-    res.json({ message: "Order item packed" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
+// Existencia parcial: toma `quantity` de `warehouse` y manda el resto a
+// fabricar. Body: { warehouse, quantity }
+ordersController.splitPartialItem = lineAction(
+  ({ item, body, session }) => splitLine(item, body.warehouse, body.quantity, session),
+  "Order item split",
+);
 
-// Envía un producto del pedido a Fabricación (botón "Enviar a fabricación"
-// en el modal "Verificar producto en inventario", cuando no hay stock
-// suficiente para cubrirlo): no descuenta ni reserva stock, solo marca la
-// línea como enviada para que aparezca en Fabricación > Pedidos. En
-// Inventario > Pedidos esa línea pasa a mostrarse como "Enviado".
-ordersController.sendItemToManufacturing = async (req, res) => {
-  try {
-    const index = Number(req.params.index);
+// Deshacer la división: devuelve lo tomado y borra el lote si sigue Programado.
+ordersController.unsplitPartialItem = lineAction(
+  ({ item, session }) => unsplitLine(item, session),
+  "Order item split undone",
+);
 
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-
-    item.sentToManufacturing = true;
-    item.sentToManufacturingAt = new Date();
-    order.markModified("items");
-    setOrderStatus(order, computeOrderStatus(order));
-    await order.save();
-
-    res.json({ message: "Order item sent to manufacturing" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
-
-// Quita un producto de Fabricación > Pedidos (botón "Eliminar" ahí): deshace
-// el envío a fabricación, así el producto vuelve a aparecer "Sin Verificar"
-// en Inventario > Pedidos. Si ya se había fabricado (botón "Fabricar"), el
-// lote creado NO se borra: se conserva tal cual en Fabricación de pedidos,
-// solo se desvincula de este pedido.
-ordersController.cancelManufacturingRequest = async (req, res) => {
-  try {
-    const index = Number(req.params.index);
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-
-    item.sentToManufacturing = false;
-    item.sentToManufacturingAt = undefined;
-    item.manufacturingBatch = undefined;
-    item.manufacturedAt = undefined;
-    order.markModified("items");
-    setOrderStatus(order, computeOrderStatus(order));
-
-    await order.save();
-
-    res.json({ message: "Manufacturing request cancelled" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
-
-// Fabrica un producto enviado a Fabricación (botón "Fabricar" en
-// Fabricación > Pedidos): crea un lote en Lotes de fabricación con categoría
-// "Pedido" y lo enlaza a esta línea (que pasa a mostrarse como "Fabricado"
-// en vez del botón).
-ordersController.manufactureOrderItem = async (req, res) => {
-  try {
-    const index = Number(req.params.index);
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-
-    const batchNumber = await generateBatchNumber();
-    const newBatch = new batchModel({
-      batchNumber,
-      product: item.product,
-      color: item.color,
-      category: "Pedido",
-      status: "Programado",
-      targetQuantity: item.quantity,
-    });
-    await newBatch.save();
-
-    item.manufacturingBatch = newBatch._id;
-    item.manufacturedAt = new Date();
-    order.markModified("items");
-    await order.save();
-
-    res.json({ message: "Order item sent to production", batchNumber });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
-
-// Empaca un producto fabricado exclusivamente para este pedido (botón
-// "Empacar" en Fabricación > Fabricación de pedidos, una vez el lote está
-// "Completado"): a diferencia de packOrderItem, no exige item.verified (no
-// aplica — este stock nunca pasó, ni pasa, por Inventario: es exclusivo de
-// esta línea) y no toca InventoryModel para nada.
-ordersController.packManufacturedItem = async (req, res) => {
-  try {
-    const index = Number(req.params.index);
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const item = order.items[index];
-    if (!item) {
-      return res.status(404).json({ message: "Order item not found" });
-    }
-    if (!item.manufacturingBatch) {
-      return res.status(400).json({ message: "Este producto no tiene un lote de fabricación asociado" });
-    }
-
-    const batch = await batchModel.findById(item.manufacturingBatch);
-    if (!batch || batch.status !== "Completado") {
-      return res.status(400).json({ message: "El lote de fabricación todavía no está completado" });
-    }
-
-    item.verified = true;
-    item.packed = true;
-    item.packedAt = new Date();
-    item.packedLocation = "Fabricación";
-    order.markModified("items");
-    setOrderStatus(order, computeOrderStatus(order));
-    await order.save();
-
-    res.json({ message: "Order item packed from manufacturing" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
+// Empacar lo fabricado para el pedido (Fabricación de pedidos), una vez el
+// lote está "Completado". No toca inventario.
+ordersController.packManufacturedItem = lineAction(
+  ({ item, session }) => packManufacturedLine(item, session),
+  "Order item packed from manufacturing",
+);
 
 // Confirma que el motorista ya recogió lo que le tocaba en una ubicación del
-// pedido (Almacén o Fabricación) — checklist de recolección antes de salir
-// donde el cliente, ver getRequiredPickups en Logistica.jsx. No es un estado
-// nuevo del pedido: solo metadata dentro de delivery.
+// pedido (Almacén o Fabricación). No es un estado nuevo del pedido: solo
+// metadata dentro de delivery.
 ordersController.confirmPickup = async (req, res) => {
   try {
     const { location } = req.body;
     if (location !== "Almacén" && location !== "Fabricación") {
-      return res.status(400).json({ message: "Ubicación inválida" });
+      throw new HttpError(400, "Ubicación inválida");
     }
 
     const order = await orderModel.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    if (!order) throw new HttpError(404, "Pedido no encontrado");
     if (!order.delivery?.driver) {
-      return res.status(400).json({ message: "El pedido todavía no tiene motorista asignado" });
+      throw new HttpError(400, "El pedido todavía no tiene motorista asignado");
     }
 
     if (location === "Almacén") {
@@ -680,8 +544,7 @@ ordersController.confirmPickup = async (req, res) => {
 
     res.json({ message: "Pickup confirmed" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
