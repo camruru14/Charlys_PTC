@@ -98,6 +98,8 @@
   --color-brand-800: var(--color-primary-soft-text);
 
   --shadow-modal: 0 24px 60px rgb(22 32 58 / 0.28);
+  /* Recuadros flotantes dentro de una tarjeta (p. ej. el mes de la gráfica de Finanzas) */
+  --shadow-soft: 0 6px 18px rgb(22 32 58 / 0.08);
 }
 
 /* Escala tipográfica */

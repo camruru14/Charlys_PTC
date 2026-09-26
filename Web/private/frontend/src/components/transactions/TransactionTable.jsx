@@ -1,90 +1,80 @@
 import StatusPill from "../ui/StatusPill";
-import { txDate } from "../../lib/transactionFilters";
+import EmptyState from "../ui/EmptyState";
+import ActionsMenu from "../ui/ActionsMenu";
+import { fmtDate, fmtMoney, fromDateOnly } from "../../lib/format";
 
 /*
-  Tabla de transacciones con los campos: Fecha, Concepto, Categoría, Monto y Estado.
-  Si se pasa onEdit y/u onDelete, muestra una columna de acciones para editar/eliminar.
+  Tabla de transacciones (Finanzas e Historial de transacciones).
+  Columnas 124px 88px minmax(0,1fr) 150px 116px 124px: Referencia · Fecha ·
+  Concepto (con el pedido vinculado) · Categoría · Monto · Estado; filas de
+  42px. Con onEdit/onDelete agrega un menú «…» por fila.
 */
-function TransactionTable({ transactions = [], onEdit, onDelete }) {
-  const showActions = Boolean(onEdit || onDelete);
-  if (transactions.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center text-sm font-medium text-slate-500">
-        No se encontraron transacciones con esos criterios.
-      </div>
-    );
-  }
 
-  // date se guarda como medianoche UTC del día elegido (fecha sin hora), así que
-  // se lee en UTC para no correrla un día en husos detrás de UTC (p. ej. El Salvador).
-  // createdAt sí es un instante real, por eso ese se lee en la zona local.
-  const fmtDate = (t) => {
-    const raw = txDate(t);
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return "—";
-    const opts = { day: "2-digit", month: "short", year: "numeric" };
-    if (t.date) opts.timeZone = "UTC";
-    return d.toLocaleDateString("es-SV", opts);
-  };
+const COLUMNS = "124px 88px minmax(0,1fr) 150px 116px 124px";
+
+// date se guarda como medianoche UTC (fecha sin hora); createdAt es un instante real.
+const txDay = (t) => (t.date ? fromDateOnly(t.date) : t.createdAt);
+
+function Amount({ t }) {
+  const income = t.type === "Ingreso";
+  return (
+    <span className={`font-semibold tabular-nums ${income ? "text-tone-green-text" : "text-tone-rose-text"}`}>
+      {income ? "+" : "−"}
+      {fmtMoney(Math.abs(Number(t.amount) || 0))}
+    </span>
+  );
+}
+
+function TransactionTable({ transactions = [], onEdit, onDelete, empty = "No hay transacciones con esos criterios." }) {
+  if (transactions.length === 0) return <EmptyState title={empty} />;
+
+  const showActions = Boolean(onEdit || onDelete);
+  const grid = { gridTemplateColumns: showActions ? `${COLUMNS} 40px` : COLUMNS };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-sm">
-        <thead>
-          <tr className="text-xs uppercase tracking-wide text-slate-400">
-            <th className="pb-3 pr-4 font-semibold">N° Transacción</th>
-            <th className="pb-3 pr-4 font-semibold">Fecha</th>
-            <th className="pb-3 pr-4 font-semibold">Concepto</th>
-            <th className="pb-3 pr-4 font-semibold">Categoría</th>
-            <th className="pb-3 pr-4 font-semibold">Monto</th>
-            <th className="pb-3 pr-6 font-semibold">Estado</th>
-            {showActions ? <th className="pb-3 font-semibold text-right">Acciones</th> : null}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {transactions.map((t) => (
-            <tr key={t._id} className="text-slate-600 transition hover:bg-slate-50/60">
-              <td className="py-3 pr-4 whitespace-nowrap font-semibold text-slate-800">{t.reference}</td>
-              <td className="py-3 pr-4 whitespace-nowrap">{fmtDate(t)}</td>
-              <td className="py-3 pr-4 font-medium text-slate-700">
-                {t.concept}
-                {t.relatedOrder?.orderNumber ? (
-                  <span className="ml-1.5 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
-                    {t.relatedOrder.orderNumber}
-                  </span>
-                ) : null}
-              </td>
-              <td className="py-3 pr-4">{t.category || "—"}</td>
-              <td className={`py-3 pr-4 font-semibold tabular-nums ${t.type === "Ingreso" ? "text-emerald-600" : "text-red-600"}`}>
-                {t.type === "Ingreso" ? "+" : "-"}${Number(t.amount || 0).toFixed(2)}
-              </td>
-              <td className="py-3 pr-6"><StatusPill status={t.status} domain="transaccion" /></td>
-              {showActions ? (
-                <td className="py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    {onEdit ? (
-                      <button
-                        onClick={() => onEdit(t)}
-                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
-                      >
-                        Editar
-                      </button>
-                    ) : null}
-                    {onDelete ? (
-                      <button
-                        onClick={() => onDelete(t)}
-                        className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-100"
-                      >
-                        Eliminar
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
+    // Sin overflow en pantallas anchas, para que el menú «…» de las últimas filas no se recorte.
+    <div className="max-lg:overflow-x-auto">
+      <div className="min-w-[760px]">
+        <div style={grid} className="grid h-8 items-center gap-3 border-b border-line-soft bg-surface-2 px-5">
+          <span className="t-label">Referencia</span>
+          <span className="t-label">Fecha</span>
+          <span className="t-label">Concepto</span>
+          <span className="t-label">Categoría</span>
+          <span className="t-label text-right">Monto</span>
+          <span className="t-label">Estado</span>
+          {showActions ? <span /> : null}
+        </div>
+        {transactions.map((t) => (
+          <div key={t._id} style={grid} className="grid h-[42px] items-center gap-3 border-b border-line-soft px-5 last:border-0">
+            <span className="truncate text-[12.5px] font-semibold tabular-nums text-ink-2">{t.reference || "—"}</span>
+            <span className="t-row tabular-nums">{fmtDate(txDay(t))}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[13px] font-semibold text-ink">{t.concept || "—"}</span>
+              {t.relatedOrder?.orderNumber ? (
+                <span className="shrink-0 rounded-[6px] bg-primary-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-soft-text">
+                  {t.relatedOrder.orderNumber}
+                </span>
               ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            </span>
+            <span className="t-row truncate text-ink-2">{t.category || "—"}</span>
+            <span className="text-right text-[13px]">
+              <Amount t={t} />
+            </span>
+            <span>
+              <StatusPill status={t.status} domain="transaccion" />
+            </span>
+            {showActions ? (
+              <ActionsMenu
+                size="row"
+                items={[
+                  ...(onEdit ? [{ label: "Editar", onClick: () => onEdit(t) }] : []),
+                  ...(onDelete ? [{ label: "Eliminar", onClick: () => onDelete(t), danger: true }] : []),
+                ]}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

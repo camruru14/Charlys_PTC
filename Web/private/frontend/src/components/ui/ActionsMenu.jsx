@@ -7,7 +7,14 @@ import { buttonClass } from "../../lib/buttonStyles";
   confirmación en quien las llama).
     items = [{ label, onClick, danger }]
     size  = "detail" (34×34, encabezado de detalle) | "row" (30×30, fila)
+            | "card" (32×32 con borde, pie de tarjeta)
 */
+
+const TRIGGERS = {
+  row: "flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-muted transition hover:bg-surface-2 hover:text-ink",
+  card: `${buttonClass("secondary", "row")} !h-8 w-8 !px-0`,
+  detail: `${buttonClass("secondary", "detail")} w-[34px] !px-0`,
+};
 function ActionsMenu({ items, size = "detail", label = "Más acciones" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -26,15 +33,12 @@ function ActionsMenu({ items, size = "detail", label = "Más acciones" }) {
     };
   }, [open]);
 
-  const trigger =
-    size === "row"
-      ? "flex h-[30px] w-[30px] items-center justify-center rounded-[8px] text-muted transition hover:bg-surface-2 hover:text-ink"
-      : `${buttonClass("secondary", "detail")} w-[34px] !px-0`;
+  const trigger = TRIGGERS[size] || TRIGGERS.detail;
 
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-label={label} title={label} aria-expanded={open} className={trigger}>
-        <IconMore width={size === "row" ? 16 : 17} height={size === "row" ? 16 : 17} />
+        <IconMore width={size === "detail" ? 17 : 16} height={size === "detail" ? 17 : 16} />
       </button>
       {open ? (
         <div className="absolute right-0 z-30 mt-1.5 w-48 rounded-[12px] border border-line bg-surface p-1.5 shadow-modal">

@@ -6,32 +6,38 @@ import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useDateRange } from "../context/dateRange";
 import KpiCard from "../components/ui/KpiCard";
-import BarChart from "../components/ui/BarChart";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
-import { Field, SelectField } from "../components/ui/Field";
+import Button from "../components/ui/Button";
+import SearchInput from "../components/ui/SearchInput";
+import { Field, SelectField, FilterSelect, ReadonlyField } from "../components/ui/Field";
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
-import TransactionToolbar from "../components/transactions/TransactionToolbar";
+import MonthlyChart from "../components/finance/MonthlyChart";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { defaultTransactionFilters, filterTransactions, txDate, txDateParts } from "../lib/transactionFilters";
 import { todayInput } from "../hooks/useBatchForm";
 import { blockNegativeKey } from "../lib/numberInput";
-import { IconFinance, IconPlus } from "../lib/icons";
+import { IconPlus } from "../lib/icons";
 import { buttonClass } from "../lib/buttonStyles";
+import { fmtMoney, fmtMonth, fmtNumber } from "../lib/format";
 import PageHeader from "../components/ui/PageHeader";
 import { getPageMeta } from "../lib/nav";
 import DateRangePicker from "../components/ui/DateRangePicker";
-import { CHART_COLORS } from "../lib/tones";
 
 const TYPES = ["Ingreso", "Gasto"];
 const STATUSES = ["Pendiente", "Completado"];
 const CATEGORIES = ["Materia Prima", "Logística", "Mantenimiento", "Planilla", "Servicios", "Ventas", "Otros"];
-const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const CHART_MONTHS = 6;
+
+const filterSelectClass =
+  "h-9 min-w-[124px] rounded-[10px] border border-line bg-surface px-3 text-[12.5px] font-semibold text-ink-2 hover:bg-surface-2";
 
 const emptyForm = {
   reference: "", concept: "", type: "Ingreso", category: "Ventas",
   amount: "", status: "Completado", date: "",
 };
+
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // Vista previa del próximo N° de transacción (el backend genera el definitivo al guardar)
 function previewReference(list) {
@@ -44,42 +50,32 @@ function previewReference(list) {
   return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
 }
 
-// Meses (año/mes) comprendidos en el rango seleccionado. Sin tope: si hay más de
-// 12, la card los muestra igual y se navegan con scroll horizontal (ver BarChart).
-function monthsInRange(from, to) {
-  const res = [];
-  const d = new Date(from.getFullYear(), from.getMonth(), 1);
-  const end = new Date(to.getFullYear(), to.getMonth(), 1);
-  while (d <= end) {
-    res.push({ y: d.getFullYear(), m: d.getMonth() });
-    d.setMonth(d.getMonth() + 1);
-  }
-  return res;
+// Ingresos y gastos de los últimos seis meses calendario (el actual incluido),
+// sin importar el rango elegido. txDateParts lee `date` en UTC (fecha sin hora).
+function lastMonths(list) {
+  const now = new Date();
+  return Array.from({ length: CHART_MONTHS }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (CHART_MONTHS - 1 - i), 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    let income = 0;
+    let expense = 0;
+    for (const t of list) {
+      const parts = txDateParts(t);
+      if (!parts || parts.y !== y || parts.m !== m) continue;
+      if (t.type === "Ingreso") income += Number(t.amount) || 0;
+      else expense += Number(t.amount) || 0;
+    }
+    return {
+      key: `${y}-${m}`,
+      label: capitalize(fmtMonth(d).slice(0, 3)),
+      title: `${capitalize(fmtMonth(d))} ${y}`,
+      income,
+      expense,
+      current: i === CHART_MONTHS - 1,
+    };
+  });
 }
-
-// Días (año/mes/día) comprendidos en el rango seleccionado (máx. 31 columnas).
-function daysInRange(from, to) {
-  const res = [];
-  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-  while (d <= end && res.length < 31) {
-    res.push({ y: d.getFullYear(), m: d.getMonth(), day: d.getDate() });
-    d.setDate(d.getDate() + 1);
-  }
-  return res;
-}
-
-// Umbral para decidir la granularidad de la gráfica. El preset "Últimos 7 días"
-// abarca ~8 días (incluye hoy completo) y "Últimos 30 días" ~31 días, así que 10
-// separa claramente ambos casos: 7 días se grafica día a día, 30 días por mes.
-const DAILY_CHART_MAX_SPAN_DAYS = 10;
-
-// Cantidad exacta de meses a graficar para los presets de meses fijos. Con
-// rango en días (ej. daysAgo(365)) el rango toca 13 meses calendario (el mes de
-// inicio y el de fin quedan parciales), así que para estos presets se ancla el
-// rango a meses calendario completos y se fuerza a que la card muestre
-// exactamente esa cantidad de columnas, sin scroll.
-const PRESET_MONTHS = { "3m": 3, "6m": 6, "365d": 12 };
 
 function Finanzas() {
   const navigate = useNavigate();
@@ -90,12 +86,13 @@ function Finanzas() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [filters, setFilters] = useState(defaultTransactionFilters);
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(null);
 
-  const raw = Array.isArray(data) ? data : [];
+  const raw = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
-  // Transacciones dentro del rango de fechas (para KPIs y gráfico)
-  // ("Todo" = sin rango => incluye todas)
+  // Transacciones dentro del rango de fechas (KPIs); "Todo" = sin rango.
   const rangeList = useMemo(
     () =>
       raw.filter((t) => {
@@ -107,87 +104,23 @@ function Finanzas() {
     [raw, range],
   );
 
-  // Rango + filtros de la barra de búsqueda (para la tabla)
+  // Rango + buscador + tipo (tabla)
   const tableList = useMemo(
-    () => filterTransactions(raw, filters, range),
-    [raw, filters, range],
+    () => filterTransactions(raw, { ...defaultTransactionFilters, q: query.trim(), type }, range),
+    [raw, query, type, range],
   );
 
   const kpis = useMemo(() => {
-    const income = rangeList.filter((t) => t.type === "Ingreso").reduce((s, t) => s + t.amount, 0);
-    const expense = rangeList.filter((t) => t.type === "Gasto").reduce((s, t) => s + t.amount, 0);
-    // Distinto de "Rentabilidad neta" (income - expense): esto es lo que
-    // todavía no se ha cobrado ni pagado (transacciones "Pendiente"), sin
-    // importar si son Ingreso o Gasto.
-    const pending = rangeList.filter((t) => t.status === "Pendiente").reduce((s, t) => s + t.amount, 0);
-    return { income, expense, net: income - expense, pending };
+    const sum = (list) => list.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const income = sum(rangeList.filter((t) => t.type === "Ingreso"));
+    const expense = sum(rangeList.filter((t) => t.type === "Gasto"));
+    // Lo que todavía no se ha cobrado ni pagado (transacciones «Pendiente»).
+    const pendingList = rangeList.filter((t) => t.status === "Pendiente");
+    const pendingOrders = new Set(pendingList.map((t) => t.relatedOrder?._id || t.relatedOrder).filter(Boolean).map(String));
+    return { income, expense, net: income - expense, pending: sum(pendingList), pendingOrders: pendingOrders.size };
   }, [rangeList]);
 
-  // Ingresos vs Gastos, según el rango seleccionado.
-  // Rangos cortos (ej. "Últimos 7/30 días") se muestran día a día, con exactamente
-  // esos días; rangos más largos (3/6/12 meses, personalizado largo o "Todo") se
-  // agrupan por mes como antes.
-  const chart = useMemo(() => {
-    let effFrom = range.from;
-    let effTo = range.to;
-    if (!effFrom || !effTo) {
-      // "Todo": se usa el rango completo de fechas con movimientos (no solo los
-      // últimos 12 meses), para no ocultar transacciones más antiguas. Si son más
-      // de 12 meses, la card los muestra igual con scroll horizontal.
-      // Se usa txDateParts (no getFullYear/getMonth directo) para no correr la
-      // fecha un día -y potencialmente de mes- en husos detrás de UTC.
-      const parts = rangeList.map((t) => txDateParts(t)).filter(Boolean);
-      if (parts.length === 0) return { data: [], isDaily: false };
-      const latest = parts.reduce((a, b) => (b.time > a.time ? b : a));
-      const earliest = parts.reduce((a, b) => (b.time < a.time ? b : a));
-      effTo = new Date(latest.y, latest.m, latest.day, 23, 59, 59, 999);
-      effFrom = new Date(earliest.y, earliest.m, 1);
-    } else if (PRESET_MONTHS[range.preset]) {
-      const n = PRESET_MONTHS[range.preset];
-      const anchorY = effTo.getFullYear();
-      const anchorM = effTo.getMonth();
-      effTo = new Date(anchorY, anchorM, 1);
-      effFrom = new Date(anchorY, anchorM - (n - 1), 1);
-    }
-
-    const spanDays = Math.round((effTo - effFrom) / 86400000);
-    const isDaily = spanDays <= DAILY_CHART_MAX_SPAN_DAYS;
-
-    if (isDaily) {
-      const buckets = daysInRange(effFrom, effTo);
-      const data = buckets.map((bucket) => {
-        let income = 0;
-        let expense = 0;
-        for (const t of rangeList) {
-          const parts = txDateParts(t);
-          if (parts && parts.y === bucket.y && parts.m === bucket.m && parts.day === bucket.day) {
-            if (t.type === "Ingreso") income += t.amount;
-            else expense += t.amount;
-          }
-        }
-        const label = `${String(bucket.day).padStart(2, "0")} ${MONTHS[bucket.m]}`;
-        return { label, values: [income, expense] };
-      });
-      return { data, isDaily: true };
-    }
-
-    const buckets = monthsInRange(effFrom, effTo);
-    const spansYears = new Set(buckets.map((b) => b.y)).size > 1;
-    const data = buckets.map((bucket) => {
-      let income = 0;
-      let expense = 0;
-      for (const t of rangeList) {
-        const parts = txDateParts(t);
-        if (parts && parts.y === bucket.y && parts.m === bucket.m) {
-          if (t.type === "Ingreso") income += t.amount;
-          else expense += t.amount;
-        }
-      }
-      const label = spansYears ? `${MONTHS[bucket.m]} ${String(bucket.y).slice(-2)}` : MONTHS[bucket.m];
-      return { label, values: [income, expense] };
-    });
-    return { data, isDaily: false };
-  }, [rangeList, range]);
+  const months = useMemo(() => lastMonths(raw), [raw]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -246,50 +179,68 @@ function Finanzas() {
     }
   }
 
-  const fmt = (v) => `$${v.toLocaleString("es-SV", { maximumFractionDigits: 0 })}`;
+  const netPositive = kpis.net > 0;
+  const netNegative = kpis.net < 0;
 
   return (
     <div className="flex flex-col gap-3.5">
-      <PageHeader {...getPageMeta("/finanzas")} actions={<DateRangePicker />} />
+      <PageHeader
+        {...getPageMeta("/finanzas")}
+        actions={
+          <>
+            <DateRangePicker />
+            <Button icon={IconPlus} onClick={openCreate}>
+              Nueva transacción
+            </Button>
+          </>
+        }
+      />
+
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Ingresos" value={fmt(kpis.income)} icon={IconFinance} trend={{ tone: "green", label: "en el rango" }} />
-        <KpiCard label="Gastos" value={fmt(kpis.expense)} icon={IconFinance} trend={{ tone: "yellow", label: "en el rango" }} />
-        <KpiCard label="Rentabilidad neta" value={fmt(kpis.net)} icon={IconFinance} trend={{ tone: kpis.net >= 0 ? "green" : "red", label: kpis.net >= 0 ? "Positiva" : "Negativa" }} />
-        <KpiCard label="Pendiente por cobrar/pagar" value={fmt(kpis.pending)} icon={IconFinance} trend={{ tone: kpis.pending ? "yellow" : "green", label: kpis.pending ? "en el rango" : "Al día" }} />
+        <KpiCard label="Ingresos" value={fmtMoney(kpis.income, 0)} note="en el rango" />
+        <KpiCard label="Gastos" value={fmtMoney(kpis.expense, 0)} note="en el rango" />
+        <KpiCard
+          label="Rentabilidad neta"
+          value={`${netPositive ? "+" : netNegative ? "−" : ""}${fmtMoney(Math.abs(kpis.net), 0)}`}
+          valueClassName={netPositive ? "!text-tone-green-text" : netNegative ? "!text-tone-rose-text" : ""}
+          note={netPositive ? "positiva" : netNegative ? "negativa" : "en el rango"}
+          noteTone={netPositive ? "green" : netNegative ? "rose" : undefined}
+        />
+        <KpiCard
+          label="Por cobrar / pagar"
+          value={fmtMoney(kpis.pending, 0)}
+          valueClassName="!text-tone-amber-text"
+          note={`${fmtNumber(kpis.pendingOrders)} ${kpis.pendingOrders === 1 ? "pedido" : "pedidos"}`}
+          noteTone="amber"
+        />
       </div>
 
-      {/* Ingresos vs Gastos, por día o por mes según el rango de fechas */}
-      <SectionCard title={`Ingresos vs. Gastos por ${chart.isDaily ? "día" : "mes"}`}>
-        <AsyncState loading={loading} error={error} empty={!loading && chart.data.length === 0} emptyText="Sin movimientos en el rango.">
-          <BarChart
-            data={chart.data}
-            series={[{ name: "Ingresos", color: CHART_COLORS[0] }, { name: "Gastos", color: CHART_COLORS[1] }]}
-            formatValue={fmt}
-          />
-        </AsyncState>
-      </SectionCard>
+      <AsyncState loading={loading} error={error}>
+        <MonthlyChart months={months} selected={selectedMonth} onSelect={setSelectedMonth} />
+      </AsyncState>
 
-      {/* Tabla de transacciones con búsqueda, filtros y "Ver todo" */}
       <SectionCard
         title="Transacciones"
         action={
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate("/historial-transacciones")} className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-100">
-              Ver todo
-            </button>
-            <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-              <IconPlus width={16} height={16} /> Nueva
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SearchInput value={query} onChange={setQuery} placeholder="Concepto o referencia" className="w-[220px]" />
+            <FilterSelect
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className={filterSelectClass}
+              options={[{ value: "", label: "Tipo: todos" }, ...TYPES.map((t) => ({ value: t, label: t }))]}
+            />
+            <Button variant="soft" size="detail" onClick={() => navigate("/historial-transacciones")}>
+              Ver historial
+            </Button>
           </div>
         }
       >
-        <TransactionToolbar list={raw} filters={filters} setFilters={setFilters} compact />
         <AsyncState loading={loading} error={error}>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="-mx-5 -mb-5 border-t border-line-soft">
             <TransactionTable transactions={tableList} onEdit={openEdit} onDelete={handleDelete} />
           </div>
         </AsyncState>
-        <p className="mt-3 text-xs text-slate-400">{tableList.length} transacción(es) en el rango y filtros seleccionados.</p>
       </SectionCard>
 
       <Modal
@@ -305,12 +256,8 @@ function Finanzas() {
         }
       >
         <form id="trx-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* N° de transacción autogenerado (solo lectura) */}
           <div className="sm:col-span-2">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">N° de transacción</span>
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-              <span className="text-sm font-semibold text-slate-800">{form.reference}</span>
-            </div>
+            <ReadonlyField label="N° de transacción" value={form.reference} />
           </div>
           <Field label="Concepto" name="concept" value={form.concept} onChange={handleChange} required />
           <SelectField label="Tipo" name="type" value={form.type} onChange={handleChange} options={TYPES} required />

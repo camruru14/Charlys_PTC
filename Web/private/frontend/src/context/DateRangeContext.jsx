@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { DateRangeContext, PRESETS } from "./dateRange";
+import { DateRangeContext, PRESETS, DEFAULT_PRESET } from "./dateRange";
 
 /*
   Provider del rango de fechas global (ver context/dateRange.js para el
@@ -13,10 +13,13 @@ function daysAgo(n) {
   return d;
 }
 
+// Primer día del mes que abre los últimos n meses calendario, contando el
+// actual (6 meses en septiembre = desde el 1 de abril: «Abr – sep»).
 function monthsAgo(n) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
-  d.setMonth(d.getMonth() - n);
+  d.setDate(1);
+  d.setMonth(d.getMonth() - (n - 1));
   return d;
 }
 
@@ -34,9 +37,17 @@ function endOfToday() {
   return d;
 }
 
-// Rango por defecto (al entrar y al «Restablecer»): esta semana.
+function presetRange(preset) {
+  const p = PRESETS[preset];
+  // "Todo" desactiva el rango: from/to null = sin filtrar por fecha.
+  if (preset === "all") return { from: null, to: null, preset };
+  const from = p.week ? startOfWeek() : p.months ? monthsAgo(p.months) : daysAgo(p.days);
+  return { from, to: endOfToday(), preset };
+}
+
+// Rango por defecto (al entrar y al «Restablecer»): DEFAULT_PRESET, esta semana.
 function defaultRange() {
-  return { from: startOfWeek(), to: endOfToday(), preset: "week" };
+  return presetRange(DEFAULT_PRESET);
 }
 
 export function DateRangeProvider({ children }) {
@@ -47,15 +58,8 @@ export function DateRangeProvider({ children }) {
       ...range,
       presets: PRESETS,
       setPreset: (preset) => {
-        const p = PRESETS[preset];
-        if (!p) return;
-        // "Todo" desactiva el rango: from/to null = sin filtrar por fecha.
-        if (preset === "all") {
-          setRange({ from: null, to: null, preset });
-          return;
-        }
-        const from = p.week ? startOfWeek() : p.months ? monthsAgo(p.months) : daysAgo(p.days);
-        setRange({ from, to: endOfToday(), preset });
+        if (!PRESETS[preset]) return;
+        setRange(presetRange(preset));
       },
       // from/to son objetos Date (inicio y fin de día).
       setCustom: (from, to) => setRange({ from, to, preset: null }),

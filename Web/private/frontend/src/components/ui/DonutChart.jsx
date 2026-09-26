@@ -3,7 +3,7 @@
   Recibe: data = [{ label, value, color }] (color: CHART_COLORS de lib/tones.js)
 */
 
-function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
+function DonutChart({ data = [], size = 168, thickness = 22, centerLabel, centerCaption }) {
   const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -49,13 +49,25 @@ function DonutChart({ data = [], size = 168, thickness = 22, centerLabel }) {
         {centerLabel ? (
           <text
             x="50%"
-            y="50%"
+            y={centerCaption ? size / 2 - 7 : "50%"}
             textAnchor="middle"
             dominantBaseline="central"
             className="fill-ink"
             style={{ fontSize: 22, fontWeight: 600 }}
           >
             {centerLabel}
+          </text>
+        ) : null}
+        {centerLabel && centerCaption ? (
+          <text
+            x="50%"
+            y={size / 2 + 14}
+            textAnchor="middle"
+            dominantBaseline="central"
+            className="fill-subtle"
+            style={{ fontSize: 11, fontWeight: 600 }}
+          >
+            {centerCaption}
           </text>
         ) : null}
       </svg>

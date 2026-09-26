@@ -2,18 +2,24 @@ import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
+import { useUrlState } from "../hooks/useUrlState";
 import publicApi from "../lib/publicApi";
-import KpiCard from "../components/ui/KpiCard";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import ProductFormModal from "../components/catalog/ProductFormModal";
 import ProductCatalogCard from "../components/catalog/ProductCatalogCard";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
-import { FilterSelect } from "../components/ui/Field";
-import { IconTag, IconBox, IconCheck, IconPlus } from "../lib/icons";
+import { AsyncState } from "../components/ui/SectionCard";
+import KpiInline from "../components/ui/KpiInline";
+import Tabs from "../components/ui/Tabs";
+import Button from "../components/ui/Button";
+import { IconLink, IconPlus } from "../lib/icons";
+import { buttonClass } from "../lib/buttonStyles";
+import { fmtNumber } from "../lib/format";
 import PageHeader from "../components/ui/PageHeader";
 import { getPageMeta } from "../lib/nav";
 
-const CATEGORY_FILTERS = ["Todas", "Pelotas", "Pajillas"];
+// URL de la tienda pública; sin ella no se muestra «Ver tienda pública».
+const PUBLIC_STORE_URL = import.meta.env.VITE_PUBLIC_STORE_URL || "";
+const ALL = "todas";
 
 const emptyForm = {
   name: "",
@@ -40,10 +46,17 @@ const emptyForm = {
 function Catalogo() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/products/admin/all", { client: publicApi });
-  const list = Array.isArray(data) ? data : [];
+  const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
-  const [categoryFilter, setCategoryFilter] = useState("Todas");
-  const filtered = categoryFilter === "Todas" ? list : list.filter((p) => p.category === categoryFilter);
+  // Pestañas: «Todas» y cada categoría que existe, con su conteo (?categoria=).
+  const categories = useMemo(() => [...new Set(list.map((p) => p.category).filter(Boolean))].sort(), [list]);
+  const [categoryParam, setCategoryParam] = useUrlState("categoria", ALL);
+  const category = categories.find((c) => c.toLowerCase() === categoryParam) || ALL;
+  const tabs = [
+    { key: ALL, label: `Todas · ${fmtNumber(list.length)}` },
+    ...categories.map((c) => ({ key: c.toLowerCase(), label: `${c} · ${fmtNumber(list.filter((p) => p.category === c).length)}` })),
+  ];
+  const filtered = category === ALL ? list : list.filter((p) => p.category === category);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -179,45 +192,53 @@ function Catalogo() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <PageHeader {...getPageMeta("/catalogo")} />
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-        <KpiCard label="Productos" value={kpis.total} icon={IconTag} trend={{ tone: "blue", label: "en catálogo" }} />
-        <KpiCard label="Visibles" value={kpis.active} icon={IconCheck} trend={{ tone: "green", label: "en la tienda" }} />
-        <KpiCard label="Destacados" value={kpis.featured} icon={IconBox} trend={{ tone: "yellow", label: "en Inicio" }} />
+      <PageHeader
+        {...getPageMeta("/catalogo")}
+        actions={
+          <>
+            {PUBLIC_STORE_URL ? (
+              <a href={PUBLIC_STORE_URL} target="_blank" rel="noreferrer" className={buttonClass("secondary", "header")}>
+                <IconLink width={15} height={15} />
+                Ver tienda pública
+              </a>
+            ) : null}
+            <Button icon={IconPlus} onClick={openCreate}>
+              Nuevo producto
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <KpiInline
+          items={[
+            { label: "Productos", value: fmtNumber(kpis.total), tone: "blue" },
+            { label: "Activos", value: fmtNumber(kpis.active), tone: "green" },
+            { label: "Destacados", value: fmtNumber(kpis.featured), tone: "amber" },
+          ]}
+        />
+        <Tabs tabs={tabs} value={category === ALL ? ALL : category.toLowerCase()} onChange={setCategoryParam} />
       </div>
 
-      <SectionCard
-        title="Catálogo de la tienda pública"
-        action={
-          <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-            <IconPlus width={16} height={16} /> Nuevo producto
-          </button>
-        }
+      <AsyncState
+        loading={loading}
+        error={error}
+        empty={!loading && filtered.length === 0}
+        emptyText={list.length ? "No hay productos en esta categoría." : "No hay productos todavía. Crea el primero con «Nuevo producto»."}
       >
-        <div className="mb-4 flex flex-wrap gap-2">
-          <FilterSelect
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-brand-400"
-            options={CATEGORY_FILTERS.map((c) => ({ value: c, label: c === "Todas" ? "Categoría: Todas" : c }))}
-          />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((product) => (
+            <ProductCatalogCard
+              key={product._id}
+              product={product}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              onAddImages={handleAddImagesFromCard}
+              uploading={uploadingId === product._id}
+            />
+          ))}
         </div>
-
-        <AsyncState loading={loading} error={error} empty={!loading && filtered.length === 0} emptyText="No hay productos todavía. Crea el primero con “Nuevo producto”.">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((product) => (
-              <ProductCatalogCard
-                key={product._id}
-                product={product}
-                onEdit={openEdit}
-                onDelete={handleDelete}
-                onAddImages={handleAddImagesFromCard}
-                uploading={uploadingId === product._id}
-              />
-            ))}
-          </div>
-        </AsyncState>
-      </SectionCard>
+      </AsyncState>
 
       <ProductFormModal
         open={modalOpen}

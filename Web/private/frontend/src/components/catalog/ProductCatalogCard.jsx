@@ -1,18 +1,36 @@
 import { useRef } from "react";
 import StatusPill from "../ui/StatusPill";
+import ColorSwatch from "../ui/ColorSwatch";
+import Button from "../ui/Button";
+import ActionsMenu from "../ui/ActionsMenu";
 import { PRODUCT_COLOR_HEX } from "../../lib/catalogOptions";
-import { IconImage } from "../../lib/icons";
+import { buttonClass } from "../../lib/buttonStyles";
+import { fmtMoney, fmtNumber } from "../../lib/format";
+import { IconImage, IconUpload } from "../../lib/icons";
 
 /*
-  Card de un producto del catálogo público, para la pantalla Catálogo
-  (private/frontend). Muestra imagen, nombre, categoría, precio y colores;
-  "Agregar imagen" sube directo sin pasar por el modal de editar (subida
-  rápida a la card ya existente, ver useCatalogImages en pages/Catalogo.jsx).
+  Tarjeta de un producto del catálogo público (pantalla Catálogo). Imagen de
+  128px (o placeholder con el color principal suavizado), categoría y estado,
+  nombre, mínimo y stock, precio, colores y acciones: Editar, subir imagen
+  (directo, sin abrir el modal) y «…» con Eliminar.
 */
+
+// Estado en la tienda: Inactivo si no se muestra; si se muestra, Destacado o Activo.
+function catalogStatus(product) {
+  if (product.active === false) return "Inactivo";
+  return product.featured ? "Destacado" : "Activo";
+}
+
+// Fondo suave del color principal del producto (color físico, no del tema).
+function placeholderStyle(product) {
+  const hex = PRODUCT_COLOR_HEX[product.colors?.[0]];
+  return hex ? { backgroundColor: `color-mix(in srgb, ${hex} 16%, var(--color-surface))` } : undefined;
+}
+
 function ProductCatalogCard({ product, onEdit, onDelete, onAddImages, uploading }) {
   const fileInputRef = useRef(null);
   const image = product.images?.[0]?.url;
-  const extraImages = (product.images?.length || 0) - 1;
+  const colors = product.colors || [];
 
   function handleFilesSelected(e) {
     const files = Array.from(e.target.files || []);
@@ -21,83 +39,71 @@ function ProductCatalogCard({ product, onEdit, onDelete, onAddImages, uploading 
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
-      <div className="relative aspect-square bg-slate-100">
+    <div className="flex flex-col rounded-[14px] border border-line bg-surface">
+      <div className="relative h-[128px] overflow-hidden rounded-t-[14px] bg-surface-2" style={image ? undefined : placeholderStyle(product)}>
         {image ? (
           <img src={image} alt={product.name} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-slate-400">
-            <IconImage width={28} height={28} />
-            <span className="text-xs font-medium">Sin imagen</span>
+          <div className="flex h-full w-full items-center justify-center text-faint">
+            <IconImage width={26} height={26} />
           </div>
         )}
-        {extraImages > 0 ? (
-          <span className="absolute right-2 top-2 rounded-full bg-slate-900/70 px-2 py-0.5 text-xs font-semibold text-white">
-            +{extraImages}
-          </span>
-        ) : null}
-        {product.active === false ? (
-          <span className="absolute left-2 top-2">
-            <StatusPill status="Inactivo" domain="catalogo" />
-          </span>
-        ) : null}
+        <span className="absolute left-2.5 top-2.5 inline-flex h-[22px] items-center rounded-[7px] bg-surface px-2 text-[11px] font-semibold text-ink-2 shadow-soft">
+          {product.category || "—"}
+        </span>
+        <span className="absolute right-2.5 top-2.5">
+          <StatusPill status={catalogStatus(product)} domain="catalogo" />
+        </span>
       </div>
 
-      <div className="space-y-3 p-4">
-        <div>
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-slate-800">{product.name}</p>
-            <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-              {product.category}
-            </span>
-          </div>
-          <p className="mt-1 flex items-baseline gap-1.5">
-            <span className="text-lg font-bold text-slate-900">${Number(product.price).toFixed(2)}</span>
-            {product.compareAtPrice ? (
-              <span className="text-xs text-slate-400 line-through">${Number(product.compareAtPrice).toFixed(2)}</span>
-            ) : null}
-          </p>
+      <div className="flex flex-1 flex-col p-4">
+        <p className="truncate text-[15px] font-bold text-ink" title={product.name}>{product.name}</p>
+        <p className="mt-0.5 text-[11.5px] text-subtle">
+          Mínimo {fmtNumber(product.minOrderQuantity ?? 1)} u · stock {fmtNumber(product.stock)}
+        </p>
+
+        <p className="mt-2 flex items-baseline gap-2">
+          <span className="text-[19px] font-semibold tabular-nums text-ink">{fmtMoney(product.price)}</span>
+          {product.compareAtPrice ? (
+            <span className="text-[12px] tabular-nums text-subtle line-through">{fmtMoney(product.compareAtPrice)}</span>
+          ) : null}
+        </p>
+
+        <div className="mt-2.5 flex items-center gap-2">
+          {colors.length ? (
+            <>
+              <span className="flex flex-wrap gap-1">
+                {colors.map((c) => (
+                  <span key={c} title={c}>
+                    <ColorSwatch color={c} size={15} />
+                  </span>
+                ))}
+              </span>
+              <span className="t-aux">
+                {colors.length} {colors.length === 1 ? "color" : "colores"}
+              </span>
+            </>
+          ) : (
+            <span className="t-aux">Sin colores</span>
+          )}
         </div>
 
-        {product.colors?.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {product.colors.map((c) => (
-              <span key={c} className="flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
-                <span
-                  className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-slate-900/10"
-                  style={{ backgroundColor: PRODUCT_COLOR_HEX[c] || "var(--color-line)" }}
-                />
-                {c}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400">Sin colores</p>
-        )}
-
-        <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-xs font-semibold">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleFilesSelected}
-          />
+        <div className="mt-auto flex items-center gap-2 pt-4">
+          <Button variant="secondary" size="row" className="!h-8 flex-1" onClick={() => onEdit(product)}>
+            Editar
+          </Button>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesSelected} />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200 disabled:opacity-60"
+            aria-label={uploading ? "Subiendo imagen…" : "Subir imagen"}
+            title={uploading ? "Subiendo imagen…" : "Subir imagen"}
+            className={`${buttonClass("secondary", "row")} !h-8 w-8 !px-0`}
           >
-            {uploading ? "Subiendo…" : "Agregar imagen"}
+            <IconUpload width={15} height={15} className={uploading ? "animate-pulse" : ""} />
           </button>
-          <button onClick={() => onEdit(product)} className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600 hover:bg-slate-200">
-            Editar
-          </button>
-          <button onClick={() => onDelete(product)} className="ml-auto rounded-lg bg-red-50 px-2.5 py-1 text-red-600 hover:bg-red-100">
-            Eliminar
-          </button>
+          <ActionsMenu size="card" items={[{ label: "Eliminar", onClick: () => onDelete(product), danger: true }]} />
         </div>
       </div>
     </div>

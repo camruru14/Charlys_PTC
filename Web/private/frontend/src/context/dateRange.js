@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import { fmtRange } from "../lib/format";
 
 /*
   Contexto global del rango de fechas. Lo comparten el DateRangePicker (en
@@ -18,13 +19,15 @@ export const PRESETS = {
   "365d": { days: 365, label: "Últimos 12 meses" },
 };
 
-// Etiqueta legible del rango actual (para el botón del selector).
+// Rango con el que arrancan Dashboard, Fabricación, Finanzas y los
+// historiales (y al que vuelve «Restablecer»). No es «Todo».
+export const DEFAULT_PRESET = "week";
+
+// Etiqueta legible del rango actual (botón del selector): las fechas reales
+// («1 – 19 sep 2026»; por meses «Abr – sep 2026»); «Todo» sin rango.
 export function rangeLabel(range) {
-  if (range.preset && PRESETS[range.preset]) return PRESETS[range.preset].label;
-  const opts = { day: "2-digit", month: "short" };
-  const f = range.from?.toLocaleDateString("es-SV", opts);
-  const t = range.to?.toLocaleDateString("es-SV", opts);
-  return `${f} – ${t}`;
+  if (!range.from || !range.to) return PRESETS.all.label;
+  return fmtRange(range.from, range.to, { months: Boolean(PRESETS[range.preset]?.months) });
 }
 
 export function useDateRange() {

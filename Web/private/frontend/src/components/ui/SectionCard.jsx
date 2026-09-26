@@ -3,7 +3,7 @@ export function SectionCard({ title, action, children, className = "" }) {
   return (
     <section className={`overflow-hidden rounded-[14px] border border-line bg-surface ${className}`}>
       {title || action ? (
-        <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <h2 className="t-card-title">{title}</h2>
           {action}
         </div>

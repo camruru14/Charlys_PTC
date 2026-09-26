@@ -16,7 +16,7 @@ function HistorialTransacciones() {
   const { data, loading, error } = useFetch("/transactions");
   const [filters, setFilters] = useState(defaultTransactionFilters);
 
-  const all = Array.isArray(data) ? data : [];
+  const all = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const filtered = useMemo(() => filterTransactions(all, filters, range), [all, filters, range]);
 
   const stats = useMemo(() => {
@@ -61,7 +61,9 @@ function HistorialTransacciones() {
       <SectionCard title="Todas las transacciones">
         <TransactionToolbar list={all} filters={filters} setFilters={setFilters} />
         <AsyncState loading={loading} error={error}>
-          <TransactionTable transactions={filtered} />
+          <div className="-mx-5 -mb-5 border-t border-line-soft">
+            <TransactionTable transactions={filtered} />
+          </div>
         </AsyncState>
       </SectionCard>
     </div>

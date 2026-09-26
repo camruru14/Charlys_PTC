@@ -57,6 +57,17 @@ dashboardController.getSummary = async (req, res) => {
       .filter((t) => t.type === "Ingreso")
       .reduce((s, t) => s + t.amount, 0);
 
+    // Ingresos del rango anterior de la misma duración (para la variación %).
+    // Sin rango completo no hay «anterior»: null.
+    let incomePrevious = null;
+    if (fromD && toD) {
+      const span = toD.getTime() - fromD.getTime();
+      const prevTo = new Date(fromD.getTime() - 1);
+      const prevFrom = new Date(prevTo.getTime() - span);
+      const previous = await Transaction.find({ type: "Ingreso", ...dateMatch("date", prevFrom, prevTo) });
+      incomePrevious = previous.reduce((s, t) => s + t.amount, 0);
+    }
+
     // --- Mezcla de producción por producto (para la dona) ---
     const mix = {};
     for (const b of batches) {
@@ -87,6 +98,7 @@ dashboardController.getSummary = async (req, res) => {
       kpis: {
         producedTotal,
         income,
+        incomePrevious,
         ordersInProgress,
         ordersReadyToShip,
       },
