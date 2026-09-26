@@ -621,6 +621,115 @@
         },
         "required": ["message", "batchNumber"]
       },
+      "Route": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "integer",
+            "example": 1,
+            "description": "Correlativo por dÃ­a"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "DÃ­a de la ruta (medianoche UTC)"
+          },
+          "zone": {
+            "type": "string",
+            "example": "Zona Norte"
+          },
+          "driver": {
+            "description": "Motorista (poblado con name, lastName, phone)",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "vehicle": {
+            "type": "string",
+            "example": "P123-456"
+          },
+          "orders": {
+            "type": "array",
+            "description": "Pedidos en orden de entrega (poblados)",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Pendiente",
+              "Recolectando",
+              "En trÃ¡nsito",
+              "Completada"
+            ]
+          },
+          "delayed": {
+            "type": "boolean"
+          },
+          "departedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pickups": {
+            "type": "object",
+            "properties": {
+              "almacen": {
+                "type": "object",
+                "properties": {
+                  "confirmedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "fabricacion": {
+                "type": "object",
+                "properties": {
+                  "confirmedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          },
+          "deliveries": {
+            "type": "array",
+            "description": "Registro de entregas (para Deshacer). Un pedido entregado a medias sale de `orders` y queda aquÃ­ con partial=true.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "order": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "position": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
       "ProductionBatch": {
         "type": "object",
         "properties": {
@@ -1129,6 +1238,7 @@
             "type": "string",
             "format": "date-time"
           },
+          "route": { "type": "string", "description": "Ruta de LogÃ­stica (poblada con number, zone, status, date)" },
           "pickupFactoryAt": {
             "type": "string",
             "format": "date-time"
@@ -3312,6 +3422,1013 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes": {
+      "get": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Rutas de un dÃ­a",
+        "description": "Rutas del dÃ­a con sus pedidos y motorista poblados, por nÃºmero.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "DÃ­a YYYY-MM-DD (por defecto, hoy en hora de El Salvador)",
+            "schema": {
+              "type": "string",
+              "example": "2026-09-25"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rutas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Route"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos invÃ¡lidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Fecha invÃ¡lida: usa AAAA-MM-DD"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Crear ruta",
+        "description": "Crea una ruta de hoy (nÃºmero correlativo por dÃ­a) en estado Pendiente. Motorista y vehÃ­culo son opcionales y se validan igual que en PATCH.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zone": {
+                    "type": "string",
+                    "example": "Zona Norte"
+                  },
+                  "driver": {
+                    "type": "string"
+                  },
+                  "vehicle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "zone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ruta creada (responde 201)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos invÃ¡lidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Escribe la zona de la ruta"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Mario PÃ©rez ya va en la Ruta 1 (Zona Norte)"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/availability": {
+      "get": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Disponibilidad de motoristas y vehÃ­culos",
+        "description": "Motoristas (empleados activos del Ã¡rea LogÃ­stica) y vehÃ­culos (ConfiguraciÃ³n > VehÃ­culos) con busy y la ruta del dÃ­a (no Completada) en la que estÃ¡n.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "description": "DÃ­a YYYY-MM-DD (por defecto, hoy en hora de El Salvador)",
+            "schema": {
+              "type": "string",
+              "example": "2026-09-25"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disponibilidad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    },
+                    "drivers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "_id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "lastName": {
+                            "type": "string"
+                          },
+                          "busy": {
+                            "type": "boolean"
+                          },
+                          "route": {
+                            "type": "object",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    },
+                    "vehicles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "plate": {
+                            "type": "string"
+                          },
+                          "busy": {
+                            "type": "boolean"
+                          },
+                          "route": {
+                            "type": "object",
+                            "nullable": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos invÃ¡lidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Fecha invÃ¡lida: usa AAAA-MM-DD"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}": {
+      "get": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Una ruta",
+        "description": "Ruta con sus pedidos y motorista poblados.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Editar ruta",
+        "description": "Cambia zona, motorista, vehÃ­culo o `delayed`. El motorista debe ser un empleado activo de LogÃ­stica; motorista y vehÃ­culo no pueden estar en otra ruta del mismo dÃ­a que no estÃ© Completada. DespuÃ©s de salir no se cambian motorista ni vehÃ­culo. Sincroniza delivery.driver y delivery.vehicle de sus pedidos.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "zone": {
+                    "type": "string"
+                  },
+                  "driver": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "vehicle": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "delayed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos invÃ¡lidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El motorista debe ser un empleado activo del Ã¡rea LogÃ­stica"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "La ruta ya saliÃ³: no se cambia el motorista ni el vehÃ­culo"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Eliminar ruta",
+        "description": "Solo si no tiene pedidos y no ha salido.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta eliminada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Route deleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "la Ruta 1 (Zona Norte) tiene pedidos; quÃ­talos antes de eliminarla"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/orders": {
+      "post": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Agregar pedido a la ruta",
+        "description": "Agrega un pedido con al menos una lÃ­nea empacada (sin entregar) que no estÃ© en otra ruta activa. Si el pedido necesita una recogida ya confirmada, esa recogida vuelve a pendiente. No se puede despuÃ©s de salir.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "orderId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "orderId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "ORD-2026-0012 ya estÃ¡ en la Ruta 2 (Zona Sur)"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/orders/{orderId}": {
+      "delete": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Quitar pedido de la ruta",
+        "description": "Antes de salir. El pedido pierde su delivery y sus lÃ­neas vuelven a no recogidas.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "ORD-2026-0012 no estÃ¡ en la Ruta 1 (Zona Norte)"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/pickup": {
+      "patch": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Confirmar recogida",
+        "description": "Confirma la recogida en AlmacÃ©n o FabricaciÃ³n (la ruta debe estar Recolectando y requerir esa ubicaciÃ³n). Marca pickedUpAt en las lÃ­neas empacadas cuyas ubicaciones ya estÃ¡n confirmadas y delivery.pickupWarehouseAt / pickupFactoryAt en sus pedidos.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "type": "string",
+                    "enum": [
+                      "AlmacÃ©n",
+                      "FabricaciÃ³n"
+                    ]
+                  }
+                },
+                "required": [
+                  "location"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos invÃ¡lidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "UbicaciÃ³n invÃ¡lida: usa Â«AlmacÃ©nÂ» o Â«FabricaciÃ³nÂ»"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "La recogida en AlmacÃ©n ya estÃ¡ confirmada"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/depart": {
+      "patch": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Salir",
+        "description": "Exige motorista, vehÃ­culo, al menos un pedido y todas las recogidas requeridas confirmadas. Los pedidos pasan a Â«En TrÃ¡nsitoÂ» (statusHistory) con dispatchStatus Â«A tiempoÂ».\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Falta confirmar la recogida en FabricaciÃ³n"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/orders/{orderId}/deliver": {
+      "patch": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Entregar parada",
+        "description": "Marca deliveredAt en las lÃ­neas recogidas. Si todas las lÃ­neas quedan entregadas, el pedido pasa a Entregado (delivery.deliveredAt); si no, sale de la ruta y vuelve a estar disponible para despacho con lo pendiente. Cuando todas las paradas estÃ¡n entregadas, la ruta queda Completada.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "ORD-2026-0012 ya se entregÃ³"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/routes/{id}/orders/{orderId}/undeliver": {
+      "patch": {
+        "tags": [
+          "Rutas"
+        ],
+        "summary": "Deshacer entrega",
+        "description": "Solo el mismo dÃ­a (hora de El Salvador). Si la ruta habÃ­a quedado Completada vuelve a En trÃ¡nsito; una entrega parcial devuelve el pedido a su posiciÃ³n.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la ruta",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ruta actualizada (pedidos y motorista poblados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Route"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ruta no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado no permite la acciÃ³n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Solo se puede deshacer una entrega el mismo dÃ­a"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

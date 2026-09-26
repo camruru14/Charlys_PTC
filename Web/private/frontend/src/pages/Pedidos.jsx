@@ -140,8 +140,9 @@ function OrderDetail({ order, onEdit, onDelete }) {
           </StatTile>
           <StatTile label="Entrega">
             <p className="break-words text-[13px] text-ink">{address || "—"}</p>
-            {/* La zona y la ruta llegan con el modelo de rutas de Logística. */}
-            <p className="t-aux mt-0.5">sin asignar</p>
+            <p className="t-aux mt-0.5 tabular-nums">
+              {order.delivery?.route?.number ? `${order.delivery.route.zone} · Ruta ${order.delivery.route.number}` : "sin asignar"}
+            </p>
           </StatTile>
           <StatTile label="Fechas">
             <p className="text-[12.5px] tabular-nums text-ink-2">

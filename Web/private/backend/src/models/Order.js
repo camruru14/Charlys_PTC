@@ -46,6 +46,10 @@ const orderItemSchema = new Schema(
     // la fabricada en Fabricación. `packed` solo es true con las dos.
     stockPackedAt: { type: Date },
     manufacturePackedAt: { type: Date },
+    // Rutas de Logística (Fase 7): cuándo el motorista recogió la línea
+    // (todas sus ubicaciones confirmadas en la ruta) y cuándo la entregó.
+    pickedUpAt: { type: Date },
+    deliveredAt: { type: Date },
   },
   { _id: false },
 );
@@ -69,6 +73,9 @@ const deliverySchema = new Schema(
     // recoger en un lugar, el campo correspondiente se queda vacío.
     pickupWarehouseAt: { type: Date },
     pickupFactoryAt: { type: Date },
+    // Ruta de Logística en la que va el pedido (ver models/Route.js). Mientras
+    // la tenga, driver y vehicle se sincronizan desde la ruta.
+    route: { type: Schema.Types.ObjectId, ref: "Route" },
   },
   { _id: false },
 );

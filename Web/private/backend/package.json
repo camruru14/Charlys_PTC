@@ -8,7 +8,8 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "migrate:orders": "node scripts/migrate-order-status-history.js",
-    "migrate:batches": "node scripts/migrate-reported-batches.js"
+    "migrate:batches": "node scripts/migrate-reported-batches.js",
+    "migrate:routes": "node scripts/migrate-delivery-routes.js"
   },
   "keywords": [],
   "author": "",

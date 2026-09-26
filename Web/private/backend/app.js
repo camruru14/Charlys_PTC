@@ -17,6 +17,7 @@ import transactionsRoutes from "./src/routes/transactions.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import warehousesRoutes from "./src/routes/warehouses.js";
 import vehiclesRoutes from "./src/routes/vehicles.js";
+import routesRoutes from "./src/routes/routes.js";
 
 // Cargar especificación OpenAPI 3.1.0
 const openapiDoc = JSON.parse(
@@ -98,6 +99,9 @@ app.use("/api/warehouses", validateAuthCookie(), warehousesRoutes);
 
 // Vehículos (usados por Logística al asignar/editar una entrega)
 app.use("/api/vehicles", validateAuthCookie(), vehiclesRoutes);
+
+// Rutas de Logística (motorista + vehículo + pedidos, parada por parada)
+app.use("/api/routes", validateAuthCookie(), routesRoutes);
 
 // Finanzas (transacciones)
 app.use("/api/transactions", validateAuthCookie(), transactionsRoutes);

@@ -27,6 +27,12 @@ import {
 // Campos del lote que se incluyen al poblar items.manufacturingBatch (la
 // flecha desplegable de Inventario > Pedidos muestra meta y producido).
 const BATCH_FIELDS = "batchNumber status targetQuantity producedQuantity";
+// Campos de la ruta de Logística al poblar delivery.route («Zona · Ruta N»).
+const ROUTE_FIELDS = "number zone status date";
+
+// Un pedido en una ruta conserva su delivery (motorista, vehículo y ruta los
+// maneja la ruta; ver lib/routes.js), aunque su status cambie a mano.
+const keepsDelivery = (order, status) => status === "En Tránsito" || status === "Entregado" || Boolean(order.delivery?.route);
 
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...)
 async function generateOrderNumber() {
@@ -113,6 +119,7 @@ ordersController.getOrders = async (req, res) => {
       .find()
       .populate("delivery.driver", "name lastName phone")
       .populate("items.manufacturingBatch", BATCH_FIELDS)
+      .populate("delivery.route", ROUTE_FIELDS)
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
@@ -126,7 +133,8 @@ ordersController.getOrder = async (req, res) => {
     const order = await orderModel
       .findById(req.params.id)
       .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", BATCH_FIELDS);
+      .populate("items.manufacturingBatch", BATCH_FIELDS)
+      .populate("delivery.route", ROUTE_FIELDS);
     res.json(order);
   } catch (error) {
     sendError(res, error);
@@ -218,7 +226,8 @@ ordersController.updateOrder = async (req, res) => {
       // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
       // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
       // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
-      if (status !== "En Tránsito" && status !== "Entregado") {
+      // Un pedido que está en una ruta la conserva.
+      if (!keepsDelivery(existing, status)) {
         existing.delivery = undefined;
       }
 
@@ -267,7 +276,7 @@ ordersController.updateStatus = async (req, res) => {
     // Si el pedido sale del flujo de despacho activo (deja de estar "En Tránsito" o "Entregado"),
     // se limpia la asignación de logística previa: motorista, vehículo, etc. Así, si más adelante
     // vuelve a "En Tránsito", aparece sin asignar en vez de arrastrar al motorista anterior.
-    if (status !== "En Tránsito" && status !== "Entregado") {
+    if (!keepsDelivery(order, status)) {
       order.delivery = undefined;
     }
 
@@ -310,6 +319,8 @@ ordersController.assignDelivery = async (req, res) => {
       address,
       pickupWarehouseAt: order.delivery?.pickupWarehouseAt,
       pickupFactoryAt: order.delivery?.pickupFactoryAt,
+      // Se conserva la ruta de Logística si la tiene (este endpoint no la maneja).
+      route: order.delivery?.route,
     };
 
     let status;
@@ -447,7 +458,8 @@ ordersController.verifyBulk = async (req, res) => {
     const orders = await orderModel
       .find({ _id: { $in: ids } })
       .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", BATCH_FIELDS);
+      .populate("items.manufacturingBatch", BATCH_FIELDS)
+      .populate("delivery.route", ROUTE_FIELDS);
     res.json({ message: "Order items verified", orders });
   } catch (error) {
     sendError(res, error);
@@ -460,7 +472,7 @@ ordersController.verifyBulk = async (req, res) => {
 // asignar apenas el primer producto queda empacado).
 ordersController.packOrderItem = lineAction(({ order, item }) => {
   packLine(item);
-  if (!order.delivery?.driver) order.delivery = undefined;
+  if (!order.delivery?.driver && !order.delivery?.route) order.delivery = undefined;
 }, "Order item packed");
 
 // Deshacer empacar (solo si el motorista no recogió en Almacén).

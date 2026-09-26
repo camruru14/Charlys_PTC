@@ -35,6 +35,8 @@ const orderItemSchema = new Schema(
     toManufactureQty: { type: Number, min: 1 },
     stockPackedAt: { type: Date },
     manufacturePackedAt: { type: Date },
+    pickedUpAt: { type: Date },
+    deliveredAt: { type: Date },
   },
   { _id: false },
 );
@@ -53,6 +55,8 @@ const deliverySchema = new Schema(
     address: { type: String },
     pickupWarehouseAt: { type: Date },
     pickupFactoryAt: { type: Date },
+    // Ruta de Logística del panel privado (colección "routes").
+    route: { type: Schema.Types.ObjectId },
   },
   { _id: false },
 );
