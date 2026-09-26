@@ -17,12 +17,12 @@ Una solución integral diseñada para optimizar el ciclo de vida de producción 
 
 ---
 
-### ✨ Características Principales
-* **📦 Gestión de Inventario:** Control total de producción y productos terminados.
-* **🏗️ Control de Producción:** Monitoreo ventas y producciones al día de la fábrica.
-* **📈 Ventas:** Seguimiento de pedidos y reportes mensuales de las ventas.
-* **👥 Usuarios & Roles:** Seguridad basada en perfiles (Administrador, Empleados, Clientes).
-* **🛒 Tienda en línea:** Catálogo público, carrito, cuentas de cliente y pago con tarjeta
+### Características Principales
+* **Gestión de Inventario:** Control total de producción y productos terminados.
+* **Control de Producción:** Monitoreo ventas y producciones al día de la fábrica.
+* **Ventas:** Seguimiento de pedidos y reportes mensuales de las ventas.
+* **Usuarios & Roles:** Seguridad basada en perfiles (Administrador, Empleados, Clientes).
+* **Tienda en línea:** Catálogo público, carrito, cuentas de cliente y pago con tarjeta
   vía Wompi (`public/backend` + `public/frontend`). Los pedidos de la tienda caen en la
   misma base de datos que usa el panel privado, así que aparecen directo en
   Pedidos / Inventario / Logística sin pasos manuales.
