@@ -150,6 +150,24 @@ export function hasPackedLines(order) {
   return (order.items || []).some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);
 }
 
+// Despachado: ya salió, o está en una ruta de Logística y todas sus líneas
+// por llevar (empacadas sin entregar) ya se recogieron.
+export function isDispatched(order) {
+  if (order.status === "En Tránsito" || order.status === "Entregado") return true;
+  if (!order.delivery?.route) return false;
+  const carried = (order.items || []).filter((i) => i.packed && !i.deliveredAt);
+  return carried.length > 0 && carried.every((i) => i.pickedUpAt);
+}
+
+// «Ruta 4 · Mario Pérez» para una línea empacada de un pedido en ruta (o null).
+export function routeLabel(order) {
+  const route = order.delivery?.route;
+  if (!route?.number) return null;
+  const driver = order.delivery?.driver;
+  const name = driver?.name ? `${driver.name} ${driver.lastName || ""}`.trim() : "sin motorista";
+  return `Ruta ${route.number} · ${name}`;
+}
+
 // Fecha del último cambio de status (para «Despachados, últimos 30 días»).
 export function lastStatusAt(order) {
   const history = order.statusHistory || [];

@@ -7,7 +7,8 @@
     fmtDateTime(d)         -> "19 sep · 14:10"
     fmtTime(d)             -> "09:40"
     fmtRelativeDay(d)      -> "hoy" | "ayer" | "19 sep"
-    fmtDay2(d)             -> "02 sep" (día con dos dígitos, ejes de gráficas)
+    fmtElapsed(d)          -> "hace 2 h 10 min"
+    fmtDay2(d)           -> "02 sep" (día con dos dígitos, ejes de gráficas)
     fmtMonth(d)            -> "septiembre"
     fromDateOnly(d)        -> fecha guardada sin hora (medianoche UTC, p. ej.
                               startDate de un lote) como Date local del mismo día
@@ -76,6 +77,18 @@ export function fromDateOnly(value) {
   const d = toDate(value);
   if (!d) return null;
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+// Tiempo transcurrido: "hace 2 h 10 min", "hace 5 min", "hace un momento".
+export function fmtElapsed(value, now = Date.now()) {
+  const d = toDate(value);
+  if (!d) return "—";
+  const minutes = Math.max(0, Math.floor((now - d.getTime()) / 60000));
+  if (minutes < 1) return "hace un momento";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `hace ${m} min`;
+  return m ? `hace ${h} h ${m} min` : `hace ${h} h`;
 }
 
 export function fmtRelativeDay(value) {

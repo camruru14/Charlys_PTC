@@ -12,6 +12,7 @@ import Vehicle from "../src/models/Vehicle.js";
 import ctl from "../src/controller/routesController.js";
 import ordersCtl from "../src/controller/ordersController.js";
 import { migrateDeliveryRoutes } from "../scripts/migrate-delivery-routes.js";
+import { closeMigratedRoutes } from "../scripts/close-migrated-routes.js";
 
 let replSet;
 let driver;
@@ -251,6 +252,75 @@ test("migración: agrupa por día, motorista y vehículo, y es idempotente", asy
   summary = await migrateDeliveryRoutes({ log: () => {} });
   assert.equal(summary.created, 0, "idempotente");
   assert.equal(await Route.countDocuments(), 2);
+});
+
+test("cierre de rutas migradas: recoge lo que falta, entrega con la fecha real y rellena deliveredAt", async () => {
+  const departedAt = new Date("2026-08-14T21:17:11.143Z");
+  const deliveredOn = new Date("2026-08-15T18:00:00.000Z");
+  // Pendiente: una línea ya recogida y otra de Fabricación cuya recogida falta confirmar.
+  const pending = await newOrder([
+    packedAlmacen("Pajilla"),
+    packedFabrica("Cajón"),
+  ], "En Tránsito");
+  pending.items[0].pickedUpAt = departedAt;
+  pending.markModified("items");
+  // Ya entregado sin delivery.deliveredAt (dato viejo), con su paso a «Entregado» en statusHistory.
+  const old = await newOrder([packedAlmacen("Pelota")], "Entregado");
+  old.statusHistory = [{ status: "Entregado", at: deliveredOn }];
+  const route = await Route.create({
+    number: 1,
+    date: new Date("2026-08-14T00:00:00.000Z"),
+    zone: "Sin zona",
+    driver: driver._id,
+    vehicle: "P123-456",
+    orders: [pending._id, old._id],
+    status: "En tránsito",
+    departedAt,
+    pickups: { almacen: { confirmedAt: departedAt } },
+  });
+  for (const o of [pending, old]) {
+    o.delivery = { route: route._id, driver: driver._id, vehicle: "P123-456", dispatchStatus: "A tiempo" };
+    await o.save();
+  }
+
+  const lines = [];
+  let s = await closeMigratedRoutes([String(route._id)], { dryRun: true, log: (l) => lines.push(l) });
+  assert.equal(s.closed, 1);
+  assert.equal((await Route.findById(route._id)).status, "En tránsito", "dry-run no escribe");
+  assert.ok(lines.some((l) => l.includes("Fabricación")), "muestra la recogida a confirmar");
+  assert.ok(lines.some((l) => l.includes(`Entregar ${pending.orderNumber}`)));
+  assert.ok(lines.some((l) => l.includes(`Rellenar delivery.deliveredAt de ${old.orderNumber}`)));
+
+  s = await closeMigratedRoutes([String(route._id)], { log: () => {} });
+  assert.equal(s.closed, 1);
+  const after = await Route.findById(route._id);
+  assert.equal(after.status, "Completada");
+  assert.equal(after.completedAt.toISOString(), deliveredOn.toISOString(), "completedAt = la entrega más tardía (incluido el relleno)");
+  assert.equal(after.pickups.fabricacion.confirmedAt.toISOString(), departedAt.toISOString());
+  const p = await load(pending._id);
+  assert.equal(p.status, "Entregado");
+  assert.equal(p.delivery.deliveredAt.toISOString(), departedAt.toISOString());
+  assert.ok(p.items.every((i) => i.deliveredAt));
+  assert.equal((await load(old._id)).delivery.deliveredAt.toISOString(), deliveredOn.toISOString());
+
+  s = await closeMigratedRoutes([String(route._id)], { log: () => {} });
+  assert.equal(s.skipped, 1, "idempotente");
+  assert.equal(s.closed, 0);
+});
+
+test("cierre de rutas migradas: no toca una ruta con líneas sin empacar", async () => {
+  const order = await newOrder([packedAlmacen("Pajilla"), line("Vaso")], "En Tránsito");
+  order.items[0].pickedUpAt = new Date();
+  order.markModified("items");
+  await order.save();
+  const route = await Route.create({
+    number: 1, date: new Date("2026-08-08T00:00:00.000Z"), zone: "Sin zona", driver: driver._id, vehicle: "P123-456",
+    orders: [order._id], status: "En tránsito", departedAt: new Date(), pickups: { almacen: { confirmedAt: new Date() } },
+  });
+  const s = await closeMigratedRoutes([String(route._id)], { log: () => {} });
+  assert.equal(s.blocked, 1);
+  assert.equal((await Route.findById(route._id)).status, "En tránsito");
+  assert.equal((await load(order._id)).status, "En Tránsito");
 });
 
 test("un pedido agregado después de una recogida la vuelve a dejar pendiente", async () => {

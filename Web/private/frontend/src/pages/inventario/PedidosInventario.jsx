@@ -27,6 +27,8 @@ import {
   packableLines,
   hasPackedLines,
   lastStatusAt,
+  isDispatched,
+  routeLabel,
 } from "../../lib/inventoryOrders";
 
 /*
@@ -165,7 +167,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
           </Button>
         );
       case "Empacado":
-        return <span className="text-[11.5px] text-muted">Esperando motorista</span>;
+        return <span className="truncate text-[11.5px] tabular-nums text-muted">{routeLabel(order) || "Esperando motorista"}</span>;
       case "Existencia parcial":
         return (
           <Button variant="start" size="row" disabled={busy} onClick={stop(() => setOpenBox({ orderId: order._id, index, kind: "resolve" }))}>
@@ -388,12 +390,9 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
 
   const stockMap = useMemo(() => buildStockMap(finishedItems), [finishedItems]);
 
-  const toPrepare = useMemo(() => orders.filter((o) => o.status !== "En Tránsito" && o.status !== "Entregado"), [orders]);
+  const toPrepare = useMemo(() => orders.filter((o) => !isDispatched(o)), [orders]);
   const dispatched = useMemo(
-    () =>
-      orders.filter(
-        (o) => (o.status === "En Tránsito" || o.status === "Entregado") && new Date(lastStatusAt(o)).getTime() >= dispatchedSince,
-      ),
+    () => orders.filter((o) => isDispatched(o) && new Date(lastStatusAt(o)).getTime() >= dispatchedSince),
     [orders, dispatchedSince],
   );
 

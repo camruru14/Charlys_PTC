@@ -113,6 +113,12 @@ export function normalizeStatus(status) {
 
 export function statusTone(status, domain) {
   const label = normalizeStatus(status);
-  if (domain === "despacho" && /^Faltan \d+ de \d+$/.test(label)) return "amber";
+  if (domain === "despacho") {
+    // «Faltan N de M» es ámbar; «Listo · N de M» y «Esperando · N de M» toman
+    // el tono de su prefijo.
+    if (/^Faltan \d+ de \d+$/.test(label)) return "amber";
+    const prefix = label.split(" · ")[0];
+    return STATUS_DOMAINS.despacho[prefix] || "gray";
+  }
   return STATUS_DOMAINS[domain]?.[label] || "gray";
 }

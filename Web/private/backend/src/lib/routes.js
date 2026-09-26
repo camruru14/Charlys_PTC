@@ -54,7 +54,7 @@ export function requiredPickups(orders) {
   return ["Almacén", "Fabricación"].filter((l) => set.has(l));
 }
 
-const isConfirmed = (route, location) => Boolean(route.pickups?.[PICKUP_KEY[location]]?.confirmedAt);
+export const isConfirmed = (route, location) => Boolean(route.pickups?.[PICKUP_KEY[location]]?.confirmedAt);
 
 export const isOrderDelivered = (order) => order.status === "Entregado" || Boolean(order.delivery?.deliveredAt);
 
@@ -68,9 +68,10 @@ export function computeRouteStatus(route, orders) {
   return "Pendiente";
 }
 
-function applyRouteStatus(route, orders) {
+// `at`: fecha para completedAt si la ruta queda Completada (por defecto, ahora).
+function applyRouteStatus(route, orders, at = new Date()) {
   route.status = computeRouteStatus(route, orders);
-  if (route.status === "Completada") route.completedAt = route.completedAt || new Date();
+  if (route.status === "Completada") route.completedAt = route.completedAt || at;
   else route.completedAt = undefined;
 }
 
@@ -303,18 +304,25 @@ export async function confirmPickup(id, location, session) {
   }
   if (isConfirmed(route, location)) throw new HttpError(409, `La recogida en ${location} ya está confirmada`);
 
-  const now = new Date();
-  route.pickups[PICKUP_KEY[location]].confirmedAt = now;
-  route.markModified("pickups");
-  for (const order of orders) {
-    if (!orderPickups(order).includes(location)) continue;
-    setDelivery(order, { [ORDER_PICKUP_FIELD[location]]: now });
-    markPicked(order, route, now);
-    await order.save({ session });
-  }
+  await applyPickup(route, orders, location, new Date(), session);
   applyRouteStatus(route, orders);
   await route.save({ session });
   return route;
+}
+
+// Confirma la recogida en `location` (sin validar el estado de la ruta: eso
+// lo hace quien llama): guarda confirmedAt en la ruta y, en cada pedido que
+// la requiere, pickupWarehouseAt/pickupFactoryAt y pickedUpAt de sus líneas.
+// Guarda los pedidos; la ruta la guarda quien llama.
+export async function applyPickup(route, orders, location, at, session) {
+  route.pickups[PICKUP_KEY[location]].confirmedAt = at;
+  route.markModified("pickups");
+  for (const order of orders) {
+    if (!orderPickups(order).includes(location)) continue;
+    setDelivery(order, { [ORDER_PICKUP_FIELD[location]]: at });
+    markPicked(order, route, at);
+    await order.save({ session });
+  }
 }
 
 export async function depart(id, session) {
@@ -344,8 +352,9 @@ export async function depart(id, session) {
 
 // Entrega una parada: marca deliveredAt en sus líneas recogidas. Si todas
 // las líneas del pedido quedan entregadas, el pedido pasa a Entregado; si no
-// («Llevar lo que hay»), sale de la ruta con lo pendiente.
-export async function deliverOrder(id, orderId, session) {
+// («Llevar lo que hay»), sale de la ruta con lo pendiente. `at` es la hora de
+// la entrega (por defecto, ahora; los scripts de corrección pasan la real).
+export async function deliverOrder(id, orderId, session, at = new Date()) {
   const route = await loadRoute(id, session);
   if (route.status !== "En tránsito") throw new HttpError(409, `${routeLabel(route)} no está en tránsito`);
   const order = await loadOrder(orderId, session);
@@ -355,7 +364,7 @@ export async function deliverOrder(id, orderId, session) {
   const lines = (order.items || []).filter((i) => i.pickedUpAt && !i.deliveredAt);
   if (!lines.length) throw new HttpError(409, `${order.orderNumber} no tiene productos recogidos por entregar`);
 
-  const now = new Date();
+  const now = at;
   lines.forEach((i) => {
     i.deliveredAt = now;
   });
@@ -374,7 +383,7 @@ export async function deliverOrder(id, orderId, session) {
   route.deliveries.push({ order: order._id, at: now, partial, position });
 
   const orders = await loadRouteOrders(route, session);
-  applyRouteStatus(route, orders);
+  applyRouteStatus(route, orders, now);
   await route.save({ session });
   return route;
 }

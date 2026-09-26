@@ -9,7 +9,8 @@
     "start": "node index.js",
     "migrate:orders": "node scripts/migrate-order-status-history.js",
     "migrate:batches": "node scripts/migrate-reported-batches.js",
-    "migrate:routes": "node scripts/migrate-delivery-routes.js"
+    "migrate:routes": "node scripts/migrate-delivery-routes.js",
+    "close:routes": "node scripts/close-migrated-routes.js"
   },
   "keywords": [],
   "author": "",

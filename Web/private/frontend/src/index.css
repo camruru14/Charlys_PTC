@@ -36,6 +36,7 @@
   --color-primary-hover: #2a5bbc;
   --color-primary-soft: #e9f0fb;
   --color-primary-soft-text: #2c5ca8;
+  --color-primary-disabled: #c9d6f0;
 
   /* Selección, banda y filas destacadas */
   --color-select-bg: #f3f7fd;
@@ -60,6 +61,9 @@
   --color-tone-amber: #faf1df;
   --color-tone-amber-text: #96661a;
   --color-tone-amber-dot: #d9a441;
+  /* Avisos ámbar (pedido incompleto en una ruta): borde y texto */
+  --color-tone-amber-line: #efd9ae;
+  --color-tone-amber-strong: #7a5413;
   --color-tone-green: #eaf4ee;
   --color-tone-green-text: #3b7d55;
   --color-tone-green-dot: #5aa872;
