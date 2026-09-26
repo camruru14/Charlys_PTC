@@ -652,7 +652,22 @@
           },
           "lastReportedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Flujo antiguo de «Reportar» (solo app Movil)."
+          },
+          "targetQuantity": { "type": "number", "minimum": 0, "example": 3000, "description": "Meta del lote." },
+          "startedAt": { "type": "string", "format": "date-time", "description": "Cuándo se inició (Programado → En Proceso)." },
+          "completedAt": { "type": "string", "format": "date-time", "description": "Cuándo se completó." },
+          "stoppedAt": { "type": "string", "format": "date-time", "description": "Cuándo se detuvo (solo mientras está Detenido)." },
+          "stopReason": { "type": "string", "example": "Falta materia prima" },
+          "sentToWarehouseAt": { "type": "string", "format": "date-time", "description": "Cuándo se envió a bodega («En bodega»)." },
+          "destinationWarehouse": { "type": "string", "example": "Bodega Central" },
+          "packedAt": { "type": "string", "format": "date-time", "description": "Lotes «Pedido»: cuándo se empacó lo fabricado para el pedido." },
+          "sentQuantity": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "description": "Unidades ya sumadas a inventario por el envío a bodega. Un envío solo suma producedQuantity − sentQuantity."
           },
           "status": {
             "type": "string",
@@ -3472,10 +3487,652 @@
         }
       }
     },
+    "/api/productionBatches/{id}/start": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Iniciar un lote",
+        "description": "Programado → En Proceso. Guarda startedAt. Si llegan productionLine u operator se asignan antes de iniciar; sin línea de producción responde 400.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "productionLine": {
+                    "type": "string",
+                    "example": "Línea 3"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "ObjectId del empleado"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote actualizado (con el operario poblado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Elige la línea de producción para iniciar el lote"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 está En Proceso; no se puede iniciar"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/stop": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Detener un lote",
+        "description": "En Proceso → Detenido. Guarda stoppedAt y stopReason.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "example": "Falta materia prima"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote actualizado (con el operario poblado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 está Programado; no se puede detener"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/resume": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Reanudar un lote",
+        "description": "Detenido → En Proceso. Limpia stoppedAt y stopReason.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote actualizado (con el operario poblado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 está En Proceso; no se puede reanudar"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/complete": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Completar un lote",
+        "description": "En Proceso → Completado con la cantidad producida. Guarda completedAt. Un lote que no es «Pedido» queda «Por enviar» hasta enviarlo a bodega.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "producedQuantity": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "example": 3050
+                  }
+                },
+                "required": [
+                  "producedQuantity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote actualizado (con el operario poblado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ingresa las unidades producidas (número entero, 0 o más)"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 está Detenido; no se puede completar"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/reopen": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Reabrir un lote completado (Deshacer «Completar»)",
+        "description": "Completado → En Proceso. Solo si no se envió a bodega ni se empacó para un pedido.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lote actualizado (con el operario poblado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 ya está en bodega; primero deshaz el envío"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/send-to-warehouse": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Enviar un lote completado a bodega",
+        "description": "Solo lotes que no son «Pedido», Completados y sin enviar. En una transacción suma a Producto terminado (mismo artículo, color y bodega; lo crea si no existe) solo producedQuantity − sentQuantity, guarda lastInbound en ese artículo y marca sentToWarehouseAt, destinationWarehouse y sentQuantity = producedQuantity.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "warehouse": {
+                    "type": "string",
+                    "example": "Bodega Central"
+                  }
+                },
+                "required": [
+                  "warehouse"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lote enviado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "description": "Unidades que se sumaron (o restaron) en la bodega"
+                    },
+                    "batch": {
+                      "$ref": "#/components/schemas/ProductionBatch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Elige la bodega de destino"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0001 ya está en Bodega Central"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/{id}/undo-send": {
+      "patch": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Deshacer el envío a bodega",
+        "description": "En una transacción resta de la bodega las unidades que sumó el envío, solo si siguen disponibles (descuento atómico y condicionado), y limpia sentToWarehouseAt, destinationWarehouse y sentQuantity.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del lote",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envío deshecho",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "description": "Unidades que se sumaron (o restaron) en la bodega"
+                    },
+                    "batch": {
+                      "$ref": "#/components/schemas/ProductionBatch"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Lote no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Lote no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El estado del lote no permite la acción",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "No se puede deshacer: las 3,050 unidades del lote LOTE-2026-0001 ya no están disponibles en Bodega Central"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/api/productionBatches/{id}/report": {
       "patch": {
         "tags": ["Lotes de Fabricación"],
-        "summary": "Reportar producción terminada a inventario",
+        "summary": "Reportar producción terminada a inventario (flujo antiguo, solo app Movil)",
         "description": "Registra la cantidad producida y sincroniza automáticamente un artículo en Inventario con categoría `Producto Terminado` asociado a este lote.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
         "security": [
           {
@@ -4468,8 +5125,8 @@
     "/api/inventory/{id}/send": {
       "patch": {
         "tags": ["Inventario"],
-        "summary": "Enviar lote reportado a Artículos en almacén",
-        "description": "Suma las existencias del lote reportado al producto terminado correspondiente en 'Artículos en almacén' (o lo crea si no existe coincidencia) y marca el lote como enviado.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "summary": "Enviar lote reportado a Artículos en almacén (flujo antiguo, solo app Movil)",
+        "description": "Suma las existencias del lote reportado al producto terminado correspondiente en 'Artículos en almacén' (o lo crea si no existe coincidencia) y marca el artículo y su lote como enviados. Si el lote ya se envió desde el panel (send-to-warehouse) o el artículo ya estaba enviado, no vuelve a sumar nada.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []

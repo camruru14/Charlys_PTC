@@ -67,19 +67,39 @@ export async function takeStock({ product, color, warehouse, quantity }, session
   return updated;
 }
 
+// Suma `quantity` al producto terminado con ese artículo, color y bodega; si
+// no existe, lo crea con esa cantidad. `inbound` ({ quantity, batchNumber,
+// at }) se guarda como lastInbound: es la marca de «ingreso reciente» que
+// muestra Inventario cuando llega un lote desde Fabricación.
+export async function addFinishedStock({ product, color, warehouse, quantity, unit, unitCost, inbound }, session) {
+  if (!warehouse || !quantity) return null;
+  const update = { $inc: { stock: quantity } };
+  if (inbound) update.$set = { lastInbound: inbound };
+  const updated = await inventoryModel.findOneAndUpdate(finishedStockFilter(product, color, warehouse), update, {
+    session,
+    returnDocument: "after",
+  });
+  if (updated) return updated;
+  const [created] = await inventoryModel.create(
+    [
+      {
+        name: product,
+        category: "Producto Terminado",
+        color,
+        stock: quantity,
+        location: warehouse,
+        ...(unit ? { unit } : {}),
+        ...(unitCost ? { unitCost } : {}),
+        ...(inbound ? { lastInbound: inbound } : {}),
+      },
+    ],
+    { session },
+  );
+  return created;
+}
+
 // Devuelve `quantity` al stock de ese producto/color en esa bodega. Si el
 // artículo ya no existe (p. ej. se borró a mano), se recrea con esa cantidad.
 export async function returnStock({ product, color, warehouse, quantity }, session) {
-  if (!warehouse || !quantity) return;
-  const updated = await inventoryModel.findOneAndUpdate(
-    finishedStockFilter(product, color, warehouse),
-    { $inc: { stock: quantity } },
-    { session, returnDocument: "after" },
-  );
-  if (!updated) {
-    await inventoryModel.create(
-      [{ name: product, category: "Producto Terminado", color, stock: quantity, location: warehouse }],
-      { session },
-    );
-  }
+  await addFinishedStock({ product, color, warehouse, quantity }, session);
 }

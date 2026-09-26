@@ -49,35 +49,19 @@ export function previewBatchNumber(list) {
 }
 
 /*
-  Estado y acciones (crear/editar/eliminar/reportar) para lotes de fabricación.
-  Reutilizado por la página de Fabricación y por el "Ver todo" editable de Fabricación.
+  Estado y acciones (crear/editar/eliminar) para lotes de fabricación.
+  Lo usan Fabricación y el «Ver todo» editable de Fabricación. El avance del
+  lote (iniciar, completar, enviar a bodega…) vive en LotesFabricacion.
 */
-const emptyReportForm = { producedQuantity: "", warehouse: "" };
-
 export function useBatchForm(list, refetch) {
   const { confirm, confirmProps } = useConfirm();
   const { data: employees } = useFetch("/employees");
-  // Bodegas disponibles para reportar producción a Inventario (Parte 8:
-  // configurables desde Configuración > Bodegas, ya no un arreglo fijo).
-  const { data: warehousesData } = useFetch("/warehouses");
-  const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyBatchForm);
   const [saving, setSaving] = useState(false);
 
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reportTarget, setReportTarget] = useState(null);
-  const [reportForm, setReportForm] = useState(emptyReportForm);
-  const [reporting, setReporting] = useState(false);
-
-  const [undoReportModalOpen, setUndoReportModalOpen] = useState(false);
-  const [undoReportTarget, setUndoReportTarget] = useState(null);
-  const [undoingReport, setUndoingReport] = useState(false);
-
   // "Operario responsable" del lote: solo empleados del Área Fabricación.
-  // El sistema ya no maneja roles, el Área de cada empleado es lo que
-  // distingue estos casos (ver Empleados.jsx).
   const operators = (Array.isArray(employees) ? employees : []).filter(
     (e) => e.department === "Fabricación",
   );
@@ -109,12 +93,12 @@ export function useBatchForm(list, refetch) {
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
-    // targetQuantity (Meta) es de solo lectura en este formulario (la fija el
-    // pedido al fabricar, ver manufactureOrderItem), no se manda a actualizar.
-    const { batchNumber, targetQuantity, ...rest } = form;
+    const { batchNumber, ...rest } = form;
     const payload = {
       ...rest,
       producedQuantity: Number(form.producedQuantity) || 0,
+      // Sin meta no se manda: así editar no borra una meta que ya tenga.
+      targetQuantity: form.targetQuantity === "" ? undefined : Number(form.targetQuantity),
       operator: form.operator || undefined,
       startDate: form.startDate || undefined,
     };
@@ -135,72 +119,17 @@ export function useBatchForm(list, refetch) {
     }
   }
 
+  // Devuelve true si el lote se eliminó.
   async function handleDelete(batch) {
-    if (!(await confirm(`¿Eliminar el lote ${batch.batchNumber}?`, { danger: true }))) return;
+    if (!(await confirm(`¿Eliminar el lote ${batch.batchNumber}?`, { danger: true }))) return false;
     try {
       await api.del(`/productionBatches/${batch._id}`);
       toast.success("Lote eliminado");
       refetch();
+      return true;
     } catch (err) {
       toast.error(err.message);
-    }
-  }
-
-  // Abre el modal de confirmación de "Reportar" (reemplaza los antiguos window.prompt).
-  // Las unidades a reportar se toman solas de lo que ya está guardado como
-  // producción del lote (columna "Producido"), sin pedirlo a mano ni
-  // recalcularlo aparte, así se reporta siempre la misma cantidad.
-  function openReport(batch) {
-    setReportTarget(batch);
-    setReportForm({ producedQuantity: String(batch.producedQuantity || 0), warehouse: warehouses[0] || "" });
-    setReportModalOpen(true);
-  }
-
-  const handleReportChange = (e) => setReportForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-
-  // Confirma el reporte: envía la misma cantidad producida ya guardada en el
-  // lote y, del lado del backend, agrega/actualiza el artículo
-  // correspondiente en Inventario con ese mismo número.
-  async function submitReport(e) {
-    e.preventDefault();
-    setReporting(true);
-    try {
-      await api.patch(`/productionBatches/${reportTarget._id}/report`, {
-        producedQuantity: Number(reportForm.producedQuantity) || 0,
-        warehouse: reportForm.warehouse,
-      });
-      toast.success(`Lote ${reportTarget.batchNumber} reportado a Inventario`);
-      setReportModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setReporting(false);
-    }
-  }
-
-  // Abre el modal de confirmación para deshacer el reporte de un lote
-  // (clic en la etiqueta "Reportado").
-  function openUndoReport(batch) {
-    setUndoReportTarget(batch);
-    setUndoReportModalOpen(true);
-  }
-
-  // Confirma deshacer el reporte: el lote vuelve a "no reportado" y, del lado
-  // del backend, se resuelve el artículo vinculado en Inventario (se borra si
-  // nunca se envió a almacén, o se desvincula conservando el stock si ya se
-  // había enviado).
-  async function confirmUndoReport() {
-    setUndoingReport(true);
-    try {
-      await api.del(`/productionBatches/${undoReportTarget._id}/report`);
-      toast.success(`Reporte de ${undoReportTarget.batchNumber} deshecho`);
-      setUndoReportModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setUndoingReport(false);
+      return false;
     }
   }
 
@@ -211,26 +140,11 @@ export function useBatchForm(list, refetch) {
     form,
     saving,
     operators,
-    warehouses,
     openCreate,
     openEdit,
     handleChange,
     handleSubmit,
     handleDelete,
     confirmProps,
-    reportModalOpen,
-    setReportModalOpen,
-    reportTarget,
-    reportForm,
-    reporting,
-    openReport,
-    handleReportChange,
-    submitReport,
-    undoReportModalOpen,
-    setUndoReportModalOpen,
-    undoReportTarget,
-    undoingReport,
-    openUndoReport,
-    confirmUndoReport,
   };
 }

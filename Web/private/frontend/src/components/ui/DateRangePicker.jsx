@@ -14,7 +14,8 @@ function toInput(date) {
 /*
   Control de 38px + popover para elegir el rango de fechas. Va en las
   acciones del PageHeader de Dashboard, Fabricación, Finanzas y los dos
-  historiales. Ofrece presets (7/30 días, 3/6/12 meses) y un rango
+  historiales. Ofrece presets (Todo, Esta semana —el predeterminado—, 7/30
+  días, 3/6/12 meses) y un rango
   personalizado (desde/hasta). Escribe en el DateRangeContext global.
 */
 function DateRangePicker() {

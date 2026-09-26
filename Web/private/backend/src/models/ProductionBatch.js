@@ -58,6 +58,20 @@ const productionBatchSchema = new Schema(
     endDate: {
       type: Date,
     },
+    // Flujo de Fabricación (Fase 5): Programado → Iniciar (startedAt) →
+    // En Proceso ⇄ Detenido (stoppedAt, stopReason) → Completar
+    // (completedAt) → Enviar a bodega (sentToWarehouseAt, destinationWarehouse).
+    startedAt: { type: Date },
+    completedAt: { type: Date },
+    stoppedAt: { type: Date },
+    stopReason: { type: String },
+    sentToWarehouseAt: { type: Date },
+    destinationWarehouse: { type: String },
+    // Lotes «Pedido»: cuándo se empacó lo fabricado para el pedido.
+    packedAt: { type: Date },
+    // Unidades ya sumadas a inventario por el envío a bodega. Enviar solo
+    // suma producedQuantity − sentQuantity, así un envío repetido no duplica.
+    sentQuantity: { type: Number, default: 0, min: 0 },
   },
   {
     timestamps: true,

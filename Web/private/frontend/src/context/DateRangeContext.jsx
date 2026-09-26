@@ -20,18 +20,27 @@ function monthsAgo(n) {
   return d;
 }
 
+// Lunes de esta semana a las 00:00.
+function startOfWeek() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
 function endOfToday() {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
   return d;
 }
 
+// Rango por defecto (al entrar y al «Restablecer»): esta semana.
+function defaultRange() {
+  return { from: startOfWeek(), to: endOfToday(), preset: "week" };
+}
+
 export function DateRangeProvider({ children }) {
-  const [range, setRange] = useState({
-    from: null,
-    to: null,
-    preset: "all",
-  });
+  const [range, setRange] = useState(defaultRange);
 
   const value = useMemo(
     () => ({
@@ -45,12 +54,12 @@ export function DateRangeProvider({ children }) {
           setRange({ from: null, to: null, preset });
           return;
         }
-        const from = p.months ? monthsAgo(p.months) : daysAgo(p.days);
+        const from = p.week ? startOfWeek() : p.months ? monthsAgo(p.months) : daysAgo(p.days);
         setRange({ from, to: endOfToday(), preset });
       },
       // from/to son objetos Date (inicio y fin de día).
       setCustom: (from, to) => setRange({ from, to, preset: null }),
-      reset: () => setRange({ from: null, to: null, preset: "all" }),
+      reset: () => setRange(defaultRange()),
     }),
     [range],
   );

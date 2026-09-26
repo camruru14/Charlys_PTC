@@ -10,6 +10,7 @@ export const DateRangeContext = createContext(null);
 
 export const PRESETS = {
   all: { label: "Todo" },
+  week: { week: true, label: "Esta semana" },
   "7d": { days: 7, label: "Últimos 7 días" },
   "30d": { days: 30, label: "Últimos 30 días" },
   "3m": { months: 3, label: "Últimos 3 meses" },

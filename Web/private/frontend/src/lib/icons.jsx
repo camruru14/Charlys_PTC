@@ -50,6 +50,15 @@ export const IconTruck = (p) => (
   </svg>
 );
 
+// Bodega: nave con techo a dos aguas y estantes.
+export const IconWarehouse = (p) => (
+  <svg {...base} {...p}>
+    <path d="M3 21V8l9-5 9 5v13" />
+    <path d="M7 21v-9h10v9" />
+    <path d="M7 15h10M7 18h10" />
+  </svg>
+);
+
 export const IconBox = (p) => (
   <svg {...base} {...p}>
     <path d="M21 8 12 3 3 8v8l9 5 9-5Z" />

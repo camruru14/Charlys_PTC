@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
@@ -9,27 +8,24 @@ import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import KpiInline from "../components/ui/KpiInline";
 import Button from "../components/ui/Button";
-import StatusPill from "../components/ui/StatusPill";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field, SelectField } from "../components/ui/Field";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import ProductoTerminado from "./inventario/ProductoTerminado";
 import MateriaPrima from "./inventario/MateriaPrima";
 import PedidosInventario from "./inventario/PedidosInventario";
 import { IconPlus } from "../lib/icons";
 import { buttonClass } from "../lib/buttonStyles";
-import { fmtNumber, fmtDateYear } from "../lib/format";
+import { fmtNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
 import { UNITS, MATERIAL_TYPES } from "../lib/inventoryOptions";
 
-// «Lotes reportados» se queda temporalmente al final hasta que Fabricación
-// envíe los lotes directo a bodega (Fase 5).
+// Los lotes de Fabricación entran directo a Producto terminado al enviarse a
+// bodega (Fase 5), así que ya no hay pestaña de «Lotes reportados».
 const TABS = [
   { key: "terminado", label: "Producto terminado" },
   { key: "materia", label: "Materia prima" },
   { key: "pedidos", label: "Pedidos" },
-  { key: "lotes", label: "Lotes reportados" },
 ];
 
 const emptyForm = {
@@ -44,7 +40,6 @@ const emptyForm = {
 };
 
 function Inventario() {
-  const navigate = useNavigate();
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/inventory");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
@@ -57,24 +52,12 @@ function Inventario() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [sendModalOpen, setSendModalOpen] = useState(false);
-  const [sendTarget, setSendTarget] = useState(null);
-  const [sending, setSending] = useState(false);
-  const [deleteReportModalOpen, setDeleteReportModalOpen] = useState(false);
-  const [deleteReportTarget, setDeleteReportTarget] = useState(null);
-  const [deletingReport, setDeletingReport] = useState(false);
 
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const orders = useMemo(() => (Array.isArray(ordersData) ? ordersData : []), [ordersData]);
 
-  // Artículos generados al confirmar "Reportar" en Fabricación (llevan
-  // batchNumber). Se quedan en "Lotes reportados", se hayan enviado o no.
-  const reportedItems = useMemo(
-    () => list.filter((i) => i.batchNumber).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
-    [list]
-  );
-
-  // Artículos en almacén (sin batchNumber), divididos por categoría.
+  // Stock real, divididos por categoría. Se excluyen los artículos con
+  // batchNumber: son reportes de lote que todavía crea la app Movil, no stock.
   const rawMaterialItems = useMemo(
     () => list.filter((i) => !i.batchNumber && i.category === "Materia Prima"),
     [list]
@@ -175,50 +158,6 @@ function Inventario() {
     }
   }
 
-  function openSend(item) {
-    setSendTarget(item);
-    setSendModalOpen(true);
-  }
-
-  // Envía un lote reportado a almacén: si ya existe un producto terminado con
-  // el mismo artículo, color y bodega, solo se le suman las unidades
-  // reportadas; si no, se crea uno nuevo.
-  async function confirmSend() {
-    setSending(true);
-    try {
-      await api.patch(`/inventory/${sendTarget._id}/send`);
-      toast.success(`${sendTarget.name} enviado a almacén`);
-      setSendModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function openDeleteReport(item) {
-    setDeleteReportTarget(item);
-    setDeleteReportModalOpen(true);
-  }
-
-  // Elimina un lote reportado: el lote en Fabricación queda igual, solo deja
-  // de estar "reportado". Si ya se había enviado a almacén, ese stock se
-  // conserva sin cambios.
-  async function confirmDeleteReport() {
-    setDeletingReport(true);
-    try {
-      await api.del(`/inventory/${deleteReportTarget._id}/report`);
-      toast.success(`Reporte de ${deleteReportTarget.batchNumber} eliminado`);
-      setDeleteReportModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setDeletingReport(false);
-    }
-  }
-
   const isFinished = form.category === "Producto Terminado";
 
   return (
@@ -246,7 +185,7 @@ function Inventario() {
         <ProductoTerminado items={finishedItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
       ) : activeTab === "materia" ? (
         <MateriaPrima items={rawMaterialItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
-      ) : activeTab === "pedidos" ? (
+      ) : (
         <PedidosInventario
           orders={orders}
           ordersLoading={ordersLoading}
@@ -255,62 +194,6 @@ function Inventario() {
           finishedItems={finishedItems}
           refetchInventory={refetch}
         />
-      ) : (
-        <SectionCard
-          title="Lotes reportados"
-          action={
-            <button onClick={() => navigate("/fabricacion")} className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-100">
-              Ir a Fabricación
-            </button>
-          }
-        >
-          <AsyncState
-            loading={loading}
-            error={error}
-            empty={!loading && reportedItems.length === 0}
-            emptyText="Aún no hay lotes reportados desde Fabricación."
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wide text-slate-400">
-                    <th className="pb-3 pr-4 font-semibold">Lote</th>
-                    <th className="pb-3 pr-4 font-semibold">Artículo</th>
-                    <th className="pb-3 pr-4 font-semibold">Color</th>
-                    <th className="pb-3 pr-4 font-semibold">Categoría</th>
-                    <th className="pb-3 pr-4 font-semibold">Existencia</th>
-                    <th className="pb-3 pr-4 font-semibold">Bodega</th>
-                    <th className="pb-3 pr-4 font-semibold">Fecha Reportaje</th>
-                    <th className="pb-3 font-semibold text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {reportedItems.map((i) => (
-                    <tr key={i._id} className="text-slate-600 transition hover:bg-slate-50/60">
-                      <td className="py-3 pr-4 font-semibold text-slate-800">{i.batchNumber}</td>
-                      <td className="py-3 pr-4 font-semibold text-slate-800">{i.name}</td>
-                      <td className="py-3 pr-4">{i.color || "—"}</td>
-                      <td className="py-3 pr-4">{i.category}</td>
-                      <td className="py-3 pr-4 tabular-nums">{fmtNumber(i.stock)} {i.unit}</td>
-                      <td className="py-3 pr-4">{i.location || "—"}</td>
-                      <td className="py-3 pr-4 whitespace-nowrap">{fmtDateYear(i.updatedAt)}</td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2 text-xs font-semibold">
-                          {i.sentToWarehouse ? (
-                            <StatusPill status="En bodega" domain="lote" />
-                          ) : (
-                            <button onClick={() => openSend(i)} className="rounded-lg bg-brand-50 px-2.5 py-1 text-brand-700 hover:bg-brand-100">Enviar</button>
-                          )}
-                          <button onClick={() => openDeleteReport(i)} className="rounded-lg bg-tone-rose px-2.5 py-1 text-tone-rose-text hover:brightness-95">Eliminar</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </AsyncState>
-        </SectionCard>
       )}
 
       <Modal
@@ -339,52 +222,6 @@ function Inventario() {
             <Field label="Costo unitario ($)" name="unitCost" type="number" step="0.01" value={form.unitCost} onChange={handleChange} />
           ) : null}
         </form>
-      </Modal>
-
-      <Modal
-        open={sendModalOpen}
-        onClose={() => setSendModalOpen(false)}
-        title="Enviar a almacén"
-        footer={
-          <>
-            <button onClick={() => setSendModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
-            <button onClick={confirmSend} disabled={sending} className={buttonClass("primary", "modal")}>
-              {sending ? "Enviando…" : "Confirmar envío"}
-            </button>
-          </>
-        }
-      >
-        {sendTarget ? (
-          <p className="rounded-[11px] bg-primary-soft px-3.5 py-2.5 text-[13px] text-primary-soft-text">
-            Vas a enviar <strong>{sendTarget.name}</strong> (lote {sendTarget.batchNumber}) a almacén.
-            Si ya existe un producto terminado con el mismo artículo, color y bodega, sus {fmtNumber(sendTarget.stock)} {sendTarget.unit}{" "}
-            se sumarán a la existencia de ese producto; si no existe, se creará uno nuevo. Aquí en Lotes reportados no cambia nada.
-          </p>
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={deleteReportModalOpen}
-        onClose={() => setDeleteReportModalOpen(false)}
-        title="Eliminar lote reportado"
-        footer={
-          <>
-            <button onClick={() => setDeleteReportModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
-            <button onClick={confirmDeleteReport} disabled={deletingReport} className={buttonClass("danger", "modal")}>
-              {deletingReport ? "Eliminando…" : "Eliminar"}
-            </button>
-          </>
-        }
-      >
-        {deleteReportTarget ? (
-          <p className="rounded-[11px] bg-tone-rose px-3.5 py-2.5 text-[13px] text-tone-rose-text">
-            Vas a eliminar el reporte de <strong>{deleteReportTarget.name}</strong> (lote {deleteReportTarget.batchNumber}).
-            El lote en Fabricación queda igual (su producción y estado no cambian), solo deja de estar reportado.
-            {deleteReportTarget.sentToWarehouse
-              ? " Como ya se había enviado a almacén, ese stock se conserva sin cambios."
-              : " Como todavía no se había enviado a almacén, no queda ningún stock que conservar."}
-          </p>
-        ) : null}
       </Modal>
 
       <ConfirmModal {...confirmProps} />

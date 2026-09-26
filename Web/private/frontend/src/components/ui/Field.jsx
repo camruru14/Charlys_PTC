@@ -199,6 +199,19 @@ export function FilterSelect({ value, onChange, options = [], className = "" }) 
   );
 }
 
+// Valor de solo lectura con la misma etiqueta que un campo (p. ej. el número
+// de lote autogenerado).
+export function ReadonlyField({ label, value }) {
+  return (
+    <div>
+      <span className={labelClass}>{label}</span>
+      <div className="flex min-h-[38px] items-center rounded-[10px] border border-dashed border-line bg-surface-2 px-3 text-[13px] font-semibold tabular-nums text-ink">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export function TextareaField({ label, name, value, onChange, rows = 3, placeholder }) {
   return (
     <label className="block">

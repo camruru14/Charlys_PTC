@@ -1,13 +1,11 @@
 import Modal from "../ui/Modal";
-import { Field, SelectField } from "../ui/Field";
+import { Field, SelectField, ReadonlyField } from "../ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
-
-const PRODUCTS = ["Pajilla", "Pelota"];
-const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
+import { PRODUCTS, COLORS } from "../../lib/batchFlow";
 
 /*
-  Modal de creación/edición de un lote diario (fabricación).
-  Al "programar" un lote diario, sus datos pasan a Lotes de fabricación.
+  Modal de creación/edición de un lote diario (Producción diaria).
+  Al «programar» un lote diario, sus datos pasan a Lotes de fabricación.
 */
 function DailyBatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving }) {
   return (
@@ -24,12 +22,8 @@ function DailyBatchFormModal({ open, onClose, editingId, form, handleChange, han
       }
     >
       <form id="daily-batch-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* ID autogenerado (solo lectura) */}
         <div className="sm:col-span-2">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">ID de lote diario</span>
-          <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-slate-800">{form.dailyBatchNumber}</span>
-          </div>
+          <ReadonlyField label="ID de lote diario" value={form.dailyBatchNumber} />
         </div>
         <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} required />
         <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />

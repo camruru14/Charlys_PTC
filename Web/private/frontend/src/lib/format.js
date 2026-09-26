@@ -7,9 +7,17 @@
     fmtDateTime(d)         -> "19 sep · 14:10"
     fmtTime(d)             -> "09:40"
     fmtRelativeDay(d)      -> "hoy" | "ayer" | "19 sep"
+    fmtDay2(d)             -> "02 sep" (día con dos dígitos, ejes de gráficas)
+    fmtMonth(d)            -> "septiembre"
+    fromDateOnly(d)        -> fecha guardada sin hora (medianoche UTC, p. ej.
+                              startDate de un lote) como Date local del mismo día
 */
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MONTHS_LONG = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
 
 function toDate(value) {
   if (value == null || value === "") return null;
@@ -50,6 +58,24 @@ export function fmtDateTime(value) {
   const d = toDate(value);
   if (!d) return "—";
   return `${fmtDate(d)} · ${fmtTime(d)}`;
+}
+
+export function fmtDay2(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS[d.getMonth()]}`;
+}
+
+export function fmtMonth(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return MONTHS_LONG[d.getMonth()];
+}
+
+export function fromDateOnly(value) {
+  const d = toDate(value);
+  if (!d) return null;
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 export function fmtRelativeDay(value) {

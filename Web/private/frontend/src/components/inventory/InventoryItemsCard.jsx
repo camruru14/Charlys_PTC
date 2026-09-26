@@ -34,7 +34,7 @@ export function LowStockToggle({ active, count, onToggle }) {
   );
 }
 
-function Pagination({ page, pageCount, onPage }) {
+export function Pagination({ page, pageCount, onPage }) {
   const pages = Array.from({ length: pageCount }, (_, i) => i + 1);
   const btn = "flex h-[26px] min-w-[26px] items-center justify-center rounded-[7px] px-1.5 text-[12px] font-semibold tabular-nums transition";
   return (

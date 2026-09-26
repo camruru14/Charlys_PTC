@@ -7,7 +7,8 @@
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "migrate:orders": "node scripts/migrate-order-status-history.js"
+    "migrate:orders": "node scripts/migrate-order-status-history.js",
+    "migrate:batches": "node scripts/migrate-reported-batches.js"
   },
   "keywords": [],
   "author": "",

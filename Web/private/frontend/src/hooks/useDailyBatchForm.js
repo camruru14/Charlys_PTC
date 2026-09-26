@@ -89,8 +89,8 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
     }
   }
 
+  // Programar es directo (no destruye nada): el lote pasa a Lotes de fabricación.
   async function handleSchedule(batch) {
-    if (!(await confirm(`¿Programar el lote ${batch.dailyBatchNumber}? Se enviará a Lotes de fabricación.`, { confirmLabel: "Programar" }))) return;
     try {
       const res = await api.patch(`/dailyBatches/${batch._id}/schedule`);
       toast.success(res?.batchNumber ? `Lote ${res.batchNumber} programado` : "Lote programado");

@@ -42,12 +42,10 @@ export const MANUFACTURING_STATUS_LABELS = {
 };
 
 const MANUFACTURING_BAR_ORDER = ["enCola", "enFabricacion"];
+// Puntos de los tonos de estado (mismos colores que StatusPill).
 const MANUFACTURING_BAR_COLORS = {
-  enCola: "bg-slate-300",
-  // bg-brand-400 no está definido en el theme (index.css solo declara
-  // brand-50/100/200/500/600/700/800) y no pinta nada; brand-500 es el tono
-  // "azul" real más cercano, el mismo que usa StatusPill para "En Proceso".
-  enFabricacion: "bg-brand-500",
+  enCola: "bg-tone-gray-dot",
+  enFabricacion: "bg-tone-blue-dot",
 };
 const MANUFACTURING_GROUP_LABELS = {
   enCola: "en cola",
@@ -118,12 +116,10 @@ export const PEDIDO_BATCH_STATUS_LABELS = {
 
 const PEDIDO_BATCH_BAR_ORDER = ["programado", "enProceso", "completado", "detenido"];
 const PEDIDO_BATCH_BAR_COLORS = {
-  programado: "bg-amber-400",
-  // bg-brand-400 no está definido en el theme (ver nota arriba); brand-500
-  // es el azul real que sí pinta, mismo tono que StatusPill usa para "En Proceso".
-  enProceso: "bg-brand-500",
-  completado: "bg-emerald-500",
-  detenido: "bg-red-400",
+  programado: "bg-tone-amber-dot",
+  enProceso: "bg-tone-blue-dot",
+  completado: "bg-tone-green-dot",
+  detenido: "bg-tone-rose-dot",
 };
 const PEDIDO_BATCH_GROUP_LABELS = {
   programado: "programado",

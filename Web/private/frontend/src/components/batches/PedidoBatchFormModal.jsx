@@ -1,19 +1,15 @@
 import Modal from "../ui/Modal";
-import { Field, SelectField } from "../ui/Field";
+import { Field, SelectField, ReadonlyField } from "../ui/Field";
 import { todayInput } from "../../hooks/useBatchForm";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { buttonClass } from "../../lib/buttonStyles";
-
-const PRODUCTS = ["Pajilla", "Pelota"];
-const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
-const LINES = ["Línea 1", "Línea 2", "Línea 3", "Línea 4"];
-const STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
+import { fmtNumber } from "../../lib/format";
+import { PRODUCTS, COLORS, PRODUCTION_LINES, BATCH_STATUSES } from "../../lib/batchFlow";
 
 /*
-  Modal de edición de un lote de "Fabricación de pedidos" (categoría "Pedido").
-  Mismos campos que BatchFormModal, más "Meta": de solo lectura, muestra la
-  cantidad pedida que originó el lote (form.targetQuantity, ver openEdit en
-  Fabricacion.jsx) — no se edita a mano acá.
+  Modal de edición de un lote de «Fabricación de pedidos» (categoría «Pedido»).
+  Mismos campos que BatchFormModal, más «Meta» de solo lectura: la cantidad
+  pedida que originó el lote (form.targetQuantity).
 */
 function PedidoBatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
   return (
@@ -30,27 +26,16 @@ function PedidoBatchFormModal({ open, onClose, editingId, form, handleChange, ha
       }
     >
       <form id="pedido-batch-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* N° de lote autogenerado (solo lectura) */}
         <div className="sm:col-span-2">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">Número de lote</span>
-          <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-slate-800">{form.batchNumber}</span>
-          </div>
+          <ReadonlyField label="Número de lote" value={form.batchNumber} />
         </div>
         <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
-        <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={LINES} />
+        <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={PRODUCTION_LINES} />
         <Field label="Fecha" name="startDate" type="date" value={form.startDate} onChange={handleChange} max={todayInput()} />
-        {/* Meta: solo lectura, misma cantidad que se ve en "Lotes del pedido"
-            (la fija el pedido al fabricar, ver manufactureOrderItem). */}
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">Meta</span>
-          <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-sm font-semibold text-slate-800">{form.targetQuantity || "Sin meta"}</span>
-          </div>
-        </div>
+        <ReadonlyField label="Meta" value={form.targetQuantity !== "" && form.targetQuantity != null ? fmtNumber(form.targetQuantity) : "Sin meta"} />
         <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
-        <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
+        <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={BATCH_STATUSES} />
         <SelectField
           label="Operario responsable"
           name="operator"

@@ -40,6 +40,7 @@ export const STATUS_DOMAINS = {
     Detenido: "rose",
     Completado: "green",
     "Por enviar": "amber",
+    "Completado · por enviar": "amber",
     "En bodega": "green",
     Empacado: "purple",
   },

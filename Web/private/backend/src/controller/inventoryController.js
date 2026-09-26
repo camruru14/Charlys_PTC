@@ -3,6 +3,7 @@ const inventoryController = {};
 import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
 import { resetBatchToUnreported, releaseReportedItem } from "./productionBatchesController.js";
+import { addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
 
 // SELECT
 inventoryController.getItems = async (req, res) => {
@@ -99,57 +100,52 @@ inventoryController.deleteItem = async (req, res) => {
   }
 };
 
-// Enviar un artículo de "Lotes Reportados" a "Artículos en almacén". Compara
-// artículo + color + bodega contra los productos terminados que ya existen
-// en Artículos en almacén (esos nunca llevan batchNumber, sea porque se
-// agregaron a mano o porque ya son el destino de envíos anteriores):
-// - Si hay coincidencia: solo se suman las unidades reportadas a las que ya
-//   tenía ese producto (no se crea una fila nueva ni duplicada).
-// - Si no hay coincidencia: se crea el producto terminado en Artículos en
-//   almacén con las unidades reportadas.
-// En ambos casos el artículo de Lotes Reportados se marca como enviado, pero
-// conserva su propia existencia sin tocar (así "Producido" en Fabricación
-// y "Existencia" en Lotes Reportados siempre coinciden), y sigue apareciendo
-// ahí sin borrarse.
+// Flujo antiguo (solo lo usa la app Movil; el panel web envía los lotes
+// directo con PATCH /productionBatches/:id/send-to-warehouse). Envía un
+// artículo «reportado» (con batchNumber) al producto terminado real con el
+// mismo artículo, color y bodega (se suma, o se crea si no existe) y lo marca
+// como enviado. También marca su lote como enviado, y si el lote ya lo había
+// enviado el panel, no vuelve a sumar nada: así nunca se cuenta dos veces.
 inventoryController.sendToWarehouse = async (req, res) => {
   try {
-    const item = await inventoryModel.findById(req.params.id);
+    const found = await withTransaction(async (session) => {
+      const item = await inventoryModel.findById(req.params.id).session(session);
+      if (!item || !item.batchNumber) return false;
+      if (item.sentToWarehouse) return true;
 
-    if (!item || !item.batchNumber) {
-      return res.status(404).json({ message: "Inventory item not found" });
-    }
-
-    const target = await inventoryModel.findOne({
-      _id: { $ne: item._id },
-      category: item.category,
-      name: item.name,
-      color: item.color,
-      location: item.location,
-      batchNumber: { $exists: false },
+      const batch = await batchModel.findOne({ batchNumber: item.batchNumber }).session(session);
+      if (!batch?.sentToWarehouseAt) {
+        const now = new Date();
+        await addFinishedStock(
+          {
+            product: item.name,
+            color: item.color,
+            warehouse: item.location,
+            quantity: item.stock || 0,
+            unit: item.unit,
+            unitCost: item.unitCost,
+            inbound: { quantity: item.stock || 0, batchNumber: item.batchNumber, at: now },
+          },
+          session,
+        );
+        if (batch) {
+          batch.sentToWarehouseAt = now;
+          batch.destinationWarehouse = item.location;
+          batch.sentQuantity = item.stock || 0;
+          await batch.save({ session });
+        }
+      }
+      item.sentToWarehouse = true;
+      await item.save({ session });
+      return true;
     });
 
-    if (target) {
-      target.stock = (target.stock || 0) + (item.stock || 0);
-      await target.save();
-    } else {
-      await inventoryModel.create({
-        name: item.name,
-        category: item.category,
-        color: item.color,
-        unit: item.unit,
-        stock: item.stock,
-        unitCost: item.unitCost,
-        location: item.location,
-      });
+    if (!found) {
+      return res.status(404).json({ message: "Inventory item not found" });
     }
-
-    item.sentToWarehouse = true;
-    await item.save();
-
     res.json({ message: "Inventory item sent to warehouse" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 

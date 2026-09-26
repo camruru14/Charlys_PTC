@@ -258,6 +258,9 @@ export async function packManufacturedLine(item, session) {
   const batch = await batchModel.findById(batchId).session(session);
   if (!batch || batch.status !== "Completado") throw new HttpError(400, "El lote de fabricación todavía no está completado");
   const now = new Date();
+  // Lo fabricado ya salió del lote: desde aquí no se puede reabrir.
+  batch.packedAt = now;
+  await batch.save({ session });
   if (isSplit(item)) {
     if (item.manufacturePackedAt) throw new HttpError(409, `La parte fabricada de ${lineLabel(item)} ya está empacada`);
     item.manufacturePackedAt = now;
