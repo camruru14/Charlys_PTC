@@ -352,10 +352,22 @@ ordersController.assignDelivery = async (req, res) => {
   }
 };
 
-//Eliminar
+// Eliminar: antes de borrar, libera lo que cada línea tenía comprometido,
+// en la misma transacción: devuelve el stock tomado de bodega (verificada o
+// la parte fromStockQty de una línea dividida) y borra los lotes que siguen
+// Programados. Si alguna línea ya está empacada o su lote ya empezó
+// (En Proceso, Completado…), rechaza y no se mueve nada. Borrar un pedido
+// que no existe responde 200 (idempotente, igual que antes).
 ordersController.deleteOrder = async (req, res) => {
   try {
-    await orderModel.findByIdAndDelete(req.params.id);
+    await withTransaction(async (session) => {
+      const order = await orderModel.findById(req.params.id).session(session);
+      if (!order) return;
+      for (const item of order.items) {
+        if (hasCommitment(item)) await releaseLine(item, session, "delete");
+      }
+      await orderModel.deleteOne({ _id: order._id }, { session });
+    });
     res.json({ message: "Order deleted" });
   } catch (error) {
     sendError(res, error);

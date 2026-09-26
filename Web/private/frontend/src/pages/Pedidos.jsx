@@ -355,14 +355,18 @@ function Pedidos() {
   }
 
   async function handleDelete(o) {
-    if (!(await confirm(`¿Eliminar el pedido ${o.orderNumber}?`, { danger: true }))) return;
+    const message = `¿Eliminar el pedido ${o.orderNumber}? El stock ya tomado de bodega vuelve a su lugar y se borran sus lotes que sigan Programados.`;
+    if (!(await confirm(message, { danger: true }))) return;
     try {
       await api.del(`/orders/${o._id}`);
       toast.success("Pedido eliminado");
       if (selectedId === o._id) setSelectedId(null);
       refetch();
     } catch (err) {
-      toast.error(err.message);
+      // El backend explica qué resolver primero (desempacar en Inventario o
+      // resolver el lote en Fabricación): se muestra tal cual y con tiempo
+      // suficiente para leerlo.
+      toast.error(err.message, { duration: 6000 });
     }
   }
 

@@ -1969,7 +1969,7 @@
       "delete": {
         "tags": ["Pedidos"],
         "summary": "Eliminar un pedido",
-        "description": "Elimina permanentemente el pedido de la base de datos.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Elimina el pedido. En la misma transacción devuelve a su bodega el stock tomado por sus líneas (verificadas o la parte `fromStockQty` de una línea dividida) y borra los lotes de fabricación que sigan Programados. Responde 409 si alguna línea ya está empacada o si algún lote ya empezó (En Proceso, Completado…); en ese caso no se mueve nada.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
@@ -1997,6 +1997,15 @@
                 "example": {
                   "message": "Order deleted"
                 }
+              }
+            }
+          },
+          "409": {
+            "description": "Hay líneas empacadas o lotes ya iniciados; primero hay que resolverlos",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "message": "Silla · Verde ya está empacado. Primero deshaz el empaque desde Inventario para poder eliminar el pedido." }
               }
             }
           },

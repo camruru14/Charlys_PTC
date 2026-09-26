@@ -79,13 +79,21 @@ async function createOrderBatch(item, targetQuantity, session) {
 }
 
 // Borra el lote de la línea si todavía está Programado; si ya empezó, rechaza.
-async function discardProgrammedBatch(item, session) {
+// context: "undo" (deshacer desde Inventario), "edit" (editar el pedido) o
+// "delete" (eliminar el pedido), para que el mensaje diga qué hacer.
+async function discardProgrammedBatch(item, session, context = "undo") {
   if (!item.manufacturingBatch) return;
   const batchId = item.manufacturingBatch._id || item.manufacturingBatch;
   const batch = await batchModel.findById(batchId).session(session);
   if (!batch) return;
   if (batch.status !== "Programado") {
-    throw new HttpError(409, `El lote ${batch.batchNumber} de ${lineLabel(item)} ya está ${batch.status.toLowerCase()}; no se puede deshacer`);
+    const state = batch.status.toLowerCase();
+    const next = {
+      undo: "no se puede deshacer",
+      edit: "resuélvelo desde Fabricación antes de cambiar o quitar esa línea",
+      delete: "resuélvelo desde Fabricación antes de eliminar el pedido",
+    }[context];
+    throw new HttpError(409, `El lote ${batch.batchNumber} de ${lineLabel(item)} ya está ${state}; ${next}.`);
   }
   await batchModel.deleteOne({ _id: batch._id }, { session });
 }
@@ -266,16 +274,18 @@ export async function packManufacturedLine(item, session) {
 }
 
 // Libera todo lo comprometido por una línea (stock tomado y lote Programado)
-// antes de quitarla o cambiarla al editar el pedido. Rechaza si ya hay algo
-// empacado o si el lote ya empezó.
-export async function releaseLine(item, session) {
+// antes de quitarla o cambiarla al editar el pedido ("edit") o de eliminar el
+// pedido completo ("delete"). Rechaza si ya hay algo empacado o si el lote ya
+// empezó. Se llama dentro de una transacción: si falla, no se mueve nada.
+export async function releaseLine(item, session, context = "edit") {
   if (hasAnyPack(item)) {
+    const goal = context === "delete" ? "eliminar el pedido" : "cambiar o quitar esa línea";
     throw new HttpError(
       409,
-      `${lineLabel(item)} ya está empacado. Primero deshaz el empaque desde Inventario para poder cambiar o quitar esa línea.`,
+      `${lineLabel(item)} ya está empacado. Primero deshaz el empaque desde Inventario para poder ${goal}.`,
     );
   }
-  await discardProgrammedBatch(item, session);
+  await discardProgrammedBatch(item, session, context);
   if (hasStockTaken(item)) {
     await returnStock(
       { product: item.product, color: item.color, warehouse: item.verifiedWarehouse, quantity: takenQty(item) },
