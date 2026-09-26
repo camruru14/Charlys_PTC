@@ -55,9 +55,10 @@ router
 // antes sin lote).
 router.route("/:id/items/:index/manufacture").patch(ordersController.manufactureOrderItem);
 
-// Empacar un producto ya fabricado para este pedido (Fabricación > Fabricación
-// de pedidos), sin pasar por Inventario.
+// Empacar un producto ya fabricado para este pedido (Fabricación > Pedidos),
+// sin pasar por Inventario, y su deshacer (solo si no se recogió).
 router.route("/:id/items/:index/pack-manufactured").patch(ordersController.packManufacturedItem);
+router.route("/:id/items/:index/unpack-manufactured").patch(ordersController.unpackManufacturedItem);
 
 // Confirmar que el motorista recogió lo que le tocaba en Almacén o
 // Fabricación (checklist de recolección, Logística).

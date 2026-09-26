@@ -10,6 +10,7 @@ import Order from "../src/models/Order.js";
 import Inventory from "../src/models/InventoryItem.js";
 import Batch from "../src/models/ProductionBatch.js";
 import ctl from "../src/controller/ordersController.js";
+import batchCtl from "../src/controller/productionBatchesController.js";
 
 let replSet;
 
@@ -174,6 +175,62 @@ test("pack-manufactured completa una línea dividida", async () => {
   const after = await load(id);
   assert.ok(after.items[0].manufacturePackedAt);
   assert.equal(after.items[0].packed, true);
+});
+
+test("empacar en Fabricación guarda packedAt en lote y línea, y se deshace si no se recogió", async () => {
+  const id = await createOrder();
+  await call(ctl.sendItemToManufacturing, { params: line(id, 3) });
+  const batchId = (await load(id)).items[3].manufacturingBatch;
+
+  let r = await call(ctl.packManufacturedItem, { params: line(id, 3) });
+  assert.equal(r.status, 400, "no se empaca un lote sin completar");
+
+  await Batch.updateOne({ _id: batchId }, { status: "Completado", producedQuantity: 5 });
+  r = await call(ctl.packManufacturedItem, { params: line(id, 3) });
+  assert.equal(r.status, 200);
+  let o = await load(id);
+  assert.equal(o.items[3].packedLocation, "Fabricación");
+  assert.ok(o.items[3].packedAt);
+  assert.ok((await Batch.findById(batchId)).packedAt);
+
+  r = await call(ctl.packManufacturedItem, { params: line(id, 3) });
+  assert.equal(r.status, 409, "empacar dos veces se rechaza");
+
+  r = await call(ctl.unpackManufacturedItem, { params: line(id, 3) });
+  assert.equal(r.status, 200);
+  o = await load(id);
+  assert.equal(o.items[3].packed, false);
+  assert.equal(o.items[3].verified, false);
+  assert.equal((await Batch.findById(batchId)).packedAt, undefined);
+
+  await call(ctl.packManufacturedItem, { params: line(id, 3) });
+  await Order.updateOne({ _id: id }, { "delivery.pickupFactoryAt": new Date() });
+  r = await call(ctl.unpackManufacturedItem, { params: line(id, 3) });
+  assert.equal(r.status, 409);
+  assert.match(r.payload.message, /ya recogió en Fabricación/);
+});
+
+test("pack-completed empaca varios lotes, todo o nada", async () => {
+  const id = await createOrder();
+  await call(ctl.sendItemToManufacturing, { params: line(id, 3) });
+  await call(ctl.sendItemToManufacturing, { params: line(id, 2) });
+  let o = await load(id);
+  const [b3, b2] = [o.items[3].manufacturingBatch, o.items[2].manufacturingBatch].map(String);
+  await Batch.updateOne({ _id: b3 }, { status: "Completado" });
+
+  let r = await call(batchCtl.packCompleted, { body: { batchIds: [b3, b2] } });
+  assert.equal(r.status, 400, "uno sin completar rechaza todo");
+  o = await load(id);
+  assert.equal(o.items[3].packed, false);
+  assert.equal((await Batch.findById(b3)).packedAt, undefined);
+
+  await Batch.updateOne({ _id: b2 }, { status: "Completado" });
+  r = await call(batchCtl.packCompleted, { body: { batchIds: [b3, b2] } });
+  assert.equal(r.status, 200);
+  o = await load(id);
+  assert.equal(o.items[3].packed, true);
+  assert.equal(o.items[2].packedLocation, "Fabricación");
+  assert.equal(o.status, "Procesando");
 });
 
 // --- Empaque ----------------------------------------------------------------

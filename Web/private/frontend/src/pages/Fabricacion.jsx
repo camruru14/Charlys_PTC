@@ -9,6 +9,7 @@ import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import { fmtNumber, fromDateOnly } from "../lib/format";
 import { IconPlus } from "../lib/icons";
 import { getPageMeta } from "../lib/nav";
+import { lineOptions } from "../lib/batchFlow";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import KpiInline from "../components/ui/KpiInline";
@@ -16,7 +17,6 @@ import Button from "../components/ui/Button";
 import DateRangePicker from "../components/ui/DateRangePicker";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import BatchFormModal from "../components/batches/BatchFormModal";
-import PedidoBatchFormModal from "../components/batches/PedidoBatchFormModal";
 import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import LotesFabricacion from "./fabricacion/LotesFabricacion";
 import ProduccionDiaria from "./fabricacion/ProduccionDiaria";
@@ -42,17 +42,29 @@ function Fabricacion() {
   const { data: dailyBatches, loading: dailyLoading, error: dailyError, refetch: refetchDaily } = useFetch("/dailyBatches");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useUrlState("tab", "lotes", { allowed: TABS.map((t) => t.key) });
-  // Modal de lote a mostrar: «stock» (Lotes de fabricación) o «pedido» (Meta de solo lectura).
-  const [batchModalVariant, setBatchModalVariant] = useState("stock");
+  const [activeTab] = useUrlState("tab", "lotes", { allowed: TABS.map((t) => t.key) });
   const [schedulingId, setSchedulingId] = useState(null);
+
+  // Cambiar de pestaña quita ?id= (en Lotes es un lote; en Pedidos, un pedido).
+  function changeTab(tab) {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete("id");
+        if (tab === "lotes") params.delete("tab");
+        else params.set("tab", tab);
+        return params;
+      },
+      { replace: true },
+    );
+  }
 
   const list = useMemo(() => (Array.isArray(batches) ? batches : []), [batches]);
   const rangeList = useMemo(() => filterBatches(list, defaultBatchFilters, range), [list, range]);
   const stockRangeList = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
-  const pedidoRangeList = useMemo(() => rangeList.filter((b) => b.category === "Pedido"), [rangeList]);
   const dailyList = useMemo(() => (Array.isArray(dailyBatches) ? dailyBatches : []), [dailyBatches]);
   const orders = useMemo(() => (Array.isArray(ordersData) ? ordersData : []), [ordersData]);
+  const lines = useMemo(() => lineOptions(list), [list]);
 
   // Cambiar un lote puede cambiar el progreso de los pedidos (Pedidos lee
   // item.manufacturingBatch poblado desde /orders): se recargan ambos.
@@ -91,9 +103,8 @@ function Fabricacion() {
     confirmProps: dailyConfirmProps,
   } = useDailyBatchForm(dailyList, refetchDaily, () => refetch());
 
-  // /fabricacion?nuevo=1 abre el modal de nuevo lote (batchModalVariant ya
-  // arranca en «stock»); el parámetro se quita para que recargar no lo vuelva
-  // a abrir.
+  // /fabricacion?nuevo=1 abre el modal de nuevo lote; el parámetro se quita
+  // para que recargar no lo vuelva a abrir.
   useEffect(() => {
     if (searchParams.get("nuevo") !== "1") return;
     openCreate();
@@ -132,7 +143,6 @@ function Fabricacion() {
       openDailyCreate();
       return;
     }
-    setBatchModalVariant("stock");
     openCreate();
   }
 
@@ -146,6 +156,11 @@ function Fabricacion() {
     <div className="flex flex-col gap-3.5">
       <PageHeader
         {...getPageMeta("/fabricacion")}
+        subtitle={
+          activeTab === "pedidos"
+            ? "Pedidos — del lote programado al empaque, sin abrir formularios"
+            : getPageMeta("/fabricacion").subtitle
+        }
         actions={
           <>
             <DateRangePicker />
@@ -158,7 +173,7 @@ function Fabricacion() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <KpiInline items={kpiItems} />
-        <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+        <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
       </div>
 
       {activeTab === "lotes" ? (
@@ -169,10 +184,7 @@ function Fabricacion() {
           error={error}
           refetch={refetchBatchesAndOrders}
           operators={operators}
-          onEdit={(b) => {
-            setBatchModalVariant("stock");
-            openEdit(b);
-          }}
+          onEdit={openEdit}
           onDelete={handleDelete}
         />
       ) : activeTab === "diaria" ? (
@@ -187,34 +199,18 @@ function Fabricacion() {
         />
       ) : (
         <PedidosFabricacion
-          pedidoBatches={pedidoRangeList}
-          batchesLoading={loading}
-          batchesError={error}
           orders={orders}
-          ordersLoading={ordersLoading}
-          ordersError={ordersError}
+          batches={list}
+          loading={ordersLoading || loading}
+          error={ordersError || error}
           refetchAll={refetchBatchesAndOrders}
-          onEditBatch={(b) => {
-            setBatchModalVariant("pedido");
-            openEdit(b);
-          }}
-          onDeleteBatch={handleDelete}
+          operators={operators}
+          lines={lines}
         />
       )}
 
       <BatchFormModal
-        open={modalOpen && batchModalVariant === "stock"}
-        onClose={() => setModalOpen(false)}
-        editingId={editingId}
-        form={form}
-        handleChange={handleChange}
-        handleSubmit={handleSubmit}
-        saving={saving}
-        operators={operators}
-      />
-
-      <PedidoBatchFormModal
-        open={modalOpen && batchModalVariant === "pedido"}
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         editingId={editingId}
         form={form}

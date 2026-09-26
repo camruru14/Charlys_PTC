@@ -3,7 +3,7 @@ const ordersController = {};
 import orderModel from "../models/Order.js";
 import transactionModel from "../models/Transaction.js";
 import { generateReference } from "./transactionsController.js";
-import { setOrderStatus } from "../lib/orderStatus.js";
+import { setOrderStatus, computeOrderStatus } from "../lib/orderStatus.js";
 import { HttpError, sendError, withTransaction, returnStock } from "../lib/stock.js";
 import {
   packedLocations,
@@ -21,6 +21,7 @@ import {
   splitLine,
   unsplitLine,
   packManufacturedLine,
+  unpackManufacturedLine,
 } from "../lib/orderLines.js";
 
 // Campos del lote que se incluyen al poblar items.manufacturingBatch (la
@@ -38,27 +39,6 @@ async function generateOrderNumber() {
   const next = (Number.isNaN(lastNumber) ? 0 : lastNumber) + 1;
 
   return `${prefix}${String(next).padStart(4, "0")}`;
-}
-
-// Calcula order.status (uno de los valores del enum de Order.js) a partir del
-// estado real de todas las líneas del pedido, en vez de que cada acción de
-// Inventario/Fabricación lo fije a mano mirando solo la línea que acaba de
-// tocar. Prioridad:
-//   1. Si ya hay motorista asignado, el ciclo de despacho activo lo maneja
-//      assignDelivery/updateStatus aparte: no se toca.
-//   2. Todas las líneas empacadas -> "Empacado".
-//   3. Alguna línea enviada a fabricación y ninguna empacada -> "En Fabricación".
-//   4. Alguna línea con avance (verificada o empacada) -> "Procesando".
-//   5. Si ninguna línea tiene avance -> "Pendiente".
-function computeOrderStatus(order) {
-  if (order.delivery?.driver) return order.status;
-
-  const items = order.items || [];
-  const anyPack = items.some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);
-  if (items.length > 0 && items.every((i) => i.packed)) return "Empacado";
-  if (items.some((i) => i.sentToManufacturing) && !anyPack) return "En Fabricación";
-  if (items.some((i) => i.verified) || anyPack) return "Procesando";
-  return "Pendiente";
 }
 
 // El motorista ya pasó por todas las paradas de recolección que este pedido
@@ -520,6 +500,12 @@ ordersController.unsplitPartialItem = lineAction(
 ordersController.packManufacturedItem = lineAction(
   ({ item, session }) => packManufacturedLine(item, session),
   "Order item packed from manufacturing",
+);
+
+// Deshacer empacar en Fabricación (solo si el motorista no recogió ahí).
+ordersController.unpackManufacturedItem = lineAction(
+  ({ order, item, session }) => unpackManufacturedLine(item, order, session),
+  "Order item unpacked from manufacturing",
 );
 
 // Confirma que el motorista ya recogió lo que le tocaba en una ubicación del

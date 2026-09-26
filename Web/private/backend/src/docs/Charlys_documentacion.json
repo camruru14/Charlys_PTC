@@ -3144,6 +3144,90 @@
         }
       }
     },
+    "/api/orders/{id}/items/{index}/unpack-manufactured": {
+      "patch": {
+        "tags": [
+          "Pedidos"
+        ],
+        "summary": "Deshacer empacar en Fabricación",
+        "description": "Revierte pack-manufactured: la línea (o la parte fabricada de una línea dividida) deja de estar empacada y su lote pierde packedAt (queda Completado). Solo si el motorista todavía no recogió en Fabricación (delivery.pickupFactoryAt).\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId del pedido",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "Índice de la línea",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empaque deshecho",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "Order item unpacked from manufacturing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Pedido o línea no encontrados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Pedido no encontrado"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ya se recogió o no está empacado en Fabricación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El motorista ya recogió en Fabricación; no se puede desempacar Cajón organizador 40L · Azul"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/api/orders/{id}/delivery/pickup": {
       "patch": {
         "tags": ["Pedidos"],
@@ -3311,6 +3395,118 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/productionBatches/pack-completed": {
+      "post": {
+        "tags": [
+          "Lotes de Fabricación"
+        ],
+        "summary": "Empacar varios lotes de pedido completados",
+        "description": "Empaca, en una sola transacción (todo o nada), los lotes de categoría «Pedido» que estén Completados: guarda packedAt en cada lote y marca su línea del pedido como empacada en Fabricación (packedLocation «Fabricación», o manufacturePackedAt en una línea dividida). Recalcula el estado de cada pedido.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "batchIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "batchIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lotes empacados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Batches packed"
+                    },
+                    "packed": {
+                      "type": "number",
+                      "example": 2
+                    },
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Pedidos tocados"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lista vacía, lote inválido o sin completar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El lote LOTE-2026-0012 de Cajón organizador 40L · Azul todavía no está completado"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Algún lote no existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Alguno de los lotes ya no existe"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Lote que no es de pedido, sin pedido vinculado o ya empacado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Cajón organizador 40L · Azul ya está empacada"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

@@ -7,8 +7,8 @@ import { PRODUCTS, COLORS, PRODUCTION_LINES, BATCH_STATUSES } from "../../lib/ba
 /*
   Modal de creación/edición de un lote de fabricación de stock (Lotes de
   fabricación). Reutilizado por Fabricación y por el «Ver todo» editable.
-  Para lotes de pedido (categoría «Pedido») se usa PedidoBatchFormModal, con
-  la Meta de solo lectura.
+  Los lotes de pedido (categoría «Pedido») avanzan desde Fabricación > Pedidos
+  con acciones directas, sin formulario.
 */
 function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
   return (

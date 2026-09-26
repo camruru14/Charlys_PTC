@@ -1,4 +1,7 @@
+import mongoose from "mongoose";
 import batchModel from "../models/ProductionBatch.js";
+import orderModel from "../models/Order.js";
+import { setOrderStatus, computeOrderStatus } from "./orderStatus.js";
 import { generateBatchNumber } from "../controller/productionBatchesController.js";
 import { HttpError, takeStock, returnStock } from "./stock.js";
 
@@ -250,30 +253,105 @@ export async function unsplitLine(item, session) {
   resetLine(item);
 }
 
-// Empacar lo fabricado para el pedido (Fabricación de pedidos): la línea
-// completa, o la parte fabricada de una línea dividida.
-export async function packManufacturedLine(item, session) {
+async function findLineBatch(item, session) {
   if (!item.manufacturingBatch) throw new HttpError(400, "Este producto no tiene un lote de fabricación asociado");
   const batchId = item.manufacturingBatch._id || item.manufacturingBatch;
-  const batch = await batchModel.findById(batchId).session(session);
-  if (!batch || batch.status !== "Completado") throw new HttpError(400, "El lote de fabricación todavía no está completado");
+  return batchModel.findById(batchId).session(session);
+}
+
+// Empacar lo fabricado para el pedido (Fabricación > Pedidos): la línea
+// completa, o la parte fabricada de una línea dividida. Guarda packedAt en el
+// lote y en la línea (manufacturePackedAt en la parte fabricada de una línea
+// dividida); queda para recoger en «Fabricación».
+export async function packManufacturedLine(item, session) {
+  const batch = await findLineBatch(item, session);
+  if (!batch) throw new HttpError(404, `El lote de fabricación de ${lineLabel(item)} ya no existe`);
+  if (batch.status !== "Completado") {
+    throw new HttpError(400, `El lote ${batch.batchNumber} de ${lineLabel(item)} todavía no está completado`);
+  }
+  if (isSplit(item) ? item.manufacturePackedAt : item.packed) {
+    throw new HttpError(409, `${isSplit(item) ? "La parte fabricada de " : ""}${lineLabel(item)} ya está empacada`);
+  }
   const now = new Date();
   // Lo fabricado ya salió del lote: desde aquí no se puede reabrir.
   batch.packedAt = now;
   await batch.save({ session });
   if (isSplit(item)) {
-    if (item.manufacturePackedAt) throw new HttpError(409, `La parte fabricada de ${lineLabel(item)} ya está empacada`);
     item.manufacturePackedAt = now;
     if (item.stockPackedAt) {
       item.packed = true;
       item.packedAt = now;
     }
-    return;
+    return batch;
   }
   item.verified = true;
   item.packed = true;
   item.packedAt = now;
   item.packedLocation = "Fabricación";
+  return batch;
+}
+
+// Deshacer el empaque en Fabricación: solo si el motorista todavía no
+// recogió en Fabricación. La línea vuelve a esperar su empaque y el lote
+// queda Completado sin packedAt (se puede volver a empacar o reabrir).
+export async function unpackManufacturedLine(item, order, session) {
+  if (order.delivery?.pickupFactoryAt) {
+    throw new HttpError(409, `El motorista ya recogió en Fabricación; no se puede desempacar ${lineLabel(item)}`);
+  }
+  if (isSplit(item)) {
+    if (!item.manufacturePackedAt) throw new HttpError(409, `La parte fabricada de ${lineLabel(item)} no está empacada`);
+    item.manufacturePackedAt = undefined;
+    item.packed = false;
+    item.packedAt = undefined;
+  } else {
+    if (!item.packed || item.packedLocation !== "Fabricación") {
+      throw new HttpError(409, `${lineLabel(item)} no está empacado en Fabricación`);
+    }
+    item.packed = false;
+    item.packedAt = undefined;
+    item.packedLocation = undefined;
+    item.verified = false;
+  }
+  const batch = await findLineBatch(item, session);
+  if (batch) {
+    batch.packedAt = undefined;
+    await batch.save({ session });
+  }
+}
+
+// Empaca varios lotes de pedido Completados (Fabricación > Pedidos,
+// «Empacar completados»), todo o nada: se llama dentro de una transacción y
+// usa packManufacturedLine para cada línea. Devuelve los pedidos tocados.
+export async function packCompletedBatches(batchIds, session) {
+  const ids = [...new Set((Array.isArray(batchIds) ? batchIds : []).map(String))];
+  if (ids.length === 0) throw new HttpError(400, "No hay lotes para empacar");
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw new HttpError(400, "Lote inválido");
+
+  const batches = await batchModel.find({ _id: { $in: ids } }).session(session);
+  if (batches.length !== ids.length) throw new HttpError(404, "Alguno de los lotes ya no existe");
+  const notOrder = batches.find((b) => b.category !== "Pedido");
+  if (notOrder) throw new HttpError(409, `El lote ${notOrder.batchNumber} no es de un pedido`);
+
+  const orders = await orderModel.find({ "items.manufacturingBatch": { $in: ids } }).session(session);
+  for (const batch of batches) {
+    let found = false;
+    for (const order of orders) {
+      const item = order.items.find((i) => String(i.manufacturingBatch) === String(batch._id));
+      if (!item) continue;
+      await packManufacturedLine(item, session);
+      order.markModified("items");
+      found = true;
+      break;
+    }
+    if (!found) throw new HttpError(409, `El lote ${batch.batchNumber} no está vinculado a ningún pedido`);
+  }
+
+  const touched = orders.filter((o) => o.isModified("items"));
+  for (const order of touched) {
+    setOrderStatus(order, computeOrderStatus(order));
+    await order.save({ session });
+  }
+  return touched;
 }
 
 // Libera todo lo comprometido por una línea (stock tomado y lote Programado)

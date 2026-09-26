@@ -13,6 +13,7 @@ import {
   undoBatchSend,
   stampStatusChange,
 } from "../lib/batchFlow.js";
+import { packCompletedBatches } from "../lib/orderLines.js";
 
 // Genera el siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...)
 export async function generateBatchNumber() {
@@ -179,6 +180,17 @@ productionBatchesController.undoSend = async (req, res) => {
     const { quantity } = await withTransaction((session) => undoBatchSend(req.params.id, session));
     const batch = await populateOperator(batchModel.findById(req.params.id));
     res.json({ message: "Batch send undone", quantity, batch });
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
+// Empacar varios lotes de pedido Completados { batchIds }, todo o nada
+// (Fabricación > Pedidos, «Empacar completados»).
+productionBatchesController.packCompleted = async (req, res) => {
+  try {
+    const orders = await withTransaction((session) => packCompletedBatches(req.body?.batchIds, session));
+    res.json({ message: "Batches packed", packed: [...new Set((req.body.batchIds || []).map(String))].length, orders: orders.map((o) => o._id) });
   } catch (error) {
     sendError(res, error);
   }

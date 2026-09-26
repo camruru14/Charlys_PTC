@@ -8,6 +8,9 @@ router
   .get(productionBatchesController.getBatches)
   .post(productionBatchesController.insertBatch);
 
+// Empacar varios lotes de pedido Completados, todo o nada (antes de /:id).
+router.post("/pack-completed", productionBatchesController.packCompleted);
+
 router
   .route("/:id")
   .get(productionBatchesController.getBatch)
