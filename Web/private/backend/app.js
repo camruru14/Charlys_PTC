@@ -19,6 +19,7 @@ import warehousesRoutes from "./src/routes/warehouses.js";
 import vehiclesRoutes from "./src/routes/vehicles.js";
 import routesRoutes from "./src/routes/routes.js";
 import settingsRoutes from "./src/routes/settings.js";
+import productionLinesRoutes from "./src/routes/productionLines.js";
 
 // Cargar especificación OpenAPI 3.1.0
 const openapiDoc = JSON.parse(
@@ -104,6 +105,9 @@ app.use("/api/vehicles", validateAuthCookie(), vehiclesRoutes);
 // Rutas de Logística (motorista + vehículo + pedidos, parada por parada)
 app.use("/api/routes", validateAuthCookie(), routesRoutes);
 
+// Líneas de producción (Configuración; opciones al crear/iniciar lotes)
+app.use("/api/productionLines", validateAuthCookie(), productionLinesRoutes);
+
 // Configuración compartida entre usuarios (horario laboral)
 app.use("/api/settings", validateAuthCookie(), settingsRoutes);
 
@@ -113,8 +117,19 @@ app.use("/api/transactions", validateAuthCookie(), transactionsRoutes);
 // Resumen del Dashboard
 app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
 
-// Documentación de la API 
+// Documentación de la API
 app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+// Manejador de errores global (igual que en public/backend): un error lanzado
+// antes del controlador (p. ej. multer rechazando el logo por tamaño o tipo)
+// no pasa por su try/catch, y el handler por defecto de Express responde sin
+// JSON; el panel espera { message }.
+app.use((err, _req, res, _next) => {
+  console.log("error " + err);
+  const status = err.status || err.http_code || (err.code === "LIMIT_FILE_SIZE" ? 400 : 500);
+  const message = err.code === "LIMIT_FILE_SIZE" ? "La imagen no puede pesar más de 5 MB" : err.message || "Error interno del servidor.";
+  res.status(status).json({ message });
+});
 
 export default app;
 

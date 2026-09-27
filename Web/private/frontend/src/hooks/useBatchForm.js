@@ -3,12 +3,13 @@ import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "./useFetch";
 import { useConfirm } from "./useConfirm";
+import { useProductionLines } from "./useProductionLines";
 
 export const emptyBatchForm = {
   batchNumber: "",
   product: "Pajilla",
   color: "Rojo",
-  productionLine: "Línea 1",
+  productionLine: "",
   producedQuantity: "",
   targetQuantity: "",
   status: "Programado",
@@ -56,6 +57,8 @@ export function previewBatchNumber(list) {
 export function useBatchForm(list, refetch) {
   const { confirm, confirmProps } = useConfirm();
   const { data: employees } = useFetch("/employees");
+  // Un lote nuevo arranca en la primera línea activa de Configuración.
+  const { options: lineOptions } = useProductionLines();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyBatchForm);
@@ -68,7 +71,7 @@ export function useBatchForm(list, refetch) {
 
   function openCreate() {
     setEditingId(null);
-    setForm({ ...emptyBatchForm, batchNumber: previewBatchNumber(list), startDate: todayInput() });
+    setForm({ ...emptyBatchForm, batchNumber: previewBatchNumber(list), startDate: todayInput(), productionLine: lineOptions[0] || "" });
     setModalOpen(true);
   }
 
@@ -78,7 +81,7 @@ export function useBatchForm(list, refetch) {
       batchNumber: batch.batchNumber || "",
       product: batch.product || "Pajilla",
       color: batch.color || "",
-      productionLine: batch.productionLine || "Línea 1",
+      productionLine: batch.productionLine || "",
       producedQuantity: batch.producedQuantity ?? "",
       targetQuantity: batch.targetQuantity ?? "",
       status: batch.status || "Programado",

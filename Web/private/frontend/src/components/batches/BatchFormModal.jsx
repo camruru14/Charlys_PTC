@@ -2,7 +2,8 @@ import Modal from "../ui/Modal";
 import { Field, SelectField, ReadonlyField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { buttonClass } from "../../lib/buttonStyles";
-import { PRODUCTS, COLORS, PRODUCTION_LINES, BATCH_STATUSES } from "../../lib/batchFlow";
+import { PRODUCTS, COLORS, BATCH_STATUSES } from "../../lib/batchFlow";
+import { useProductionLines, withCurrentLine } from "../../hooks/useProductionLines";
 
 /*
   Modal de creación/edición de un lote de fabricación de stock (Lotes de
@@ -11,6 +12,8 @@ import { PRODUCTS, COLORS, PRODUCTION_LINES, BATCH_STATUSES } from "../../lib/ba
   con acciones directas, sin formulario.
 */
 function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSubmit, saving, operators }) {
+  // Líneas activas de Configuración (más la que ya tenga el lote al editar).
+  const { options: lineOptions } = useProductionLines();
   return (
     <Modal
       open={open}
@@ -30,7 +33,7 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
         </div>
         <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
-        <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={PRODUCTION_LINES} />
+        <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={withCurrentLine(lineOptions, form.productionLine)} placeholder="Sin línea" />
         <Field label="Meta (unidades)" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} />
         <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
         <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={BATCH_STATUSES} />

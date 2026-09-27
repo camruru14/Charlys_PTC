@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { todayInput } from "../hooks/useBatchForm";
-import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import Modal from "../components/ui/Modal";
-import ConfirmModal from "../components/ui/ConfirmModal";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import Button from "../components/ui/Button";
@@ -23,22 +22,16 @@ const TABS = [
   { key: "asistencia", label: "Asistencia" },
 ];
 
-const DEPARTMENTS = ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"];
-
 const emptyAttendanceForm = { employee: "", date: "", checkIn: "", checkOut: "" };
 
-const emptyForm = {
-  name: "", lastName: "", dui: "", phone: "", email: "", password: "",
-  position: "", department: "Fabricación", hourlyRate: "", isActive: true,
-};
-
 /*
-  Empleados: Personal (maestro-detalle) y Asistencia (franja horaria por día).
+  Empleados: Personal (maestro-detalle, solo consulta) y Asistencia (franja
+  horaria por día). Agregar, editar y eliminar empleados se hace en
+  Configuración > Personal y permisos.
   URL: ?tab= (personal | asistencia), ?id= (empleado abierto), ?mes= (AAAA-MM).
   «Tarde» y las horas extra salen del horario laboral de Configuración.
 */
 function Empleados() {
-  const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/employees");
   const { schedule } = useWorkSchedule();
   const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
@@ -51,78 +44,9 @@ function Empleados() {
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth) ? rawMonth : fallbackMonth;
   const days = useMemo(() => attendanceDays(list, month), [list, month]);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [attendanceForm, setAttendanceForm] = useState(emptyAttendanceForm);
   const [savingAttendance, setSavingAttendance] = useState(false);
-
-  function openCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setModalOpen(true);
-  }
-
-  function openEdit(emp) {
-    setEditingId(emp._id);
-    setForm({
-      name: emp.name || "", lastName: emp.lastName || "", dui: emp.dui || "",
-      phone: emp.phone || "", email: emp.email || "", password: "",
-      position: emp.position || "",
-      department: emp.department || "Fabricación",
-      hourlyRate: emp.hourlyRate ?? "", isActive: emp.isActive !== false,
-    });
-    setModalOpen(true);
-  }
-
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    if (name === "dui") {
-      setForm((f) => ({ ...f, dui: value.replace(/\D/g, "").slice(0, 9) }));
-      return;
-    }
-    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
-  };
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    const payload = { ...form, hourlyRate: Number(form.hourlyRate) || 0 };
-    if (editingId && !payload.password) delete payload.password; // no cambiar contraseña si va vacía
-    try {
-      if (editingId) {
-        await api.put(`/employees/${editingId}`, payload);
-        toast.success("Empleado actualizado");
-      } else {
-        await api.post("/employees", payload);
-        toast.success("Empleado creado");
-      }
-      setModalOpen(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    const emp = list.find((e) => e._id === editingId);
-    if (!emp) return;
-    if (!(await confirm(`¿Eliminar a ${emp.name} ${emp.lastName}?`, { danger: true }))) return;
-    try {
-      await api.del(`/employees/${emp._id}`);
-      toast.success("Empleado eliminado");
-      setModalOpen(false);
-      if (selectedId === String(emp._id)) setSelectedId(null);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  }
 
   function openAttendance(emp) {
     setAttendanceForm({ ...emptyAttendanceForm, employee: emp?._id || "", date: todayInput() });
@@ -176,9 +100,9 @@ function Empleados() {
           <>
             <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
             {activeTab === "personal" ? (
-              <Button icon={IconPlus} onClick={openCreate}>
-                Nuevo empleado
-              </Button>
+              <Link to="/configuracion?tab=personal" className={buttonClass("secondary", "header")}>
+                Gestionar personal
+              </Link>
             ) : (
               <Button icon={IconPlus} onClick={() => openAttendance(null)}>
                 Registrar marcación
@@ -198,7 +122,6 @@ function Empleados() {
           error={error}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          onEdit={openEdit}
           onRegister={openAttendance}
         />
       ) : (
@@ -212,50 +135,6 @@ function Empleados() {
           error={error}
         />
       )}
-
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingId ? "Editar empleado" : "Nuevo empleado"}
-        size="lg"
-        footer={
-          <>
-            {editingId ? (
-              <button type="button" onClick={handleDelete} className={`${buttonClass("danger", "modal")} mr-auto`}>
-                Eliminar
-              </button>
-            ) : null}
-            <button type="button" onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
-            <button type="submit" form="emp-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
-          </>
-        }
-      >
-        <form id="emp-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Nombre" name="name" value={form.name} onChange={handleChange} required />
-          <Field label="Apellido" name="lastName" value={form.lastName} onChange={handleChange} required />
-          <Field
-            label="DUI"
-            name="dui"
-            value={form.dui}
-            onChange={handleChange}
-            inputMode="numeric"
-            pattern="\d{9}"
-            maxLength={9}
-            placeholder="123456789"
-            title="El DUI debe tener 9 números"
-          />
-          <Field label="Teléfono" name="phone" value={form.phone} onChange={handleChange} />
-          <Field label="Correo" name="email" type="email" value={form.email} onChange={handleChange} required />
-          <Field label={editingId ? "Contraseña (dejar vacío = sin cambio)" : "Contraseña"} name="password" type="password" value={form.password} onChange={handleChange} required={!editingId} />
-          <Field label="Puesto" name="position" value={form.position} onChange={handleChange} />
-          <SelectField label="Área" name="department" value={form.department} onChange={handleChange} options={DEPARTMENTS} />
-          <Field label="Valor por hora ($)" name="hourlyRate" type="number" step="0.01" value={form.hourlyRate} onChange={handleChange} />
-          <label className="flex items-center gap-2 text-[13px] font-medium text-ink-2 sm:col-span-2">
-            <input type="checkbox" name="isActive" checked={form.isActive} onChange={handleChange} className="h-4 w-4 rounded border-line accent-primary" />
-            Empleado activo
-          </label>
-        </form>
-      </Modal>
 
       <Modal
         open={attendanceModalOpen}
@@ -287,7 +166,6 @@ function Empleados() {
         </form>
       </Modal>
 
-      <ConfirmModal {...confirmProps} />
     </div>
   );
 }

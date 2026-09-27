@@ -97,12 +97,24 @@ export function AuthProvider({ children }) {
     }
   }, [persistSession]);
 
+  // Actualiza los datos del usuario en sesión (p. ej. tras cambiar el correo
+  // en Configuración > Mi cuenta) sin tocar el token.
+  const updateUser = useCallback(
+    (changes) => {
+      const stored = readStoredSession();
+      if (!stored?.user) return;
+      persistSession({ ...stored.user, ...changes }, stored.token);
+    },
+    [persistSession],
+  );
+
   const value = {
     user,
     loading,
     isAuthenticated: Boolean(user),
     login,
     logout,
+    updateUser,
     apiUrl: API_URL,
   };
 

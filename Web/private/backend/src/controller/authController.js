@@ -4,6 +4,7 @@ import employeeModel from "../models/Employee.js";
 import bcryptjs from "bcryptjs";
 import jsonwebtoken from "jsonwebtoken";
 import { config } from "../../config.js";
+import { checkPassword, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
 
 // LOGIN del panel administrativo (empleados)
 authController.login = async (req, res) => {
@@ -62,6 +63,80 @@ authController.login = async (req, res) => {
   } catch (error) {
     console.log("error" + error);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ---- Mi cuenta: datos del empleado que tiene la sesión abierta (req.user.id,
+// ver authMiddleware.js). Para editar a OTRO empleado está /employees/:id
+// (Configuración > Personal y permisos).
+
+const toAccount = (e) => ({
+  id: e._id,
+  name: e.name,
+  lastName: e.lastName,
+  email: e.email,
+  phone: e.phone || "",
+  dui: e.dui || "",
+  position: e.position || "",
+  department: e.department || "",
+});
+
+async function findSessionEmployee(req, res) {
+  const employee = await employeeModel.findById(req.user?.id);
+  if (!employee || !employee.isActive) {
+    res.status(404).json({ message: "No se encontró tu cuenta" });
+    return null;
+  }
+  return employee;
+}
+
+// GET /auth/me
+authController.getMe = async (req, res) => {
+  try {
+    const employee = await findSessionEmployee(req, res);
+    if (employee) res.json(toAccount(employee));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
+// PUT /auth/me { phone, dui }: datos que no piden contraseña.
+authController.updateMe = async (req, res) => {
+  try {
+    const employee = await findSessionEmployee(req, res);
+    if (!employee) return;
+    employee.phone = typeof req.body.phone === "string" ? req.body.phone.trim() : employee.phone;
+    if (req.body.dui !== undefined) employee.dui = normalizeDui(req.body.dui);
+    await employee.save();
+    res.json(toAccount(employee));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
+// PUT /auth/me/credentials { currentPassword, email?, newPassword? }:
+// cambiar el correo (con el que se inicia sesión) o la contraseña siempre
+// pide la contraseña actual.
+authController.updateCredentials = async (req, res) => {
+  try {
+    const employee = await findSessionEmployee(req, res);
+    if (!employee) return;
+
+    const { currentPassword, email, newPassword } = req.body;
+    if (!currentPassword || !(await bcryptjs.compare(currentPassword, employee.password))) {
+      return res.status(400).json({ message: "La contraseña actual no es correcta" });
+    }
+
+    const nextEmail = email !== undefined && email !== "" ? normalizeEmail(email) : employee.email;
+    if (nextEmail === employee.email && !newPassword) {
+      return res.status(400).json({ message: "No hay cambios que guardar" });
+    }
+    employee.email = nextEmail;
+    if (newPassword) employee.password = await bcryptjs.hash(checkPassword(newPassword), 10);
+    await employee.save();
+    res.json(toAccount(employee));
+  } catch (error) {
+    sendEmployeeError(res, error);
   }
 };
 

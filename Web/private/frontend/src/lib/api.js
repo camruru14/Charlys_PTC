@@ -18,15 +18,17 @@ export function setAuthToken(token) {
 }
 
 async function request(path, { method = "GET", body } = {}) {
+  // FormData (subida de archivos): el navegador pone el Content-Type con su boundary.
+  const isForm = body instanceof FormData;
   const headers = {};
-  if (body) headers["Content-Type"] = "application/json";
+  if (body && !isForm) headers["Content-Type"] = "application/json";
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers,
     credentials: "include",
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   });
 
   // Sesión inválida/expirada -> forzar re-login

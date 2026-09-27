@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import StatTile from "../../components/ui/StatTile";
@@ -218,6 +219,7 @@ function RouteDetail({ route, availability, busy, act }) {
 */
 function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, availability, busy, act }) {
   const selected = routes.find((r) => r._id === selectedId) || null;
+  useRememberedSelection("logistica/transito", { selectedId, setSelectedId: onSelect, ids: routes.map((r) => r._id), ready: !loading });
   return (
     <MasterDetail listWidth={392}>
       <ListPanel

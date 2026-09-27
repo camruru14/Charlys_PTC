@@ -9,7 +9,7 @@ import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import { fmtNumber, fromDateOnly } from "../lib/format";
 import { IconPlus } from "../lib/icons";
 import { getPageMeta } from "../lib/nav";
-import { lineOptions } from "../lib/batchFlow";
+import { useProductionLines } from "../hooks/useProductionLines";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import KpiInline from "../components/ui/KpiInline";
@@ -65,7 +65,8 @@ function Fabricacion() {
   const stockRangeList = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
   const dailyList = useMemo(() => (Array.isArray(dailyBatches) ? dailyBatches : []), [dailyBatches]);
   const orders = useMemo(() => (Array.isArray(ordersData) ? ordersData : []), [ordersData]);
-  const lines = useMemo(() => lineOptions(list), [list]);
+  // Líneas activas de Configuración > Líneas de producción (para iniciar lotes de pedido).
+  const { options: lines } = useProductionLines();
 
   // Cambiar un lote puede cambiar el progreso de los pedidos (Pedidos lee
   // item.manufacturingBatch poblado desde /orders): se recargan ambos.

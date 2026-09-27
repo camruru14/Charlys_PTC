@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import Avatar from "../../components/ui/Avatar";
 import Button from "../../components/ui/Button";
 import DataTable from "../../components/ui/DataTable";
@@ -10,17 +11,12 @@ import { MasterDetail, ListPanel, DetailPanel, ListRow } from "../../components/
 import { attendanceStatus, employeeMonthRows, fmtHours, monthLabel, recordHours } from "../../lib/attendance";
 import { fmtDateYear, fmtMoney, fmtTime, fmtWeekdayDate } from "../../lib/format";
 import { IconUsers } from "../../lib/icons";
+import { formatDui } from "../../lib/dui";
 
 const fullName = (emp) => `${emp.name || ""} ${emp.lastName || ""}`.trim();
 const employeeStatus = (emp) => (emp.isActive !== false ? "Activo" : "Inactivo");
 const roleLine = (emp) => [emp.position, emp.department].filter(Boolean).join(" · ");
 
-// DUI se guarda como 9 dígitos; se muestra con guion antes del último dígito (8-1)
-function formatDui(dui) {
-  const digits = String(dui || "").replace(/\D/g, "");
-  if (digits.length !== 9) return dui;
-  return `${digits.slice(0, 8)}-${digits.slice(8)}`;
-}
 
 function matches(emp, query, area) {
   if (area !== "all" && emp.department !== area) return false;
@@ -89,7 +85,7 @@ function DataItem({ label, children }) {
   );
 }
 
-function EmployeeDetail({ emp, days, month, schedule, onEdit, onRegister }) {
+function EmployeeDetail({ emp, days, month, schedule, onRegister }) {
   const rows = useMemo(() => employeeMonthRows(emp, days), [emp, days]);
   const columns = useMemo(() => attendanceColumns(schedule), [schedule]);
   const role = roleLine(emp);
@@ -118,14 +114,10 @@ function EmployeeDetail({ emp, days, month, schedule, onEdit, onRegister }) {
               ) : null}
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="soft" size="detail" onClick={() => onRegister(emp)}>
-              Registrar asistencia
-            </Button>
-            <Button variant="secondary" size="detail" onClick={() => onEdit(emp)}>
-              Editar
-            </Button>
-          </div>
+          {/* Editar al empleado: Configuración > Personal y permisos. */}
+          <Button variant="soft" size="detail" onClick={() => onRegister(emp)}>
+            Registrar asistencia
+          </Button>
         </div>
       }
     >
@@ -164,7 +156,7 @@ function EmployeeDetail({ emp, days, month, schedule, onEdit, onRegister }) {
   Personal: lista de empleados (392px) con búsqueda y chips por área, y la
   ficha del seleccionado (?id=) con su asistencia del mes y sus datos.
 */
-function Personal({ employees, days, month, schedule, loading, error, selectedId, onSelect, onEdit, onRegister }) {
+function Personal({ employees, days, month, schedule, loading, error, selectedId, onSelect, onRegister }) {
   const [query, setQuery] = useState("");
   const [area, setArea] = useState("all");
 
@@ -183,6 +175,7 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
   );
 
   const selected = employees.find((e) => String(e._id) === selectedId) || visible[0] || null;
+  useRememberedSelection("empleados/personal", { selectedId, setSelectedId: onSelect, ids: visible.map((e) => e._id), ready: !loading });
 
   let list;
   if (loading) list = <EmptyState title="Cargando empleados…" />;
@@ -206,7 +199,7 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
         {list}
       </ListPanel>
       {selected ? (
-        <EmployeeDetail emp={selected} days={days} month={month} schedule={schedule} onEdit={onEdit} onRegister={onRegister} />
+        <EmployeeDetail emp={selected} days={days} month={month} schedule={schedule} onRegister={onRegister} />
       ) : (
         <section className="flex items-center justify-center rounded-[14px] border border-line bg-surface">
           <EmptyState icon={IconUsers} title="Selecciona un empleado" />

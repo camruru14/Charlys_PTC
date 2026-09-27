@@ -159,6 +159,9 @@ function Logistica() {
           onClose={() => setNewRouteOpen(false)}
           onCreated={(route) => {
             setNewRouteOpen(false);
+            // Se agrega ya a la lista (la recarga llega después) para que
+            // Para despacho la encuentre al abrirse y no caiga en otra ruta.
+            if (route?._id) mutateRoutes((list) => (Array.isArray(list) && !list.some((r) => r._id === route._id) ? [...list, route] : list));
             goTo({ tab: "despacho", ruta: route._id });
             refreshAll();
           }}

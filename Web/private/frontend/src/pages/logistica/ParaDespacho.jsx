@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -328,6 +329,8 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
   const pendingRoutes = routes.filter((r) => !r.departedAt);
   const openRoute = routes.find((r) => r._id === openRouteId) || null;
   const buildingRoute = openRoute && !openRoute.departedAt ? openRoute : null;
+  // Aquí «la lista» del detalle son las rutas por salir (el selector de arriba).
+  useRememberedSelection("logistica/despacho", { selectedId: openRouteId, setSelectedId: onOpenRoute, ids: pendingRoutes.map((r) => r._id) });
 
   const counts = useMemo(() => Object.fromEntries(CHIPS.map((c) => [c.key, orders.filter(FILTER_TEST[c.key]).length])), [orders]);
   const visible = orders.filter(FILTER_TEST[filter] || FILTER_TEST.todos);

@@ -8,15 +8,10 @@ import { fromDateOnly } from "./format";
 
 export const PRODUCTS = ["Pajilla", "Pelota"];
 export const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
-export const PRODUCTION_LINES = ["Línea 1", "Línea 2", "Línea 3", "Línea 4"];
 export const BATCH_STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
 
-// Líneas para elegir: las fijas más las que ya usan los lotes.
-export function lineOptions(batches = []) {
-  const set = new Set(PRODUCTION_LINES);
-  batches.forEach((b) => b.productionLine && set.add(b.productionLine));
-  return [...set].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
-}
+// Las líneas de producción ya no son fijas: se administran en Configuración
+// (ver hooks/useProductionLines.js).
 
 export const isStockBatch = (b) => b?.category !== "Pedido";
 

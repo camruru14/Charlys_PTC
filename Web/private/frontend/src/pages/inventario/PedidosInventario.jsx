@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import { replaceById } from "../../hooks/useFetch";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
@@ -480,6 +481,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
 
   const list = segment === "preparar" ? toPrepare : dispatched;
   const selected = useMemo(() => orders.find((o) => o._id === selectedId) || null, [orders, selectedId]);
+  useRememberedSelection("inventario/pedidos", { selectedId, setSelectedId, ids: list.map((o) => o._id), ready: !ordersLoading });
 
   // Pedidos marcados (solo los que siguen en Por preparar).
   const checkedOrders = useMemo(() => toPrepare.filter((o) => checked.has(o._id)), [toPrepare, checked]);

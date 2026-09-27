@@ -2,6 +2,7 @@ const employeesController = {};
 
 import employeeModel from "../models/Employee.js";
 import bcryptjs from "bcryptjs";
+import { FieldError, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
 
 // SELECT - todos los empleados (sin exponer la contraseña)
 employeesController.getEmployees = async (req, res) => {
@@ -44,6 +45,8 @@ employeesController.insertEmployee = async (req, res) => {
       hireDate,
     } = req.body;
 
+    if (!password) throw new FieldError("Escribe una contraseña para el empleado");
+
     //#2- Encriptar la contraseña antes de guardarla
     const passwordHash = await bcryptjs.hash(password, 10);
 
@@ -51,9 +54,9 @@ employeesController.insertEmployee = async (req, res) => {
     const newEmployee = new employeeModel({
       name,
       lastName,
-      dui,
+      dui: normalizeDui(dui),
       phone,
-      email,
+      email: normalizeEmail(email),
       password: passwordHash,
       position,
       department,
@@ -64,8 +67,7 @@ employeesController.insertEmployee = async (req, res) => {
 
     res.json({ message: "Employee saved" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendEmployeeError(res, error);
   }
 };
 
@@ -88,14 +90,15 @@ employeesController.updateEmployee = async (req, res) => {
     const updateData = {
       name,
       lastName,
-      dui,
       phone,
-      email,
       position,
       department,
       hourlyRate,
       isActive,
     };
+    // Solo se validan si vienen (la app móvil puede mandar un subconjunto).
+    if (dui !== undefined) updateData.dui = normalizeDui(dui);
+    if (email !== undefined) updateData.email = normalizeEmail(email);
 
     // Solo re-encriptamos la contraseña si viene en la petición
     if (password) {
@@ -104,12 +107,12 @@ employeesController.updateEmployee = async (req, res) => {
 
     await employeeModel.findByIdAndUpdate(req.params.id, updateData, {
       returnDocument: "after",
+      runValidators: true,
     });
 
     res.json({ message: "Employee updated" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendEmployeeError(res, error);
   }
 };
 

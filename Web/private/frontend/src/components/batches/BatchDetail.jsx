@@ -10,6 +10,7 @@ import { DetailPanel } from "../ui/MasterDetail";
 import { Field, SelectField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { IconWarehouse } from "../../lib/icons";
+import { withCurrentLine } from "../../hooks/useProductionLines";
 import { fmtNumber, fmtDate, fmtDay2, fmtTime, fmtDateTime, fmtRelativeDay } from "../../lib/format";
 import {
   batchState,
@@ -227,7 +228,7 @@ function ActionBox({ kind, batch, operators, lines, busy, onCancel, actions }) {
     return (
       <InlineResolveBox title={`Elige la línea${needsOperator ? " y el operario" : ""} para iniciar`}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <SelectField label="Línea" name="productionLine" size="sm" value={line} onChange={(e) => setLine(e.target.value)} options={lines} />
+          <SelectField label="Línea" name="productionLine" size="sm" value={line} onChange={(e) => setLine(e.target.value)} options={withCurrentLine(lines, batch.productionLine)} />
           <SelectField
             label="Operario"
             name="operator"

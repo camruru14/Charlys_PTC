@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
+import { useRememberedSelection } from "../hooks/useRememberedSelection";
 import PageHeader from "../components/ui/PageHeader";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
@@ -255,6 +256,7 @@ function Pedidos() {
   }, [list, search, chip]);
 
   const selected = useMemo(() => list.find((o) => o._id === selectedId) || null, [list, selectedId]);
+  useRememberedSelection("pedidos", { selectedId, setSelectedId, ids: filteredList.map((o) => o._id), ready: !loading });
 
   function openCreate() {
     setEditingId(null);

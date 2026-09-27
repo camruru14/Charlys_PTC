@@ -95,6 +95,11 @@ export const STATUS_DOMAINS = {
     Activo: "green",
     Inactivo: "gray",
   },
+  // Líneas de producción (Configuración)
+  linea: {
+    Activa: "green",
+    Inactiva: "gray",
+  },
   asistencia: {
     Completo: "green",
     "Con extra": "blue",

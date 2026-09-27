@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useFetch, replaceById } from "../../hooks/useFetch";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
 import ColorSwatch from "../../components/ui/ColorSwatch";
@@ -15,7 +16,8 @@ import { toastUndo } from "../../lib/toastUndo";
 import { statusTone } from "../../lib/statusDomains";
 import { fmtNumber } from "../../lib/format";
 import { IconFactory } from "../../lib/icons";
-import { batchState, productLabel, lineOptions, batchSearchText, pendingUnits } from "../../lib/batchFlow";
+import { batchState, productLabel, batchSearchText, pendingUnits } from "../../lib/batchFlow";
+import { useProductionLines } from "../../hooks/useProductionLines";
 
 // El tono de cada chip es el de su estado (dominio lote).
 const CHIPS = [
@@ -79,7 +81,8 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
     () => (Array.isArray(inventoryData) ? inventoryData.filter((i) => i.category === "Producto Terminado") : []),
     [inventoryData],
   );
-  const lines = useMemo(() => lineOptions(batches), [batches]);
+  // Líneas activas de Configuración > Líneas de producción (para iniciar lotes).
+  const { options: lines } = useProductionLines();
 
   const counts = useMemo(() => {
     const c = { all: list.length };
@@ -96,6 +99,7 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
   }, [list, chip, query]);
 
   const selected = useMemo(() => batches.find((b) => b._id === selectedId) || null, [batches, selectedId]);
+  useRememberedSelection("fabricacion/lotes", { selectedId, setSelectedId, ids: visible.map((b) => b._id), ready: !loading });
 
   function select(id) {
     setSelectedId(id);

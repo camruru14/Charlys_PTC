@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import { replaceById } from "../../hooks/useFetch";
+import { withCurrentLine } from "../../hooks/useProductionLines";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -123,7 +125,7 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
     return (
       <InlineResolveBox title={`Iniciar ${batch.batchNumber}`} className="mx-4 mb-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <SelectField label="Línea" name="productionLine" size="sm" value={line} onChange={(e) => setLine(e.target.value)} options={lines} />
+          <SelectField label="Línea" name="productionLine" size="sm" value={line} onChange={(e) => setLine(e.target.value)} options={withCurrentLine(lines, batch.productionLine)} />
           <SelectField
             label="Operario"
             name="operator"
@@ -438,6 +440,7 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refet
     return groups.filter((g) => CHIP_TEST[chip](g) && (!q || groupSearchText(g).includes(q)));
   }, [groups, chip, query]);
   const selected = groups.find((g) => g.order._id === selectedId) || null;
+  useRememberedSelection("fabricacion/pedidos", { selectedId, setSelectedId, ids: visible.map((g) => g.order._id), ready: !loading });
 
   // Aplica la respuesta de una acción sin recargar todo:
   //  - lotes actualizados (transiciones): se reemplazan y se recargan solo
