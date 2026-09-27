@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 import { Rail, Drawer } from "./Rail";
 
 /*
-  Estructura del panel: riel de 68px a la izquierda (>= 1024px) o cajón
+  Estructura del panel: menú lateral de 200px a la izquierda (>= 1024px) o cajón
   deslizable (< 1024px) y el contenido de cada página. Cada página pinta su
   propio <PageHeader />; el botón de menú del header abre el cajón a través
   del contexto del <Outlet>.
@@ -17,7 +17,7 @@ function Layout() {
       <Rail />
       <Drawer open={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      <div className="lg:pl-[68px]">
+      <div className="lg:pl-[200px]">
         <main className="flex flex-col gap-3.5 px-4 py-6 sm:px-7">
           <Outlet context={outletContext} />
         </main>

@@ -1,6 +1,7 @@
 import InventoryItemsCard, { LowStockToggle, filterSelectClass } from "../../components/inventory/InventoryItemsCard";
 import StockMeter from "../../components/ui/StockMeter";
 import SearchInput from "../../components/ui/SearchInput";
+import KpiInline from "../../components/ui/KpiInline";
 import { FilterSelect } from "../../components/ui/Field";
 import { useInventoryTable } from "../../hooks/useInventoryTable";
 import { stockLevel, stockFillPercent, STOCK_LEVEL_TONE } from "../../lib/stockLevel";
@@ -58,12 +59,13 @@ function rowClassName(item) {
   return stockLevel(item) === "Bajo mínimo" ? "bg-row-alert" : "";
 }
 
-function MateriaPrima({ items, loading, error, onEdit, onDelete }) {
+function MateriaPrima({ items, kpiItems, loading, error, onEdit, onDelete }) {
   const table = useInventoryTable(items, initialFilters, matches);
   const { filters, setFilter } = table;
 
   return (
     <InventoryItemsCard
+      kpis={<KpiInline items={kpiItems} />}
       filterBar={
         <>
           <SearchInput

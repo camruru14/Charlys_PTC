@@ -32,6 +32,8 @@
   --color-rail: #24406f;
   --color-rail-active: #3a5b92;
   --color-rail-icon: #93a6c8;
+  /* Divisor del pie del menú lateral */
+  --color-nav-divider: #eef1f6;
 
   /* Acción principal */
   --color-primary: #3168d4;

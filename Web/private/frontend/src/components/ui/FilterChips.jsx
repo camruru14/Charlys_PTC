@@ -3,13 +3,14 @@ import { TONE_SOFT } from "../../lib/tones";
 /*
   Chips de filtro «Etiqueta · N».
   options = [{ key, label, count, tone }]. El chip con key "all" (Todos) se
-  muestra siempre; los demás se ocultan cuando su conteo es 0.
+  muestra siempre; los demás se ocultan cuando su conteo es 0, salvo con
+  showEmpty (para chips que deben verse aunque estén en 0).
 */
-function FilterChips({ options, value, onChange }) {
+function FilterChips({ options, value, onChange, showEmpty = false }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {options
-        .filter((o) => o.key === "all" || o.count > 0)
+        .filter((o) => showEmpty || o.key === "all" || o.count > 0)
         .map((o) => {
           const active = o.key === value;
           return (

@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from "react";
+
 /*
   Maestro-detalle: lista de ancho fijo a la izquierda y detalle flexible.
   Ambos paneles son tarjetas que ocupan el alto disponible con scroll interno.
@@ -11,11 +13,50 @@
     </MasterDetail>
 */
 
-export function MasterDetail({ listWidth = 360, className = "", children }) {
+const MIN_HEIGHT = 520;
+
+// fill: en pantallas lg, estira ambos paneles hasta el margen inferior de la
+// página (se mide dónde empieza el maestro-detalle, porque lo que va encima
+// cambia de una pantalla a otra). Sin fill, alto fijo de 100dvh − 190px.
+function useFillHeight(ref, enabled) {
+  const [height, setHeight] = useState(null);
+  useLayoutEffect(() => {
+    if (!enabled) return undefined;
+    const el = ref.current;
+    const wide = window.matchMedia("(min-width: 1024px)");
+    function update() {
+      if (!wide.matches) {
+        setHeight(null);
+        return;
+      }
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const main = el.closest("main");
+      const bottomPad = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+      setHeight(Math.max(MIN_HEIGHT, Math.floor(window.innerHeight - top - bottomPad)));
+    }
+    update();
+    // Lo de arriba puede cambiar de alto (p. ej. el subtítulo al cambiar de pestaña).
+    const observer = new ResizeObserver(update);
+    if (el.parentElement) observer.observe(el.parentElement);
+    window.addEventListener("resize", update);
+    wide.addEventListener("change", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      wide.removeEventListener("change", update);
+    };
+  }, [ref, enabled]);
+  return height;
+}
+
+export function MasterDetail({ listWidth = 360, fill = false, className = "", children }) {
+  const ref = useRef(null);
+  const height = useFillHeight(ref, fill);
   return (
     <div
-      className={`grid min-h-[520px] grid-cols-1 gap-4 lg:h-[calc(100dvh-190px)] lg:grid-cols-[var(--md-list)_minmax(0,1fr)] ${className}`}
-      style={{ "--md-list": `${listWidth}px` }}
+      ref={ref}
+      className={`grid min-h-[520px] grid-cols-1 gap-4 ${fill ? "" : "lg:h-[calc(100dvh-190px)]"} lg:grid-cols-[var(--md-list)_minmax(0,1fr)] ${className}`}
+      style={{ "--md-list": `${listWidth}px`, height: height ?? undefined }}
     >
       {children}
     </div>

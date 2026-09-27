@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import InventoryItemsCard, { LowStockToggle, filterSelectClass } from "../../components/inventory/InventoryItemsCard";
 import StockMeter from "../../components/ui/StockMeter";
 import SearchInput from "../../components/ui/SearchInput";
+import KpiInline from "../../components/ui/KpiInline";
 import ColorSwatch from "../../components/ui/ColorSwatch";
 import { FilterSelect } from "../../components/ui/Field";
 import { useInventoryTable } from "../../hooks/useInventoryTable";
@@ -90,7 +91,7 @@ function rowClassName(item) {
   return "";
 }
 
-function ProductoTerminado({ items, loading, error, onEdit, onDelete }) {
+function ProductoTerminado({ items, kpiItems, loading, error, onEdit, onDelete }) {
   const table = useInventoryTable(items, initialFilters, matches);
   const { filters, setFilter } = table;
 
@@ -100,6 +101,7 @@ function ProductoTerminado({ items, loading, error, onEdit, onDelete }) {
 
   return (
     <InventoryItemsCard
+      kpis={<KpiInline items={kpiItems} />}
       filterBar={
         <>
           <SearchInput

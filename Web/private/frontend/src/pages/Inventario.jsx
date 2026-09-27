@@ -6,7 +6,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
-import KpiInline from "../components/ui/KpiInline";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -68,7 +67,8 @@ function Inventario() {
     [list]
   );
 
-  // Indicadores en línea de la pestaña activa.
+  // Indicadores de Producto terminado y Materia prima (van dentro de la
+  // tarjeta de la tabla). Pedidos no tiene indicadores.
   const kpiItems = useMemo(() => {
     if (activeTab === "terminado") {
       return [
@@ -170,31 +170,26 @@ function Inventario() {
             ? "Pedidos — llegan solos, se verifican de una vez y se empacan sin confirmación"
             : "Materia prima y stock de productos terminados"
         }
-        // Pedidos no tiene KPIs: sus pestañas van en el encabezado para no
-        // dejar una fila casi vacía. En las demás, el encabezado solo lleva
-        // «Nuevo artículo» (Materia prima) y las pestañas van con los KPIs.
+        // En las tres pestañas, las pestañas van en el encabezado («Nuevo
+        // artículo» a su izquierda, solo en Materia prima), así el contenido
+        // de cada una arranca a la misma altura. Los KPIs de Producto
+        // terminado y Materia prima van dentro de la tarjeta de la tabla.
         actions={
-          activeTab === "pedidos" ? (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {activeTab === "materia" ? (
+              <Button icon={IconPlus} onClick={openCreate}>
+                Nuevo artículo
+              </Button>
+            ) : null}
             <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
-          ) : activeTab === "materia" ? (
-            <Button icon={IconPlus} onClick={openCreate}>
-              Nuevo artículo
-            </Button>
-          ) : null
+          </div>
         }
       />
 
-      {activeTab !== "pedidos" ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <KpiInline items={kpiItems} />
-          <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
-        </div>
-      ) : null}
-
       {activeTab === "terminado" ? (
-        <ProductoTerminado items={finishedItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
+        <ProductoTerminado items={finishedItems} kpiItems={kpiItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
       ) : activeTab === "materia" ? (
-        <MateriaPrima items={rawMaterialItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
+        <MateriaPrima items={rawMaterialItems} kpiItems={kpiItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
       ) : (
         <PedidosInventario
           orders={orders}

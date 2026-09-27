@@ -4,7 +4,8 @@ import { IconEdit, IconAlert } from "../../lib/icons";
 
 /*
   Tarjeta de artículos de inventario (Producto terminado y Materia prima):
-  barra de filtros, tabla en grid, pie con resumen y paginación.
+  indicadores (kpis, opcional), barra de filtros, tabla en grid, pie con
+  resumen y paginación.
     columns = [{ key, label, width, align, className, render(item) }]
     rows    = artículos de la página actual (ya filtrados y paginados)
   La última columna (Acción: editar + «…») la agrega la tarjeta.
@@ -73,6 +74,7 @@ export function Pagination({ page, pageCount, onPage }) {
 }
 
 function InventoryItemsCard({
+  kpis,
   filterBar,
   columns,
   rows,
@@ -127,7 +129,11 @@ function InventoryItemsCard({
 
   return (
     <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-[18px] py-[13px]">{filterBar}</div>
+      {/* Cabecera: indicadores arriba a la izquierda (opcional) y debajo los filtros. */}
+      <div className="flex flex-col gap-3 border-b border-line-soft px-[18px] py-[13px]">
+        {kpis}
+        <div className="flex flex-wrap items-center gap-2">{filterBar}</div>
+      </div>
       <div className="overflow-x-auto">
         <div className="min-w-[1080px]">
           <div style={gridStyle} className="grid h-8 items-center border-b border-line-soft bg-surface-2">

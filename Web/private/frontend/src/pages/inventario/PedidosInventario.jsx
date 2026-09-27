@@ -7,6 +7,7 @@ import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
 import BulkBar from "../../components/ui/BulkBar";
+import FilterChips from "../../components/ui/FilterChips";
 import ColorSwatch from "../../components/ui/ColorSwatch";
 import InlineResolveBox from "../../components/ui/InlineResolveBox";
 import RadioCardList from "../../components/ui/RadioCardList";
@@ -15,7 +16,7 @@ import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/Master
 import { toastUndo } from "../../lib/toastUndo";
 import { fmtNumber, fmtDate } from "../../lib/format";
 import { IconOrders } from "../../lib/icons";
-import { statusTone } from "../../lib/statusDomains";
+import { statusTone, normalizeStatus } from "../../lib/statusDomains";
 import {
   buildStockMap,
   stockOptionsFor,
@@ -40,9 +41,13 @@ import {
 */
 
 const DISPATCHED_DAYS = 30;
-// Existencia de 200px para que «Bodega Central · 4,750 disp.» quepa completo;
-// la última columna (30px) deja el caret separado del borde de la tabla.
-const PRODUCTS_GRID = "minmax(0,1fr) 44px 200px 124px 178px 30px";
+// Producto · Color · Cant. · Existencia · Estado · Acción · caret.
+// Producto acotado (96–130px) para que Color quede junto a él; el espacio que
+// sobra se lo lleva Cant. (alineada a la derecha, junto a Existencia).
+// Existencia llega a 200px para que «Bodega Central · 4,750 disp.» quepa
+// completo (solo en pantallas angostas cede hasta 150px). La última columna
+// (30px) deja el caret separado del borde.
+const PRODUCTS_GRID = "minmax(96px,130px) 72px minmax(44px,1fr) minmax(150px,200px) 124px 178px 30px";
 
 // [clave de lineCounts, singular, plural, estado de la píldora de la línea]
 const COUNT_LABELS = [
@@ -98,7 +103,6 @@ function OrderProgress({ total, counts }) {
   );
 }
 
-const productName = (item) => `${item.product}${item.color ? ` — ${item.color}` : ""}`;
 
 // Ejecuta las llamadas en orden y devuelve todas sus respuestas.
 function runAll(calls) {
@@ -111,26 +115,6 @@ function ordersFrom(result) {
   if (Array.isArray(result)) return result.flatMap(ordersFrom);
   if (result?.orders) return result.orders;
   return result?.order ? [result.order] : [];
-}
-
-// Control segmentado Por preparar / Despachados.
-function Segmented({ value, onChange, options }) {
-  return (
-    <div className="inline-flex gap-[3px] rounded-[10px] border border-line bg-surface-2 p-[3px]">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={`h-7 whitespace-nowrap rounded-[7px] px-2.5 text-[12px] font-semibold tabular-nums transition ${
-            value === o.key ? "bg-surface text-ink shadow-[0_1px_2px_rgb(22_32_58/0.08)]" : "text-muted hover:text-ink"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function OrderListRow({ order, selected, checked, onToggle, onSelect, showCheckbox }) {
@@ -175,10 +159,39 @@ function existenceText(item, part) {
   return "—";
 }
 
-function batchText(item) {
-  const batch = item.manufacturingBatch;
-  if (!batch?.batchNumber) return "Lote —";
-  return `Lote ${batch.batchNumber} · ${batch.status || "—"}`;
+// Acción de una línea «En fabricación» (mockup R1): «Lote N · estado» y
+// debajo una mini barra de 4 segmentos con lo producido del lote respecto a
+// su meta. El texto puede pasar a dos líneas en vez de cortarse.
+function LotProgress({ batch }) {
+  if (!batch?.batchNumber) return <span className="text-[11.5px] text-muted">Lote —</span>;
+  const target = Number(batch.targetQuantity) || 0;
+  const produced = Number(batch.producedQuantity) || 0;
+  const ratio = target > 0 ? Math.min(produced / target, 1) : 0;
+  return (
+    <span className="flex w-full min-w-0 flex-col items-end gap-1">
+      <span className="max-w-full text-right text-[11px] font-semibold leading-[1.3] tabular-nums text-tone-blue-text">
+        <span className="whitespace-nowrap">Lote {batch.batchNumber}</span>
+        {batch.status ? (
+          <>
+            {" "}
+            <span className="whitespace-nowrap">· {normalizeStatus(batch.status)}</span>
+          </>
+        ) : null}
+      </span>
+      <span
+        data-lot-progress
+        role="img"
+        aria-label={`Producido ${fmtNumber(produced)} de ${fmtNumber(target)}`}
+        className="flex w-[110px] gap-0.5"
+      >
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className="h-1 flex-1 overflow-hidden rounded-[2px] bg-line-soft">
+            <span className="block h-full bg-tone-blue-dot" style={{ width: `${Math.min(Math.max(ratio * 4 - i, 0), 1) * 100}%` }} />
+          </span>
+        ))}
+      </span>
+    </span>
+  );
 }
 
 function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
@@ -232,12 +245,12 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
         );
       case "Sin existencia":
         return (
-          <Button variant="secondary" size="row" disabled={busy} onClick={stop(() => actions.sendToManufacturing(order, index))}>
+          <Button size="row" disabled={busy} onClick={stop(() => actions.sendToManufacturing(order, index))}>
             Enviar a fabricación
           </Button>
         );
       case "En fabricación":
-        return <span className="truncate text-[11.5px] tabular-nums text-muted">{batchText(item)}</span>;
+        return <LotProgress batch={item.manufacturingBatch} />;
       default:
         return null;
     }
@@ -357,9 +370,11 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 
         <div className="overflow-hidden rounded-[12px] border border-line">
           <div className="overflow-x-auto">
-            <div className="min-w-[700px]">
+            {/* Suma de los mínimos de PRODUCTS_GRID (96+72+44+150+124+178+30). */}
+            <div className="min-w-[694px]">
               <div className="grid h-8 items-center border-b border-line-soft bg-surface-2" style={{ gridTemplateColumns: PRODUCTS_GRID }}>
                 <span className="t-label pl-4">Producto</span>
+                <span className="t-label">Color</span>
                 <span className="t-label text-right">Cant.</span>
                 <span className="t-label pl-3">Existencia</span>
                 <span className="t-label">Estado</span>
@@ -385,12 +400,13 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                             {pi === 0 ? (
                               <>
                                 <ColorSwatch color={item.color} />
-                                <span className="truncate text-[13.5px] font-semibold text-ink">{productName(item)}</span>
+                                <span className="truncate text-[13.5px] font-semibold text-ink">{item.product}</span>
                               </>
                             ) : (
                               <span className="t-aux pl-[19px]">↳ a fabricar</span>
                             )}
                           </span>
+                          <span className="truncate pr-3 text-[13px] text-ink-2">{pi === 0 ? item.color || "—" : ""}</span>
                           <span className="text-right text-[13px] tabular-nums text-ink">{fmtNumber(part.qty)}</span>
                           <span className="truncate px-3 text-[12.5px] tabular-nums text-ink-2">{existenceText(item, part)}</span>
                           <span>
@@ -588,19 +604,21 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
   }
 
   return (
-    <MasterDetail listWidth={392}>
+    <MasterDetail listWidth={392} fill>
       <ListPanel
         header={
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <Segmented
+            {/* Mismos chips que la lista de Pedidos: el seleccionado en azul. */}
+            <FilterChips
+              showEmpty
               value={segment}
               onChange={(key) => {
                 setSegment(key);
                 setChecked(new Set());
               }}
               options={[
-                { key: "preparar", label: `Por preparar · ${fmtNumber(toPrepare.length)}` },
-                { key: "despachados", label: `Despachados · ${fmtNumber(dispatched.length)}` },
+                { key: "preparar", tone: "amber", label: "Por preparar", count: fmtNumber(toPrepare.length) },
+                { key: "despachados", tone: "green", label: "Despachados", count: fmtNumber(dispatched.length) },
               ]}
             />
             <span className="text-[11px] text-muted">salen al recogerse todo</span>
