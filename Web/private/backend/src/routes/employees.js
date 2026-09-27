@@ -14,6 +14,9 @@ router
   .put(employeesController.updateEmployee)
   .delete(employeesController.deleteEmployee);
 
+// Contraseña en texto plano para el ojo del modal de editar (Personal y permisos)
+router.route("/:id/password").get(employeesController.getPassword);
+
 // Marcaciones de entrada/salida provenientes de la app móvil
 router.route("/:id/attendance").post(employeesController.registerAttendance);
 

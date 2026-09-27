@@ -39,6 +39,11 @@ export function sendEmployeeError(res, error) {
   if (error instanceof FieldError) return res.status(400).json({ message: error.message });
   if (error?.code === 11000) return res.status(400).json({ message: "Ya existe un empleado con ese correo" });
   if (error?.name === "ValidationError") return res.status(400).json({ message: Object.values(error.errors)[0]?.message || "Datos inválidos" });
+  // Falta la llave de contraseñas (lib/passwordCrypto.js): el mensaje dice qué configurar.
+  if (error?.name === "PasswordKeyError") {
+    console.log("error " + error.message);
+    return res.status(500).json({ message: error.message });
+  }
   console.log("error " + error);
   return res.status(500).json({ message: "Error interno del servidor." });
 }

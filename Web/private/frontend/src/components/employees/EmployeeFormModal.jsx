@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
 import Modal from "../ui/Modal";
 import ConfirmModal from "../ui/ConfirmModal";
-import { Field, SelectField } from "../ui/Field";
+import { Field, PasswordField, SelectField } from "../ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
 import { DUI_INPUT_PROPS, formatDui, maskDui } from "../../lib/dui";
 import { DEPARTMENTS } from "../../lib/permissions";
@@ -39,6 +39,32 @@ function EmployeeFormModal({ employee, positions = [], onClose, onSaved, onDelet
   const [form, setForm] = useState(() => toForm(employee));
   const [saving, setSaving] = useState(false);
   const editing = Boolean(employee);
+  // Al editar, el campo de contraseña se precarga con la contraseña guardada
+  // (desencriptada por el backend). Si se guarda sin cambiarla, no se manda:
+  // queda igual. Las antiguas (hash bcrypt) no se pueden mostrar: el campo
+  // queda vacío con un aviso hasta que se escriba una nueva.
+  //   stored: null (cargando) | { password, legacy }
+  const [stored, setStored] = useState(null);
+  const [passwordError, setPasswordError] = useState(null);
+
+  useEffect(() => {
+    if (!employee) return undefined;
+    let ignore = false;
+    api
+      .get(`/employees/${employee._id}/password`)
+      .then((result) => {
+        if (ignore) return;
+        setStored({ password: result?.password ?? null, legacy: Boolean(result?.legacy) });
+        if (result?.password) setForm((f) => (f.password ? f : { ...f, password: result.password }));
+      })
+      .catch((err) => !ignore && setPasswordError(err.message));
+    return () => {
+      ignore = true;
+    };
+  }, [employee]);
+
+  const loadingPassword = editing && !stored && !passwordError;
+  const savedPassword = stored?.password ?? null;
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -49,7 +75,8 @@ function EmployeeFormModal({ employee, positions = [], onClose, onSaved, onDelet
     e.preventDefault();
     setSaving(true);
     const payload = { ...form, hourlyRate: Number(form.hourlyRate) || 0 };
-    if (editing && !payload.password) delete payload.password; // no cambiar contraseña si va vacía
+    // Sin cambio de contraseña: vacía o igual a la precargada.
+    if (editing && (!payload.password || payload.password === savedPassword)) delete payload.password;
     try {
       if (editing) {
         await api.put(`/employees/${employee._id}`, payload);
@@ -104,15 +131,32 @@ function EmployeeFormModal({ employee, positions = [], onClose, onSaved, onDelet
           <Field label="DUI" name="dui" value={form.dui} onChange={handleChange} {...DUI_INPUT_PROPS} />
           <Field label="Teléfono" name="phone" value={form.phone} onChange={handleChange} />
           <Field label="Correo" name="email" type="email" value={form.email} onChange={handleChange} required />
-          <Field
-            label={editing ? "Contraseña (dejar vacío = sin cambio)" : "Contraseña"}
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            value={form.password}
-            onChange={handleChange}
-            required={!editing}
-          />
+          {editing ? (
+            <div>
+              <PasswordField
+                label="Contraseña"
+                name="password"
+                autoComplete="new-password"
+                value={form.password}
+                onChange={handleChange}
+                disabled={loadingPassword}
+                placeholder={loadingPassword ? "Cargando…" : "Escribe una contraseña nueva"}
+              />
+              <p className={`mt-1 text-[11.5px] leading-[1.45] ${stored?.legacy && !form.password ? "font-medium text-tone-amber-strong" : "text-muted"}`}>
+                {passwordError
+                  ? `No se pudo cargar la contraseña guardada (${passwordError}). Déjalo vacío para no cambiarla.`
+                  : form.password && form.password === savedPassword
+                    ? "Contraseña guardada. Si no la cambias, queda igual."
+                    : form.password
+                      ? "Se guardará como la nueva contraseña."
+                      : stored?.legacy
+                        ? "Esta contraseña no se puede mostrar hasta que se actualice; escribe una nueva para reemplazarla. Mientras tanto, el empleado sigue entrando con la actual."
+                        : "Vacío: la contraseña queda igual."}
+              </p>
+            </div>
+          ) : (
+            <Field label="Contraseña" name="password" type="password" autoComplete="new-password" value={form.password} onChange={handleChange} required />
+          )}
           <SelectField label="Área" name="department" value={form.department} onChange={handleChange} options={DEPARTMENTS} />
           <Field label="Puesto" name="position" value={form.position} onChange={handleChange} list="employee-positions" placeholder="Ej. Operario" />
           <datalist id="employee-positions">

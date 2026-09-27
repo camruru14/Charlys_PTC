@@ -3,15 +3,86 @@ import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
 import Button from "../../components/ui/Button";
-import ActionsMenu from "../../components/ui/ActionsMenu";
+import Modal from "../../components/ui/Modal";
 import ConfirmModal from "../../components/ui/ConfirmModal";
-import EmptyState from "../../components/ui/EmptyState";
 import StatusPill from "../../components/ui/StatusPill";
-import { IconFactory, IconPlus } from "../../lib/icons";
+import { Field } from "../../components/ui/Field";
+import { buttonClass } from "../../lib/buttonStyles";
+import { IconEdit, IconFactory, IconPlus, IconTrash } from "../../lib/icons";
 import { fmtNumber } from "../../lib/format";
+import { ListCard, ListRow, RowAction, RowIcon, RowText } from "./SettingsList";
 
-const inputClass =
-  "h-[34px] w-full max-w-[320px] rounded-[9px] border border-line bg-surface px-3 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft";
+const inProcessText = (n) => `${fmtNumber(n)} ${n === 1 ? "lote en proceso" : "lotes en proceso"}`;
+
+/*
+  Modal para agregar o editar una línea (nombre y, al editar, si está
+  activa). Renombrar también actualiza los lotes que la usan (backend).
+*/
+function LineModal({ line, activeCount, onClose, onSaved }) {
+  const [name, setName] = useState(line?.name || "");
+  const [active, setActive] = useState(line ? line.active : true);
+  const [busy, setBusy] = useState(false);
+  const lastActive = Boolean(line?.active) && activeCount <= 1;
+
+  async function submit(e) {
+    e.preventDefault();
+    const value = name.trim();
+    if (!value) return toast.error("Escribe el nombre de la línea");
+    const changes = {};
+    if (!line || value !== line.name) changes.name = value;
+    if (line && active !== line.active) changes.active = active;
+    if (line && !Object.keys(changes).length) return onClose();
+    setBusy(true);
+    try {
+      if (line) await api.patch(`/productionLines/${line._id}`, changes);
+      else await api.post("/productionLines", { name: value });
+      toast.success(line ? `${value} actualizada` : `${value} agregada`);
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err.message, { duration: 6000 });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={line ? "Editar línea de producción" : "Nueva línea de producción"}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className={buttonClass("secondary", "modal")}>
+            Cancelar
+          </button>
+          <button type="submit" form="line-form" disabled={busy} className={buttonClass("primary", "modal")}>
+            {busy ? "Guardando…" : line ? "Guardar" : "Agregar"}
+          </button>
+        </>
+      }
+    >
+      <form id="line-form" onSubmit={submit} className="flex flex-col gap-3">
+        <Field label="Nombre de la línea" name="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Línea 5" autoFocus required />
+        {line && name.trim() && name.trim() !== line.name ? (
+          <p className="t-aux">Los lotes que usan «{line.name}» pasarán a «{name.trim()}».</p>
+        ) : null}
+        {line ? (
+          <label className={`flex items-center gap-2 text-[13px] font-medium text-ink-2 ${lastActive ? "opacity-60" : ""}`} title={lastActive ? "Debe quedar al menos una línea activa" : undefined}>
+            <input
+              type="checkbox"
+              checked={active}
+              disabled={lastActive}
+              onChange={(e) => setActive(e.target.checked)}
+              className="h-4 w-4 rounded border-line accent-primary"
+            />
+            Línea activa (aparece al crear o iniciar lotes)
+          </label>
+        ) : null}
+      </form>
+    </Modal>
+  );
+}
 
 /*
   Configuración > Líneas de producción. Las activas son las opciones al crear
@@ -22,97 +93,62 @@ const inputClass =
 */
 function LineasProduccion({ lines, loading, error, refetch }) {
   const { confirm, confirmProps } = useConfirm();
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
+  // null = cerrado; { line: null } = nueva; { line } = editar.
+  const [editing, setEditing] = useState(null);
   const activeCount = lines.filter((l) => l.active).length;
 
-  async function run(fn, message) {
-    setBusy(true);
-    try {
-      await fn();
-      toast.success(message);
-      return true;
-    } catch (err) {
-      toast.error(err.message, { duration: 6000 });
-      return false;
-    } finally {
-      setBusy(false);
-      refetch();
-    }
-  }
-
-  async function add(e) {
-    e.preventDefault();
-    const value = name.trim();
-    if (!value) return;
-    if (await run(() => api.post("/productionLines", { name: value }), `${value} agregada`)) setName("");
-  }
-
-  function toggle(line) {
-    run(() => api.patch(`/productionLines/${line._id}`, { active: !line.active }), `${line.name} ${line.active ? "desactivada" : "activada"}`);
+  // Motivo por el que no se puede eliminar (se muestra al pasar sobre el ícono).
+  function deleteBlock(line) {
+    if (line.inProcess > 0) return `No se puede eliminar: tiene ${inProcessText(line.inProcess)}`;
+    if (line.active && activeCount <= 1) return "No se puede eliminar: es la única línea activa";
+    return null;
   }
 
   async function remove(line) {
     if (!(await confirm(`¿Eliminar «${line.name}»? Ya no se podrá elegir al crear o iniciar lotes. Los lotes que ya la usan conservan el nombre.`, { danger: true }))) return;
-    run(() => api.del(`/productionLines/${line._id}`), `${line.name} eliminada`);
+    try {
+      await api.del(`/productionLines/${line._id}`);
+      toast.success(`${line.name} eliminada`);
+    } catch (err) {
+      toast.error(err.message, { duration: 6000 });
+    } finally {
+      refetch();
+    }
   }
-
-  // Motivo por el que no se puede eliminar o desactivar (se muestra en la fila y en el menú).
-  function deleteBlock(line) {
-    if (line.inProcess > 0) return `Tiene ${fmtNumber(line.inProcess)} ${line.inProcess === 1 ? "lote en proceso" : "lotes en proceso"}: no se puede eliminar`;
-    if (line.active && activeCount <= 1) return "Es la única línea activa: no se puede eliminar";
-    return null;
-  }
-
-  let body;
-  if (loading && !lines.length) body = <EmptyState title="Cargando líneas…" />;
-  else if (error) body = <EmptyState title="No se pudieron cargar las líneas" description={error} />;
-  else if (!lines.length) body = <EmptyState title="No hay líneas registradas." />;
-  else
-    body = lines.map((line) => {
-      const blocked = deleteBlock(line);
-      const detail = line.inProcess > 0 ? `${fmtNumber(line.inProcess)} ${line.inProcess === 1 ? "lote en proceso" : "lotes en proceso"}` : "Sin lotes en proceso";
-      return (
-        <div key={line._id} className="flex min-h-[58px] items-center gap-3 border-b border-line-soft px-5 py-2.5 last:border-b-0">
-          <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-line-soft bg-surface-2 text-muted">
-            <IconFactory width={16} height={16} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate text-[13.5px] font-semibold ${line.active ? "text-ink" : "text-muted"}`}>{line.name}</span>
-            <span className="t-aux block truncate">{blocked && line.inProcess > 0 ? `${detail} · no se puede eliminar` : detail}</span>
-          </span>
-          <StatusPill status={line.active ? "Activa" : "Inactiva"} domain="linea" />
-          <ActionsMenu
-            size="row"
-            items={[
-              {
-                label: line.active ? "Desactivar" : "Activar",
-                disabled: busy || (line.active && activeCount <= 1),
-                hint: line.active && activeCount <= 1 ? "Debe quedar al menos una línea activa" : "Las inactivas no aparecen al crear o iniciar lotes",
-                onClick: () => toggle(line),
-              },
-              { label: "Eliminar", danger: true, disabled: busy || Boolean(blocked), hint: blocked, onClick: () => remove(line) },
-            ]}
-          />
-        </div>
-      );
-    });
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
-      <div className="px-5 pb-3.5 pt-4">
-        <h2 className="t-card-title">Líneas de producción</h2>
-        <p className="t-aux mt-0.5">Las activas aparecen al crear o iniciar un lote en Fabricación</p>
-      </div>
-      <form onSubmit={add} className="flex items-center gap-3 border-t border-line-soft px-5 py-3">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la nueva línea (ej. Línea 5)" className={inputClass} />
-        <Button type="submit" variant="soft" size="detail" icon={IconPlus} disabled={busy || !name.trim()}>
-          Agregar
-        </Button>
-      </form>
-      <div className="border-t border-line-soft">{body}</div>
+    <>
+      <ListCard
+        title="Líneas de producción"
+        subtitle="Las activas aparecen al crear o iniciar un lote en Fabricación"
+        action={
+          <Button variant="soft" size="detail" icon={IconPlus} onClick={() => setEditing({ line: null })}>
+            Agregar
+          </Button>
+        }
+        items={lines}
+        loading={loading}
+        error={error}
+        emptyText="No hay líneas registradas."
+        noun="líneas"
+        renderRow={(line) => {
+          const blocked = deleteBlock(line);
+          return (
+            <ListRow key={line._id}>
+              <RowIcon icon={IconFactory} />
+              <RowText title={line.name} detail={line.inProcess > 0 ? inProcessText(line.inProcess) : "Sin lotes en proceso"} muted={!line.active} />
+              <StatusPill status={line.active ? "Activa" : "Inactiva"} domain="linea" />
+              <RowAction icon={IconEdit} label={`Editar ${line.name}`} onClick={() => setEditing({ line })} />
+              <RowAction icon={IconTrash} label={`Eliminar ${line.name}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => remove(line)} />
+            </ListRow>
+          );
+        }}
+      />
+      {editing ? (
+        <LineModal key={editing.line?._id || "new"} line={editing.line} activeCount={activeCount} onClose={() => setEditing(null)} onSaved={refetch} />
+      ) : null}
       <ConfirmModal {...confirmProps} />
-    </section>
+    </>
   );
 }
 

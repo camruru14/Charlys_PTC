@@ -1,8 +1,8 @@
 const employeesController = {};
 
 import employeeModel from "../models/Employee.js";
-import bcryptjs from "bcryptjs";
 import { FieldError, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
+import { decryptPassword, encryptPassword, isEncryptedPassword, readablePassword } from "../lib/passwordCrypto.js";
 
 // SELECT - todos los empleados (sin exponer la contraseña)
 employeesController.getEmployees = async (req, res) => {
@@ -28,6 +28,21 @@ employeesController.getEmployee = async (req, res) => {
   }
 };
 
+// SELECT - contraseña de un empleado en texto plano, para el ojo del modal de
+// editar de Configuración > Personal y permisos (no va en la lista de
+// empleados). { password, legacy }: legacy = hash bcrypt viejo que no se
+// puede mostrar (ver lib/passwordCrypto.js). PENDIENTE: cuando existan los
+// roles, solo el admin (o el propio empleado) podrá pedirla.
+employeesController.getPassword = async (req, res) => {
+  try {
+    const employee = await employeeModel.findById(req.params.id).select("password");
+    if (!employee) return res.status(404).json({ message: "Empleado no encontrado" });
+    res.json(readablePassword(employee.password));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
 // INSERT
 employeesController.insertEmployee = async (req, res) => {
   try {
@@ -47,8 +62,8 @@ employeesController.insertEmployee = async (req, res) => {
 
     if (!password) throw new FieldError("Escribe una contraseña para el empleado");
 
-    //#2- Encriptar la contraseña antes de guardarla
-    const passwordHash = await bcryptjs.hash(password, 10);
+    //#2- Encriptar la contraseña antes de guardarla (reversible, AES-256-GCM)
+    const encryptedPassword = encryptPassword(password);
 
     //#3- Lleno mi modelo con esos datos que acabo de pedir
     const newEmployee = new employeeModel({
@@ -57,7 +72,7 @@ employeesController.insertEmployee = async (req, res) => {
       dui: normalizeDui(dui),
       phone,
       email: normalizeEmail(email),
-      password: passwordHash,
+      password: encryptedPassword,
       position,
       department,
       hourlyRate,
@@ -100,9 +115,13 @@ employeesController.updateEmployee = async (req, res) => {
     if (dui !== undefined) updateData.dui = normalizeDui(dui);
     if (email !== undefined) updateData.email = normalizeEmail(email);
 
-    // Solo re-encriptamos la contraseña si viene en la petición
+    // Solo se cambia la contraseña si viene en la petición y es distinta de
+    // la guardada: igual a la actual (el modal la precarga) o igual al valor
+    // guardado tal cual (un cliente viejo que reenvía el hash) no cambia nada.
     if (password) {
-      updateData.password = await bcryptjs.hash(password, 10);
+      const current = (await employeeModel.findById(req.params.id).select("password"))?.password;
+      const unchanged = password === current || (isEncryptedPassword(current) && decryptPassword(current) === password);
+      if (!unchanged) updateData.password = encryptPassword(password);
     }
 
     await employeeModel.findByIdAndUpdate(req.params.id, updateData, {

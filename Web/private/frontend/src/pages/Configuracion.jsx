@@ -10,13 +10,15 @@ import { useAuth } from "../hooks/useAuth";
 import LineasProduccion from "./configuracion/LineasProduccion";
 import PersonalPermisos from "./configuracion/PersonalPermisos";
 import MiCuenta from "./configuracion/MiCuenta";
+import ConfirmPasswordModal from "./configuracion/ConfirmPasswordModal";
 import { formatDui, maskDui } from "../lib/dui";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import PageHeader from "../components/ui/PageHeader";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
-import EmptyState from "../components/ui/EmptyState";
 import StatusPill from "../components/ui/StatusPill";
+import { InlineName, ListCard, ListRow, RowAction, RowIcon, RowText } from "./configuracion/SettingsList";
+import { useFillHeight } from "../hooks/useFillHeight";
 import { Field } from "../components/ui/Field";
 import { buttonClass } from "../lib/buttonStyles";
 import {
@@ -27,6 +29,7 @@ import {
   IconEdit,
   IconFactory,
   IconPlus,
+  IconTrash,
   IconTruck,
   IconUser,
   IconUsers,
@@ -70,7 +73,9 @@ function clearLegacyCompany() {
 // y permisos) cae en Empresa.
 const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "personal", "cuenta"];
 
-const emptyAccountForm = { phone: "", dui: "" };
+// Mi cuenta: teléfono y DUI, más el cambio de correo o contraseña (que pide la actual).
+const emptyAccountForm = { phone: "", dui: "", newEmail: "", newPassword: "" };
+const MIN_PASSWORD_LENGTH = 6;
 
 // Abreviatura de cada unidad de inventario en el resumen de una bodega.
 const UNIT_ABBR = { unidad: "u", unidades: "u" };
@@ -165,54 +170,12 @@ function SectionMenu({ value, onChange, counts, companyName, updatedAt }) {
   );
 }
 
-// Tarjeta con encabezado (título, subtítulo, acción) y filas separadas por
-// líneas, para Bodegas y Vehículos.
-function ListCard({ title, subtitle, onAdd, loading, error, emptyText, children }) {
-  let body = children;
-  if (loading) body = <EmptyState title="Cargando…" />;
-  else if (error) body = <EmptyState title="No se pudo cargar la lista" description={error} />;
-  else if (!children.length) body = <EmptyState title={emptyText} />;
-  return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
-      <div className="flex items-start justify-between gap-3 px-5 pb-3.5 pt-4">
-        <div className="min-w-0">
-          <h2 className="t-card-title">{title}</h2>
-          <p className="t-aux mt-0.5">{subtitle}</p>
-        </div>
-        <Button variant="soft" size="detail" icon={IconPlus} onClick={onAdd}>
-          Agregar
-        </Button>
-      </div>
-      <div className="flex-1 border-t border-line-soft">{body}</div>
-    </section>
-  );
-}
-
-const rowClass = "flex min-h-[58px] w-full items-center gap-3 border-b border-line-soft px-5 py-2.5 text-left last:border-b-0";
-
-function RowIcon({ icon: Icon }) {
-  return (
-    <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-line-soft bg-surface-2 text-muted">
-      <Icon width={16} height={16} />
-    </span>
-  );
-}
-
-function RowText({ title, detail }) {
-  return (
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-[13.5px] font-semibold text-ink">{title}</span>
-      <span className="t-aux block truncate tabular-nums">{detail}</span>
-    </span>
-  );
-}
-
 /*
-  Modal para agregar o editar una bodega o un vehículo (un solo campo: nombre
-  o placa). En edición también permite eliminar; `blocked` es el motivo por
-  el que no se puede (bodega con existencia, vehículo en ruta).
+  Modal para agregar una bodega o un vehículo, o editar la placa de un
+  vehículo (un solo campo). Eliminar se hace desde el ícono de la fila; el
+  nombre de una bodega se edita en la misma fila (InlineName).
 */
-function EntityModal({ state, onClose, onSubmit, onDelete }) {
+function EntityModal({ state, onClose, onSubmit }) {
   const [value, setValue] = useState(state?.item?.label || "");
   const [busy, setBusy] = useState(false);
   if (!state) return null;
@@ -243,17 +206,6 @@ function EntityModal({ state, onClose, onSubmit, onDelete }) {
       title={item ? `Editar ${noun}` : isWarehouse ? "Nueva bodega" : "Nuevo vehículo"}
       footer={
         <>
-          {item ? (
-            <button
-              type="button"
-              onClick={() => onDelete(kind, item)}
-              disabled={Boolean(item.blocked)}
-              title={item.blocked || undefined}
-              className={`${buttonClass("danger", "modal")} mr-auto disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              Eliminar
-            </button>
-          ) : null}
           <button type="button" onClick={onClose} className={buttonClass("secondary", "modal")}>
             Cancelar
           </button>
@@ -273,7 +225,6 @@ function EntityModal({ state, onClose, onSubmit, onDelete }) {
           autoFocus
           required
         />
-        {item?.blocked ? <p className="t-aux">{item.blocked}.</p> : null}
       </form>
     </Modal>
   );
@@ -293,7 +244,9 @@ function Configuracion() {
   const { lines, loading: linesLoading, error: linesError, refetch: refetchLines } = useProductionLines();
   const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useFetch("/employees");
   const { data: account, loading: accountLoading, error: accountError, mutate: mutateAccount } = useFetch("/auth/me");
-  const { updateUser } = useAuth();
+  // Contraseña propia desencriptada, para el ojo de Mi cuenta: { password, legacy }.
+  const { data: myPassword, mutate: mutateMyPassword } = useFetch("/auth/me/password");
+  const { updateUser, setSessionPassword } = useAuth();
 
   const warehouses = useMemo(() => (Array.isArray(warehousesData) ? warehousesData : []), [warehousesData]);
   const vehicles = useMemo(() => (Array.isArray(vehiclesData) ? vehiclesData : []), [vehiclesData]);
@@ -305,11 +258,15 @@ function Configuracion() {
   const [scheduleDraft, setScheduleDraft] = useState(null);
   // Mi cuenta: borrador de teléfono y DUI (correo y contraseña van aparte, con la contraseña actual).
   const [accountDraft, setAccountDraft] = useState(null);
+  // Modal que pide la contraseña actual al guardar un cambio de correo o contraseña: { value, error } | null.
+  const [passwordPrompt, setPasswordPrompt] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   // Modal de bodega/vehículo: { kind: "warehouse" | "vehicle", item? } (sin item = agregar).
   const [entityModal, setEntityModal] = useState(null);
   const logoInputRef = useRef(null);
+  const layoutRef = useRef(null);
+  const layoutHeight = useFillHeight(layoutRef);
 
   const companyReady = Boolean(companyData);
   const savedCompany = useMemo(() => ({ ...DEFAULT_COMPANY, ...(companyData || {}) }), [companyData]);
@@ -322,10 +279,12 @@ function Configuracion() {
   const scheduleDirty =
     Boolean(scheduleDraft) &&
     (scheduleDraft.startTime !== schedule.startTime || Number(scheduleDraft.workdayHours) !== schedule.workdayHours);
-  const savedAccountForm = account ? { phone: account.phone || "", dui: formatDui(account.dui) } : emptyAccountForm;
+  const savedAccountForm = account ? { ...emptyAccountForm, phone: account.phone || "", dui: formatDui(account.dui) } : emptyAccountForm;
   const accountForm = accountDraft ?? savedAccountForm;
-  const accountDirty =
-    Boolean(account && accountDraft) && (accountDraft.phone.trim() !== savedAccountForm.phone || accountDraft.dui !== savedAccountForm.dui);
+  const profileDirty = Boolean(account) && (accountForm.phone.trim() !== savedAccountForm.phone || accountForm.dui !== savedAccountForm.dui);
+  // Escribir en «Nuevo correo» o «Nueva contraseña» ya cuenta como cambio.
+  const credentialsTouched = Boolean(accountForm.newEmail.trim() || accountForm.newPassword);
+  const accountDirty = Boolean(account && accountDraft) && (profileDirty || credentialsTouched);
   const dirty = companyDirty || scheduleDirty || accountDirty;
 
   // Existencia por bodega: artículos con stock en esa ubicación y total por
@@ -367,17 +326,43 @@ function Configuracion() {
     setAccountDraft({ ...accountForm, [name]: name === "dui" ? maskDui(value) : value });
   }
 
-  // Correo o contraseña cambiados en Mi cuenta: se actualiza la cuenta y el
-  // usuario en sesión (el correo aparece en el pie del menú lateral).
-  function handleCredentialsSaved(saved) {
-    mutateAccount(saved);
-    updateUser({ email: saved.email });
+  // Valida el cambio de correo o contraseña de Mi cuenta antes de guardar.
+  // Devuelve { email?, newPassword? } para /auth/me/credentials (la
+  // contraseña actual se pide aparte, en ConfirmPasswordModal), null si no
+  // hay cambio de acceso, o false si hay que corregir algo (ya avisado).
+  function credentialsRequest() {
+    if (!credentialsTouched) return null;
+    const email = accountForm.newEmail.trim().toLowerCase();
+    const wantsEmail = Boolean(email) && email !== account.email;
+    const wantsPassword = Boolean(accountForm.newPassword);
+    const focus = (name) => document.querySelector(`#account-form [name="${name}"]`)?.focus();
+
+    if (email && !wantsEmail) {
+      toast.error("El nuevo correo es igual al actual");
+      focus("newEmail");
+      return false;
+    }
+    if (!wantsEmail && !wantsPassword) {
+      toast.error("Escribe el nuevo correo o la nueva contraseña, o descarta los cambios");
+      focus("newEmail");
+      return false;
+    }
+    if (wantsPassword && accountForm.newPassword.length < MIN_PASSWORD_LENGTH) {
+      toast.error(`La nueva contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`);
+      focus("newPassword");
+      return false;
+    }
+    return {
+      email: wantsEmail ? email : undefined,
+      newPassword: wantsPassword ? accountForm.newPassword : undefined,
+    };
   }
 
   function discard() {
     setCompanyDraft(null);
     setScheduleDraft(null);
     setAccountDraft(null);
+    setPasswordPrompt(null);
     // Descartar también descarta los datos viejos del navegador.
     if (pendingLegacy) {
       clearLegacyCompany();
@@ -387,8 +372,10 @@ function Configuracion() {
 
   // La barra «Cambios sin guardar» sigue visible en las otras secciones,
   // donde el formulario no está montado: por eso se valida también aquí.
-  async function handleSave(e) {
-    e?.preventDefault();
+  // currentPassword: lo que se escribió en ConfirmPasswordModal (solo hace
+  // falta si hay un cambio de correo o contraseña).
+  async function handleSave(e, currentPassword) {
+    e?.preventDefault?.();
     if (!dirty) return;
     for (const id of ["company-form", "account-form"]) {
       const form = document.getElementById(id);
@@ -397,14 +384,45 @@ function Configuracion() {
     if (!company.name?.trim()) return toast.error("Escribe el nombre de la empresa");
     const hours = Number(scheduleForm.workdayHours);
     if (scheduleDirty && !(hours > 0 && hours <= 24)) return toast.error("Las horas de jornada deben ser mayores que 0 y hasta 24");
-    if (accountDirty && accountForm.dui && !/^\d{8}-\d$/.test(accountForm.dui)) return toast.error("El DUI debe tener 9 números (ej. 12345678-9)");
+    if (profileDirty && accountForm.dui && !/^\d{8}-\d$/.test(accountForm.dui)) return toast.error("El DUI debe tener 9 números (ej. 12345678-9)");
+    const credentials = accountDirty ? credentialsRequest() : null;
+    if (credentials === false) return;
+    // Cambio de acceso: primero se pide la contraseña actual.
+    if (credentials && !currentPassword) {
+      setPasswordPrompt({ value: "", error: "" });
+      return;
+    }
 
     setSaving(true);
     try {
-      if (accountDirty) {
-        mutateAccount(await api.put("/auth/me", { phone: accountForm.phone.trim(), dui: accountForm.dui }));
-        setAccountDraft(null);
+      // El cambio de acceso va primero: si la contraseña actual no es
+      // correcta, falla aquí y no se guarda nada más.
+      if (credentials) {
+        let saved;
+        try {
+          saved = await api.put("/auth/me/credentials", { ...credentials, currentPassword });
+        } catch (err) {
+          // Contraseña incorrecta (u otro error): se avisa en el modal, que
+          // sigue abierto para reintentar, y no se guarda nada más.
+          setPasswordPrompt((p) => ({ value: p?.value ?? "", error: err.message }));
+          return;
+        }
+        setPasswordPrompt(null);
+        mutateAccount(saved);
+        // El correo del usuario en sesión (pie del menú lateral).
+        updateUser({ email: saved.email });
+        // El ojo de «Contraseña actual» pasa a mostrar la nueva.
+        if (credentials.newPassword) {
+          setSessionPassword(credentials.newPassword);
+          mutateMyPassword({ password: credentials.newPassword, legacy: false });
+        }
+        // Ya aplicado: si falla algo después, reintentar no lo repite.
+        setAccountDraft((d) => (d ? { ...d, newEmail: "", newPassword: "" } : d));
       }
+      if (profileDirty) {
+        mutateAccount(await api.put("/auth/me", { phone: accountForm.phone.trim(), dui: accountForm.dui }));
+      }
+      setAccountDraft(null);
       if (scheduleDirty) {
         await api.put("/settings/work-schedule", { startTime: scheduleForm.startTime, workdayHours: hours });
         await refetchSchedule();
@@ -451,7 +469,8 @@ function Configuracion() {
     }
   }
 
-  // Bodegas y vehículos: agregar o renombrar desde el modal.
+  // Bodegas y vehículos: agregar (modal), renombrar una bodega (en la fila)
+  // o cambiar la placa de un vehículo (modal).
   async function saveEntity(kind, item, value) {
     if (kind === "warehouse") {
       if (item) await api.put(`/warehouses/${item.id}`, { name: value });
@@ -468,7 +487,6 @@ function Configuracion() {
   }
 
   async function deleteEntity(kind, item) {
-    setEntityModal(null);
     const isWarehouse = kind === "warehouse";
     const message = isWarehouse
       ? `¿Eliminar la bodega «${item.label}»? Ya no se podrá elegir para enviar lotes ni verificar pedidos.`
@@ -490,9 +508,12 @@ function Configuracion() {
     }
   }
 
-  const warehouseRows = warehouses.map((w) => {
+  // Bodegas: el nombre se edita en la misma fila (clic sobre el nombre) y
+  // la fila solo tiene el ícono de eliminar.
+  const renderWarehouse = (w) => {
     const stock = stockByWarehouse.get(w.name);
-    const item = { id: w._id, label: w.name, blocked: stock ? "No se puede eliminar: la bodega tiene existencia" : null };
+    const item = { id: w._id, label: w.name };
+    const blocked = stock ? "No se puede eliminar: la bodega tiene existencia" : null;
     const detail = stock
       ? [
           `${fmtNumber(stock.items)} ${stock.items === 1 ? "artículo" : "artículos"}`,
@@ -500,67 +521,64 @@ function Configuracion() {
         ].join(" · ")
       : "Sin existencia";
     return (
-      <div key={w._id} className={rowClass}>
+      <ListRow key={w._id}>
         <RowIcon icon={IconBox} />
-        <RowText title={w.name} detail={detail} />
-        <button
-          type="button"
-          onClick={() => setEntityModal({ kind: "warehouse", item })}
-          aria-label={`Editar ${w.name}`}
-          title="Editar"
-          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] border border-line bg-surface text-ink-2 transition hover:bg-surface-2 hover:text-ink"
-        >
-          <IconEdit width={14} height={14} />
-        </button>
-      </div>
+        <InlineName value={w.name} detail={detail} label="nombre de la bodega" onSave={(name) => saveEntity("warehouse", item, name)} />
+        <RowAction icon={IconTrash} label={`Eliminar ${w.name}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => deleteEntity("warehouse", item)} />
+      </ListRow>
     );
-  });
+  };
 
-  // Cada fila de vehículo abre su modal de edición al hacer clic.
-  const vehicleRows = vehicles.map((v) => {
+  // Vehículos: editar (modal con la placa) y eliminar, cada uno con su ícono.
+  const renderVehicle = (v) => {
     const route = vehicleRoutes.get(String(v._id));
     const driver = route ? routeDrivers.get(String(route._id)) : null;
-    const item = { id: v._id, label: v.plate, blocked: route ? "No se puede eliminar: el vehículo está en ruta" : null };
+    const item = { id: v._id, label: v.plate };
+    const blocked = route ? "No se puede eliminar: el vehículo está en ruta" : null;
     const detail = route ? [`Ruta ${route.number}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ") : "sin asignar";
     return (
-      <button
-        key={v._id}
-        type="button"
-        onClick={() => setEntityModal({ kind: "vehicle", item })}
-        title="Editar vehículo"
-        className={`${rowClass} transition hover:bg-surface-2`}
-      >
+      <ListRow key={v._id}>
         <RowIcon icon={IconTruck} />
         <RowText title={v.plate} detail={detail} />
         <StatusPill status={route ? "En ruta" : "Disponible"} domain="vehiculo" />
-      </button>
+        <RowAction icon={IconEdit} label={`Editar ${v.plate}`} onClick={() => setEntityModal({ kind: "vehicle", item })} />
+        <RowAction icon={IconTrash} label={`Eliminar ${v.plate}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => deleteEntity("vehicle", item)} />
+      </ListRow>
     );
-  });
+  };
+
+  const addButton = (kind) => (
+    <Button variant="soft" size="detail" icon={IconPlus} onClick={() => setEntityModal({ kind })}>
+      Agregar
+    </Button>
+  );
 
   const warehousesCard = (
     <ListCard
       title="Bodegas"
-      subtitle="Destinos disponibles al reportar inventario"
-      onAdd={() => setEntityModal({ kind: "warehouse" })}
+      subtitle="Destinos disponibles al reportar inventario · clic en el nombre para cambiarlo"
+      action={addButton("warehouse")}
+      items={warehouses}
+      renderRow={renderWarehouse}
       loading={warehousesLoading}
       error={warehousesError}
       emptyText="No hay bodegas registradas."
-    >
-      {warehouseRows}
-    </ListCard>
+      noun="bodegas"
+    />
   );
 
   const vehiclesCard = (
     <ListCard
       title="Vehículos"
       subtitle="Flota disponible para armar rutas"
-      onAdd={() => setEntityModal({ kind: "vehicle" })}
+      action={addButton("vehicle")}
+      items={vehicles}
+      renderRow={renderVehicle}
       loading={vehiclesLoading}
       error={vehiclesError}
       emptyText="No hay vehículos registrados."
-    >
-      {vehicleRows}
-    </ListCard>
+      noun="vehículos"
+    />
   );
 
   const fieldProps = { onChange: handleCompanyChange, disabled: !companyReady };
@@ -588,7 +606,13 @@ function Configuracion() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[220px_minmax(0,1fr)]">
+      {/* En lg el bloque llega hasta el margen inferior de la página: el menú y
+          la tarjeta de la sección se estiran, y las listas paginan lo que no cabe. */}
+      <div
+        ref={layoutRef}
+        style={{ height: layoutHeight ?? undefined }}
+        className="grid grid-cols-1 gap-3.5 lg:grid-cols-[220px_minmax(0,1fr)]"
+      >
         <SectionMenu
           value={section}
           onChange={setSection}
@@ -597,9 +621,9 @@ function Configuracion() {
           updatedAt={savedCompany.updatedAt}
         />
 
-        <div className="flex min-w-0 flex-col gap-3.5">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
           {section === "empresa" ? (
-              <section className="rounded-[14px] border border-line bg-surface px-5 pb-5 pt-4">
+              <section className="rounded-[14px] border border-line bg-surface px-5 pb-5 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="t-card-title">Datos de la empresa</h2>
@@ -688,7 +712,7 @@ function Configuracion() {
               error={accountError}
               form={accountForm}
               onChange={handleAccountChange}
-              onCredentialsSaved={handleCredentialsSaved}
+              storedPassword={myPassword}
             />
           )}
         </div>
@@ -700,9 +724,15 @@ function Configuracion() {
           state={entityModal}
           onClose={() => setEntityModal(null)}
           onSubmit={saveEntity}
-          onDelete={deleteEntity}
         />
       ) : null}
+      <ConfirmPasswordModal
+        state={passwordPrompt}
+        busy={saving}
+        onChange={(value) => setPasswordPrompt((p) => ({ ...p, value, error: "" }))}
+        onClose={() => setPasswordPrompt(null)}
+        onConfirm={(password) => handleSave(null, password)}
+      />
       <ConfirmModal {...confirmProps} />
     </div>
   );

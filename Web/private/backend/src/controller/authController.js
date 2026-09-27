@@ -1,8 +1,8 @@
 const authController = {};
 
 import employeeModel from "../models/Employee.js";
-import bcryptjs from "bcryptjs";
 import jsonwebtoken from "jsonwebtoken";
+import { encryptPassword, readablePassword, verifyPassword } from "../lib/passwordCrypto.js";
 import { config } from "../../config.js";
 import { checkPassword, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
 
@@ -23,8 +23,9 @@ authController.login = async (req, res) => {
       return res.status(403).json({ message: "Employee is not active" });
     }
 
-    //#3- Validar la contraseña
-    const isMatch = await bcryptjs.compare(password, employeeFound.password);
+    //#3- Validar la contraseña: formato encriptado nuevo o hash bcrypt viejo
+    // (ver lib/passwordCrypto.js)
+    const isMatch = await verifyPassword(password, employeeFound.password);
 
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
@@ -100,6 +101,18 @@ authController.getMe = async (req, res) => {
   }
 };
 
+// GET /auth/me/password: la contraseña propia en texto plano, para el ojo
+// de «Contraseña actual» en Mi cuenta. { password, legacy } como en
+// GET /employees/:id/password.
+authController.getMyPassword = async (req, res) => {
+  try {
+    const employee = await findSessionEmployee(req, res);
+    if (employee) res.json(readablePassword(employee.password));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
 // PUT /auth/me { phone, dui }: datos que no piden contraseña.
 authController.updateMe = async (req, res) => {
   try {
@@ -123,7 +136,7 @@ authController.updateCredentials = async (req, res) => {
     if (!employee) return;
 
     const { currentPassword, email, newPassword } = req.body;
-    if (!currentPassword || !(await bcryptjs.compare(currentPassword, employee.password))) {
+    if (!currentPassword || !(await verifyPassword(currentPassword, employee.password))) {
       return res.status(400).json({ message: "La contraseña actual no es correcta" });
     }
 
@@ -132,7 +145,7 @@ authController.updateCredentials = async (req, res) => {
       return res.status(400).json({ message: "No hay cambios que guardar" });
     }
     employee.email = nextEmail;
-    if (newPassword) employee.password = await bcryptjs.hash(checkPassword(newPassword), 10);
+    if (newPassword) employee.password = encryptPassword(checkPassword(newPassword));
     await employee.save();
     res.json(toAccount(employee));
   } catch (error) {

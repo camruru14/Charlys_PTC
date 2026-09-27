@@ -6,6 +6,28 @@ import { AuthContext } from "./authContextValue";
 // Provider de la sesión: evita "prop drilling" al compartirla entre todas las vistas.
 
 const SESSION_STORAGE_KEY = "charly:auth-session";
+// Contraseña con la que se inició sesión, solo para el ojo de «Contraseña
+// actual» en Configuración > Mi cuenta. Va en sessionStorage (solo esta
+// pestaña; se borra al cerrarla o al cerrar sesión) y nunca sale del
+// navegador: el backend guarda las contraseñas cifradas y no las devuelve.
+const SESSION_PASSWORD_KEY = "charly:session-password";
+
+function readSessionPassword() {
+  try {
+    return sessionStorage.getItem(SESSION_PASSWORD_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSessionPassword(password) {
+  try {
+    if (password) sessionStorage.setItem(SESSION_PASSWORD_KEY, password);
+    else sessionStorage.removeItem(SESSION_PASSWORD_KEY);
+  } catch {
+    // Sin acceso al almacenamiento: el ojo pedirá volver a iniciar sesión.
+  }
+}
 
 /**
  * Lee la sesión guardada en localStorage.
@@ -40,11 +62,20 @@ export function AuthProvider({ children }) {
     return stored?.user || null;
   });
   const loading = false;
+  const [sessionPassword, setSessionPasswordState] = useState(readSessionPassword);
+
+  // Recuerda (o borra) la contraseña de la sesión en esta pestaña.
+  const setSessionPassword = useCallback((password) => {
+    writeSessionPassword(password);
+    setSessionPasswordState(password || "");
+  }, []);
 
   // Guarda o limpia la sesión en estado + localStorage.
   const persistSession = useCallback((nextUser, nextToken) => {
     if (!nextUser) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      writeSessionPassword("");
+      setSessionPasswordState("");
       setUser(null);
       setPublicApiToken(null);
       setAuthToken(null);
@@ -77,12 +108,13 @@ export function AuthProvider({ children }) {
         }
 
         persistSession(payload.user, payload.token);
+        setSessionPassword(password);
         return { ok: true, message: payload.message || "Sesión iniciada" };
       } catch {
         return { ok: false, message: "No se pudo conectar con el servidor" };
       }
     },
-    [persistSession],
+    [persistSession, setSessionPassword],
   );
 
   // Cierra sesión en backend y frontend.
@@ -115,6 +147,8 @@ export function AuthProvider({ children }) {
     login,
     logout,
     updateUser,
+    sessionPassword,
+    setSessionPassword,
     apiUrl: API_URL,
   };
 

@@ -17,6 +17,11 @@ export const config = {
     user_email: process.env.USER_EMAIL,
     user_password: process.env.USER_PASSWORD,
   },
+  // Llave AES-256 (64 caracteres hex) para las contraseñas de empleados
+  // (src/lib/passwordCrypto.js). Respaldarla: sin ella no se pueden leer.
+  passwords: {
+    key: process.env.EMPLOYEE_PASSWORD_KEY,
+  },
   cloudinary: {
     cloudinary_name: process.env.CLOUDINARY_CLOUD_NAME,
     cloudinary_api_key: process.env.CLOUDINARY_API_KEY,

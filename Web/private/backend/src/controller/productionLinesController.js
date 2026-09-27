@@ -62,22 +62,34 @@ productionLinesController.insertLine = async (req, res) => {
   }
 };
 
-// PATCH /:id { active }. Solo se activa o desactiva: el nombre no se cambia
-// porque los lotes guardan el nombre como texto.
+// PATCH /:id { name?, active? }. Al renombrar, los lotes que guardan el nombre
+// viejo como texto (ProductionBatch.productionLine) pasan al nuevo, para que
+// su historial y las estadísticas por línea sigan juntos.
 productionLinesController.updateLine = async (req, res) => {
-  if (typeof req.body.active !== "boolean") return res.status(400).json({ message: "Indica si la línea está activa" });
+  const { active } = req.body;
+  const name = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
+  if (active !== undefined && typeof active !== "boolean") return res.status(400).json({ message: "Indica si la línea está activa" });
+  if (name !== undefined && !name) return res.status(400).json({ message: "Escribe el nombre de la línea" });
+  if (active === undefined && name === undefined) return res.status(400).json({ message: "No hay cambios que guardar" });
 
   try {
     const line = await productionLineModel.findById(req.params.id);
     if (!line) return res.status(404).json({ message: "Línea no encontrada" });
-    if (!req.body.active && line.active) {
+    if (active === false && line.active) {
       const activeCount = await productionLineModel.countDocuments({ active: true });
       if (activeCount <= 1) return res.status(409).json({ message: "Debe quedar al menos una línea activa para iniciar lotes" });
     }
-    line.active = req.body.active;
+
+    const previousName = line.name;
+    if (name !== undefined) line.name = name;
+    if (active !== undefined) line.active = active;
     await line.save();
+    if (name !== undefined && name !== previousName) {
+      await productionBatchModel.updateMany({ productionLine: previousName }, { $set: { productionLine: name } });
+    }
     res.json(line);
   } catch (error) {
+    if (error.code === 11000) return res.status(400).json({ message: `Ya existe la línea «${name}»` });
     console.log("error " + error);
     res.status(500).json({ message: "Error interno del servidor." });
   }

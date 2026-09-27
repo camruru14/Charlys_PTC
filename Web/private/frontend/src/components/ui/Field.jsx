@@ -16,7 +16,7 @@
 */
 
 import { useEffect, useRef, useState } from "react";
-import { IconChevronDown } from "../../lib/icons";
+import { IconChevronDown, IconEye, IconEyeOff } from "../../lib/icons";
 
 const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
 const controlClass =
@@ -45,6 +45,44 @@ export function Field({ label, name, type = "text", value, onChange, required, p
         className={controlClass}
         {...rest}
       />
+    </label>
+  );
+}
+
+// Campo de contraseña con el botón de ojo para mostrar u ocultar lo que se
+// está escribiendo (no revela nada guardado: solo cambia el type del input).
+export function PasswordField({ label, name, value, onChange, required, placeholder, ...rest }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="block">
+      {label ? (
+        <span className={labelClass}>
+          {label} {required ? <span className="text-tone-rose-text">*</span> : null}
+        </span>
+      ) : null}
+      <span className="relative block">
+        <input
+          name={name}
+          type={visible ? "text" : "password"}
+          value={value ?? ""}
+          onChange={onChange}
+          required={required}
+          placeholder={placeholder}
+          className={`${controlClass} pr-10`}
+          {...rest}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={visible}
+          title={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-[10px] text-muted transition hover:text-ink"
+        >
+          {/* El ícono muestra el estado: tachado = oculta, abierto = visible. */}
+          {visible ? <IconEye width={16} height={16} /> : <IconEyeOff width={16} height={16} />}
+        </button>
+      </span>
     </label>
   );
 }

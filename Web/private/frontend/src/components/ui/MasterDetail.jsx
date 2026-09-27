@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { useFillHeight } from "../../hooks/useFillHeight";
 
 /*
   Maestro-detalle: lista de ancho fijo a la izquierda y detalle flexible.
@@ -13,41 +14,8 @@ import { useLayoutEffect, useRef, useState } from "react";
     </MasterDetail>
 */
 
-const MIN_HEIGHT = 520;
-
 // fill: en pantallas lg, estira ambos paneles hasta el margen inferior de la
-// página (se mide dónde empieza el maestro-detalle, porque lo que va encima
-// cambia de una pantalla a otra). Sin fill, alto fijo de 100dvh − 190px.
-function useFillHeight(ref, enabled) {
-  const [height, setHeight] = useState(null);
-  useLayoutEffect(() => {
-    if (!enabled) return undefined;
-    const el = ref.current;
-    const wide = window.matchMedia("(min-width: 1024px)");
-    function update() {
-      if (!wide.matches) {
-        setHeight(null);
-        return;
-      }
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      const main = el.closest("main");
-      const bottomPad = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
-      setHeight(Math.max(MIN_HEIGHT, Math.floor(window.innerHeight - top - bottomPad)));
-    }
-    update();
-    // Lo de arriba puede cambiar de alto (p. ej. el subtítulo al cambiar de pestaña).
-    const observer = new ResizeObserver(update);
-    if (el.parentElement) observer.observe(el.parentElement);
-    window.addEventListener("resize", update);
-    wide.addEventListener("change", update);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", update);
-      wide.removeEventListener("change", update);
-    };
-  }, [ref, enabled]);
-  return height;
-}
+// página (hooks/useFillHeight.js). Sin fill, alto fijo de 100dvh − 190px.
 
 export function MasterDetail({ listWidth = 360, fill = false, className = "", children }) {
   const ref = useRef(null);

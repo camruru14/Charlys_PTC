@@ -34,6 +34,12 @@ async function request(path, { method = "GET", body } = {}) {
   // Sesión inválida/expirada -> forzar re-login
   if (response.status === 401 || response.status === 403) {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    // La contraseña recordada para el ojo de Mi cuenta (ver AuthContext.jsx).
+    try {
+      sessionStorage.removeItem("charly:session-password");
+    } catch {
+      // Sin acceso al almacenamiento: no hay nada que borrar.
+    }
     if (!window.location.pathname.startsWith("/login")) {
       window.location.assign("/login");
     }
