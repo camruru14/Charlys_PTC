@@ -15,6 +15,7 @@ import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/Master
 import { toastUndo } from "../../lib/toastUndo";
 import { fmtNumber, fmtDate } from "../../lib/format";
 import { IconOrders } from "../../lib/icons";
+import { statusTone } from "../../lib/statusDomains";
 import {
   buildStockMap,
   stockOptionsFor,
@@ -41,14 +42,59 @@ import {
 const DISPATCHED_DAYS = 30;
 const PRODUCTS_GRID = "minmax(0,1fr) 44px 138px 124px 178px 18px";
 
+// [clave de lineCounts, singular, plural, estado de la píldora de la línea]
 const COUNT_LABELS = [
-  ["empacado", "empacado", "empacados"],
-  ["verificado", "verificado", "verificados"],
-  ["porVerificar", "por verificar", "por verificar"],
-  ["parcial", "parcial", "parciales"],
-  ["sinExistencia", "sin existencia", "sin existencia"],
-  ["enFabricacion", "en fabricación", "en fabricación"],
+  ["empacado", "empacado", "empacados", "Empacado"],
+  ["verificado", "verificado", "verificados", "Verificado"],
+  ["porVerificar", "por verificar", "por verificar", "Por verificar"],
+  ["parcial", "parcial", "parciales", "Existencia parcial"],
+  ["sinExistencia", "sin existencia", "sin existencia", "Sin existencia"],
+  ["enFabricacion", "en fabricación", "en fabricación", "En fabricación"],
 ];
+
+// Color de cada estado en la barra de avance: el mismo punto de color que
+// usa su StatusPill (tono de statusDomains, dominio linea-inventario).
+const TONE_DOT = {
+  gray: "bg-tone-gray-dot",
+  blue: "bg-tone-blue-dot",
+  amber: "bg-tone-amber-dot",
+  green: "bg-tone-green-dot",
+  rose: "bg-tone-rose-dot",
+  purple: "bg-tone-purple-dot",
+  teal: "bg-tone-teal-dot",
+};
+const lineDot = (status) => TONE_DOT[statusTone(status, "linea-inventario")];
+
+// «N PRODUCTOS», leyenda por estado y barra segmentada (un segmento por
+// producto, agrupados por estado), como en el mockup R1.
+function OrderProgress({ total, counts }) {
+  const present = COUNT_LABELS.filter(([k]) => counts[k] > 0);
+  const summary = present.map(([k, one, many]) => `${counts[k]} ${counts[k] === 1 ? one : many}`).join(", ");
+  return (
+    <div>
+      <div className="mb-[7px] flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="t-label tabular-nums">
+          {fmtNumber(total)} {total === 1 ? "producto" : "productos"}
+        </span>
+        <span className="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] tabular-nums text-ink-2">
+          {present.map(([k, one, many, status]) => (
+            <span key={k} className="inline-flex items-center gap-[5px]">
+              <span className={`h-[7px] w-[7px] shrink-0 rounded-[2px] ${lineDot(status)}`} />
+              {counts[k]} {counts[k] === 1 ? one : many}
+            </span>
+          ))}
+        </span>
+      </div>
+      {total > 0 ? (
+        <div role="img" aria-label={`Avance del pedido: ${summary}`} className="flex h-2 gap-[3px] overflow-hidden rounded-[4px]">
+          {present.flatMap(([k, , , status]) =>
+            Array.from({ length: counts[k] }, (_, i) => <span key={`${k}-${i}`} className={`flex-1 ${lineDot(status)}`} />),
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const productName = (item) => `${item.product}${item.color ? ` — ${item.color}` : ""}`;
 
@@ -141,8 +187,6 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
   const verifiable = fullyVerifiableLines(order, stockMap);
   const packable = packableLines(order);
   const items = order.items || [];
-
-  const countParts = COUNT_LABELS.filter(([k]) => counts[k] > 0).map(([k, one, many]) => `${counts[k]} ${counts[k] === 1 ? one : many}`);
 
   function toggleExpanded(index) {
     setExpanded((prev) => {
@@ -288,9 +332,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
       }
     >
       <div className="flex flex-col gap-4">
-        <p className="text-[12px] tabular-nums text-muted">
-          {[`${items.length} ${items.length === 1 ? "producto" : "productos"}`, ...countParts].join(" · ")}
-        </p>
+        <OrderProgress total={items.length} counts={counts} />
 
         {verifiable.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-line-soft bg-primary-soft px-3.5 py-3">
@@ -316,7 +358,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                 <span className="t-label text-right">Cant.</span>
                 <span className="t-label pl-3">Existencia</span>
                 <span className="t-label">Estado</span>
-                <span className="t-label">Acción</span>
+                <span className="t-label pr-3 text-right">Acción</span>
                 <span />
               </div>
               {items.length === 0 ? <EmptyState title="Este pedido no tiene productos." /> : null}
@@ -349,7 +391,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                           <span>
                             <StatusPill status={part.status} domain="linea-inventario" />
                           </span>
-                          <span className="flex min-w-0 items-center">{renderAction(item, index, part)}</span>
+                          <span className="flex min-w-0 items-center justify-end pr-3">{renderAction(item, index, part)}</span>
                           {pi === 0 ? <DisclosureChevron open={open} /> : <span />}
                         </div>
                       ))}
