@@ -32,11 +32,12 @@ export function ListPanel({ header, footer, children }) {
   );
 }
 
-export function DetailPanel({ header, footer, children }) {
+// bodyClassName: clases extra para el cuerpo con scroll (opcional).
+export function DetailPanel({ header, footer, bodyClassName = "", children }) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
       {header ? <div className="border-b border-line-soft bg-surface-2 px-5 py-4">{header}</div> : null}
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto p-5 ${bodyClassName}`}>{children}</div>
       {footer ? <div className="border-t border-line-soft bg-surface-2 px-5 py-3">{footer}</div> : null}
     </section>
   );

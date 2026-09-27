@@ -40,7 +40,9 @@ import {
 */
 
 const DISPATCHED_DAYS = 30;
-const PRODUCTS_GRID = "minmax(0,1fr) 44px 138px 124px 178px 18px";
+// Existencia de 200px para que «Bodega Central · 4,750 disp.» quepa completo;
+// la última columna (30px) deja el caret separado del borde de la tabla.
+const PRODUCTS_GRID = "minmax(0,1fr) 44px 200px 124px 178px 30px";
 
 // [clave de lineCounts, singular, plural, estado de la píldora de la línea]
 const COUNT_LABELS = [
@@ -133,20 +135,20 @@ function Segmented({ value, onChange, options }) {
 
 function OrderListRow({ order, selected, checked, onToggle, onSelect, showCheckbox }) {
   return (
-    <div className={`grid grid-cols-[30px_5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
-      <div className="flex items-start pl-[11px] pt-[14px]">
+    <div className={`grid grid-cols-[34px_5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
+      <div className="flex items-start pl-[11px] pt-[15px]">
         {showCheckbox ? (
           <input
             type="checkbox"
             checked={checked}
             onChange={onToggle}
             aria-label={`Seleccionar ${order.orderNumber}`}
-            className="h-4 w-4 cursor-pointer rounded-[4px] accent-primary"
+            className="h-3.5 w-3.5 cursor-pointer rounded-[4px] accent-primary"
           />
         ) : null}
       </div>
       <span className={selected ? "bg-select-bar" : ""} />
-      <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 px-3.5 py-3 text-left">
+      <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 py-3 pl-2.5 pr-3.5 text-left">
         <div className="flex items-center justify-between gap-3">
           <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
           <StatusPill status={inventoryMacroStatus(order)} domain="pedido-inventario" variant="dot" />
@@ -313,6 +315,9 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 
   return (
     <DetailPanel
+      // Reserva el espacio de la barra de scroll: si expandir una fila la hace
+      // aparecer, la tabla no se angosta ni salta de lugar.
+      bodyClassName="[scrollbar-gutter:stable]"
       header={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
@@ -387,7 +392,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                             )}
                           </span>
                           <span className="text-right text-[13px] tabular-nums text-ink">{fmtNumber(part.qty)}</span>
-                          <span className="truncate pl-3 text-[12.5px] tabular-nums text-ink-2">{existenceText(item, part)}</span>
+                          <span className="truncate px-3 text-[12.5px] tabular-nums text-ink-2">{existenceText(item, part)}</span>
                           <span>
                             <StatusPill status={part.status} domain="linea-inventario" />
                           </span>
@@ -396,7 +401,16 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                         </div>
                       ))}
                     </div>
-                    {open ? <div className="bg-surface-2 px-4 py-2.5 pl-[35px]">{renderExpanded(item)}</div> : null}
+                    {/* Se despliega animando la altura (0fr → 1fr), al mismo ritmo que el caret. */}
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-150 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+                      inert={!open}
+                      aria-hidden={!open}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div className="bg-surface-2 px-4 py-2.5 pl-[35px]">{renderExpanded(item)}</div>
+                      </div>
+                    </div>
                     {renderBox(item, index)}
                   </div>
                 );
