@@ -156,8 +156,8 @@ function DevUI() {
 
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
             <KpiCard label="Producción" value={fmtNumber(48250)} note="unidades en el rango" />
-            <KpiCard label="Ingresos" value={fmtMoney(12840)} trend={{ tone: "green", label: "en el rango" }} />
-            <KpiCard label="Detenidos" value="1" trend={{ tone: "red", label: "Alerta" }} />
+            <KpiCard label="Ingresos" value={fmtMoney(12840)} note="en el rango" noteTone="green" />
+            <KpiCard label="Detenidos" value="1" note="Alerta" noteTone="rose" />
           </div>
 
           <Section title="Indicadores">

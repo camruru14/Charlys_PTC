@@ -1,15 +1,19 @@
 /*
   Mapa de estados de negocio -> tono, agrupado por dominio. Es la única fuente
   de color de estados del panel (la consume <StatusPill domain="..." />): un
-  mismo texto puede tener distinto color según el dominio (ej. "Pendiente" es
-  gris en un pedido pero ámbar en un pago).
+  mismo estado tiene el mismo tono en todos los dominios, con una sola
+  excepción intencional: "Pendiente" es gris en los dominios operativos
+  (pedido, ruta, parada) y ámbar en los financieros (pago, transacción).
+  Criterio: azul = pasando ahora mismo (Procesando, En proceso, En
+  fabricación, Recolectando); ámbar = programado o en espera (Programado,
+  Esperando lote, Por enviar).
   Tonos: gray, blue, amber, green, rose, purple, teal.
 */
 export const STATUS_DOMAINS = {
   pedido: {
     Pendiente: "gray",
     Procesando: "blue",
-    "En Fabricación": "amber",
+    "En Fabricación": "blue",
     Empacado: "purple",
     "En Tránsito": "teal",
     Entregado: "green",
@@ -69,6 +73,8 @@ export const STATUS_DOMAINS = {
     Listo: "green",
     // "Faltan N de M" (ámbar) es dinámico: lo resuelve statusTone()
     Esperando: "gray",
+    // Pedido que volvió de una entrega parcial
+    "Entrega parcial": "amber",
   },
   stock: {
     Suficiente: "green",
@@ -76,7 +82,7 @@ export const STATUS_DOMAINS = {
     "Bajo mínimo": "rose",
   },
   transaccion: {
-    Pagado: "blue",
+    Pagado: "green",
     Pendiente: "amber",
     Completado: "green",
   },

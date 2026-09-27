@@ -16,6 +16,7 @@ import { buttonClass } from "../lib/buttonStyles";
 import { fmtNumber } from "../lib/format";
 import PageHeader from "../components/ui/PageHeader";
 import { getPageMeta } from "../lib/nav";
+import { statusTone } from "../lib/statusDomains";
 
 // URL de la tienda pública; sin ella no se muestra «Ver tienda pública».
 const PUBLIC_STORE_URL = import.meta.env.VITE_PUBLIC_STORE_URL || "";
@@ -213,8 +214,8 @@ function Catalogo() {
         <KpiInline
           items={[
             { label: "Productos", value: fmtNumber(kpis.total), tone: "blue" },
-            { label: "Activos", value: fmtNumber(kpis.active), tone: "green" },
-            { label: "Destacados", value: fmtNumber(kpis.featured), tone: "amber" },
+            { label: "Activos", value: fmtNumber(kpis.active), tone: statusTone("Activo", "catalogo") },
+            { label: "Destacados", value: fmtNumber(kpis.featured), tone: statusTone("Destacado", "catalogo") },
           ]}
         />
         <Tabs tabs={tabs} value={category === ALL ? ALL : category.toLowerCase()} onChange={setCategoryParam} />

@@ -8,6 +8,7 @@ import TransactionTable from "../components/transactions/TransactionTable";
 import { defaultTransactionFilters, filterTransactions } from "../lib/transactionFilters";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangePicker from "../components/ui/DateRangePicker";
+import KpiCard from "../components/ui/KpiCard";
 import { getPageMeta } from "../lib/nav";
 import { fmtMoney, fmtNumber } from "../lib/format";
 
@@ -41,22 +42,10 @@ function HistorialTransacciones() {
       </div>
 
       <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Transacciones</p>
-          <p className="t-kpi mt-2">{fmtNumber(stats.count)}</p>
-        </div>
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Ingresos</p>
-          <p className="t-kpi mt-2 !text-tone-green-text">{fmt(stats.income)}</p>
-        </div>
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Gastos</p>
-          <p className="t-kpi mt-2">{fmt(stats.expense)}</p>
-        </div>
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Neto</p>
-          <p className={`t-kpi mt-2 ${stats.net >= 0 ? "!text-tone-green-text" : "!text-tone-rose-text"}`}>{fmt(stats.net)}</p>
-        </div>
+        <KpiCard label="Transacciones" value={fmtNumber(stats.count)} />
+        <KpiCard label="Ingresos" value={fmt(stats.income)} valueClassName="!text-tone-green-text" />
+        <KpiCard label="Gastos" value={fmt(stats.expense)} />
+        <KpiCard label="Neto" value={fmt(stats.net)} valueClassName={stats.net >= 0 ? "!text-tone-green-text" : "!text-tone-rose-text"} />
       </div>
 
       <SectionCard title="Todas las transacciones">

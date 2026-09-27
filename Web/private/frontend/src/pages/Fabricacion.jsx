@@ -21,6 +21,7 @@ import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import LotesFabricacion from "./fabricacion/LotesFabricacion";
 import ProduccionDiaria from "./fabricacion/ProduccionDiaria";
 import PedidosFabricacion from "./fabricacion/PedidosFabricacion";
+import { statusTone } from "../lib/statusDomains";
 
 const TABS = [
   { key: "lotes", label: "Lotes de fabricación" },
@@ -38,9 +39,9 @@ function startOfWeek() {
 
 function Fabricacion() {
   const range = useDateRange();
-  const { data: batches, loading, error, refetch } = useFetch("/productionBatches");
+  const { data: batches, loading, error, refetch, mutate: mutateBatches } = useFetch("/productionBatches");
   const { data: dailyBatches, loading: dailyLoading, error: dailyError, refetch: refetchDaily } = useFetch("/dailyBatches");
-  const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
+  const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders, mutate: mutateOrders } = useFetch("/orders");
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab] = useUrlState("tab", "lotes", { allowed: TABS.map((t) => t.key) });
   const [schedulingId, setSchedulingId] = useState(null);
@@ -133,8 +134,8 @@ function Fabricacion() {
     }
     return [
       { label: "Producción", value: fmtNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
-      { label: "En proceso", value: fmtNumber(rangeList.filter((b) => b.status === "En Proceso").length), tone: "amber" },
-      { label: "Detenidos", value: fmtNumber(rangeList.filter((b) => b.status === "Detenido").length), tone: "rose" },
+      { label: "En proceso", value: fmtNumber(rangeList.filter((b) => b.status === "En Proceso").length), tone: statusTone("En proceso", "lote") },
+      { label: "Detenidos", value: fmtNumber(rangeList.filter((b) => b.status === "Detenido").length), tone: statusTone("Detenido", "lote") },
     ];
   }, [activeTab, rangeList, dailyList]);
 
@@ -182,7 +183,9 @@ function Fabricacion() {
           list={stockRangeList}
           loading={loading}
           error={error}
-          refetch={refetchBatchesAndOrders}
+          // Los lotes de stock no afectan a los pedidos: basta con los lotes.
+          refetch={refetch}
+          mutateBatches={mutateBatches}
           operators={operators}
           onEdit={openEdit}
           onDelete={handleDelete}
@@ -204,6 +207,10 @@ function Fabricacion() {
           loading={ordersLoading || loading}
           error={ordersError || error}
           refetchAll={refetchBatchesAndOrders}
+          refetchOrders={refetchOrders}
+          refetchBatches={refetch}
+          mutateOrders={mutateOrders}
+          mutateBatches={mutateBatches}
           operators={operators}
           lines={lines}
         />

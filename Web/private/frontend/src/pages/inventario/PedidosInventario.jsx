@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { replaceById } from "../../hooks/useFetch";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -51,8 +52,17 @@ const COUNT_LABELS = [
 
 const productName = (item) => `${item.product}${item.color ? ` — ${item.color}` : ""}`;
 
+// Ejecuta las llamadas en orden y devuelve todas sus respuestas.
 function runAll(calls) {
-  return calls.reduce((p, fn) => p.then(fn), Promise.resolve());
+  return calls.reduce((p, fn) => p.then(async (results) => [...results, await fn()]), Promise.resolve([]));
+}
+
+// Pedidos actualizados que vienen en la respuesta de una acción de línea
+// ({ order }), de verify-bulk ({ orders }) o de varias acciones (runAll).
+function ordersFrom(result) {
+  if (Array.isArray(result)) return result.flatMap(ordersFrom);
+  if (result?.orders) return result.orders;
+  return result?.order ? [result.order] : [];
 }
 
 // Control segmentado Por preparar / Despachados.
@@ -379,7 +389,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
   );
 }
 
-function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, finishedItems, refetchInventory }) {
+function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, mutateOrders, finishedItems, refetchInventory }) {
   const [selectedId, setSelectedId] = useUrlState("id");
   const [segment, setSegment] = useState("preparar");
   const [checked, setChecked] = useState(() => new Set());
@@ -421,33 +431,41 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
     });
   }
 
-  function refresh() {
-    refetchOrders();
-    refetchInventory();
+  // Aplica la respuesta de una acción: reemplaza los pedidos que vienen
+  // actualizados (sin recargar la lista) y recarga el inventario solo si la
+  // acción movió stock. Si la respuesta no trae pedidos, recarga la lista.
+  function applyResult(result, { stock }) {
+    const updated = ordersFrom(result);
+    if (updated.length) mutateOrders((list) => replaceById(list, updated));
+    else refetchOrders();
+    if (stock) refetchInventory();
   }
 
   // Ejecuta una acción directa con «Deshacer»: `run` hace el cambio y `undo`
-  // lo revierte (ambos llaman a la API); después se recargan los datos.
-  async function act(run, message, undo) {
+  // lo revierte (ambos llaman a la API). `stock`: la acción mueve existencia
+  // (verificar, dividir), así que hay que recargar el inventario.
+  async function act(run, message, undo, { stock = false } = {}) {
     setBusy(true);
     try {
-      await run();
+      applyResult(await run(), { stock });
       setOpenBox(null);
       toastUndo(message, async () => {
         try {
-          await undo();
+          applyResult(await undo(), { stock });
           toast.success("Cambio deshecho");
         } catch (err) {
           toast.error(err.message);
-        } finally {
-          refresh();
+          refetchOrders();
+          if (stock) refetchInventory();
         }
       });
     } catch (err) {
       toast.error(err.message);
+      // El pedido pudo cambiar en otra pantalla: se vuelve a leer.
+      refetchOrders();
+      if (stock) refetchInventory();
     } finally {
       setBusy(false);
-      refresh();
     }
   }
 
@@ -459,6 +477,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
         () => api.patch(`${base(order, index)}/verify`, { warehouse }),
         `${order.items[index].product} verificado en ${warehouse}`,
         () => api.patch(`${base(order, index)}/unverify`),
+        { stock: true },
       ),
     // groups = [{ order, lines: [{ index, warehouse }] }]
     verifyLines: (groups) => {
@@ -470,6 +489,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
           }),
         `${n} ${n === 1 ? "producto verificado" : "productos verificados"}`,
         () => runAll(groups.flatMap((g) => g.lines.map((l) => () => api.patch(`${base(g.order, l.index)}/unverify`)))),
+        { stock: true },
       );
     },
     pack: (order, index) =>
@@ -495,6 +515,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
         () => api.patch(`${base(order, index)}/split-partial`, { warehouse, quantity }),
         `Tomados ${fmtNumber(quantity)} de ${warehouse}; ${fmtNumber(order.items[index].quantity - quantity)} a fabricación`,
         () => api.del(`${base(order, index)}/split-partial`),
+        { stock: true },
       ),
   };
 

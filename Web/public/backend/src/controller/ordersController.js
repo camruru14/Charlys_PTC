@@ -6,6 +6,13 @@ import customerModel from "../models/Customer.js";
 import customerOrderModel from "../models/CustomerOrder.js";
 import paymentTransactionModel from "../models/PaymentTransaction.js";
 import wompiClient from "../utils/wompiClient.js";
+import { recordSaleTransaction } from "../utils/salesTransaction.js";
+
+// Nombre del artículo en Inventario del panel (singular) para cada categoría
+// del catálogo (plural). El panel busca la existencia por nombre exacto
+// (private/backend/src/lib/stock.js), así que la línea del pedido debe
+// guardar este nombre; la tienda sigue mostrando la categoría en plural.
+const INVENTORY_NAME = { Pajillas: "Pajilla", Pelotas: "Pelota" };
 
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...).
 // Mismo esquema que private/backend/src/controller/ordersController.js: ambos
@@ -55,8 +62,10 @@ async function buildOrderItems(rawItems) {
     // La tabla de Pedidos en admin (private/frontend) muestra este campo como
     // "Producto", pero como el nombre ahora se escribe libre en Catálogo (ver
     // ProductFormModal.jsx) no sirve como etiqueta uniforme para admin — se
-    // usa la categoría del catálogo ("Pelotas"/"Pajillas") en su lugar.
-    const productLabel = raw.size ? `${product.category} (${raw.size})` : product.category;
+    // usa el nombre de Inventario de la categoría ("Pelota"/"Pajilla"), que es
+    // con el que el panel descuenta la existencia.
+    const inventoryName = INVENTORY_NAME[product.category] || product.category;
+    const productLabel = raw.size ? `${inventoryName} (${raw.size})` : inventoryName;
     const unitPrice = product.price;
     const subtotal = Number((unitPrice * quantity).toFixed(2));
 
@@ -176,6 +185,15 @@ ordersController.checkout = async (req, res) => {
       cardLast4,
       status: "aprobado",
     });
+
+    // 4) La venta a Finanzas (Ingreso "Ventas"). El cobro ya se hizo y el
+    // pedido ya existe: si esto fallara, se registra en el log en vez de
+    // responderle error a un cliente que sí pagó.
+    try {
+      await recordSaleTransaction(order);
+    } catch (error) {
+      console.log(`error al registrar la venta de ${order.orderNumber} en Finanzas: ${error}`);
+    }
 
     res.status(201).json({ order });
   } catch (error) {

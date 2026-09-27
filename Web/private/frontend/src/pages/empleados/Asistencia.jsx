@@ -31,17 +31,20 @@ function TickLines() {
 function TimelineBar({ record, schedule }) {
   const bar = timelineBar(record, schedule);
   if (!bar) return <span className="t-aux relative">Sin entrada o salida</span>;
+  // Horas rotuladas encima de la barra (en ink-2: blanco sobre ámbar no cumple AA).
   return (
     <span
-      className="absolute top-1/2 flex h-[22px] -translate-y-1/2 overflow-hidden rounded-[6px]"
+      className="absolute inset-y-0 flex flex-col justify-center gap-[3px]"
       style={{ left: `${bar.left}%`, width: `${bar.workday + bar.extra}%` }}
       title={`${bar.checkIn} – ${bar.checkOut}`}
     >
-      <span className="h-full bg-tone-blue-dot" style={{ width: `${(bar.workday / (bar.workday + bar.extra)) * 100}%` }} />
-      {bar.extra > 0 ? <span className="h-full flex-1 bg-tone-amber-dot" /> : null}
-      <span className="absolute inset-0 flex items-center justify-between px-1.5 text-[10.5px] font-semibold tabular-nums text-white">
+      <span className="flex justify-between gap-2 whitespace-nowrap text-[10.5px] font-semibold leading-none tabular-nums text-ink-2">
         <span>{bar.checkIn}</span>
         <span>{bar.checkOut}</span>
+      </span>
+      <span className="flex h-[12px] overflow-hidden rounded-[4px]">
+        <span className="h-full bg-tone-blue-dot" style={{ width: `${(bar.workday / (bar.workday + bar.extra)) * 100}%` }} />
+        {bar.extra > 0 ? <span className="h-full flex-1 bg-tone-amber-dot" /> : null}
       </span>
     </span>
   );

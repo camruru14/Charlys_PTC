@@ -13,6 +13,7 @@ import { IconPlus } from "../../lib/icons";
 import PageHeader from "../ui/PageHeader";
 import DateRangePicker from "../ui/DateRangePicker";
 import Button from "../ui/Button";
+import KpiCard from "../ui/KpiCard";
 import { getPageMeta } from "../../lib/nav";
 import { fmtNumber } from "../../lib/format";
 
@@ -58,14 +59,8 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
 
       {/* Resumen del subconjunto filtrado */}
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Lotes encontrados</p>
-          <p className="t-kpi mt-2">{fmtNumber(stats.count)}</p>
-        </div>
-        <div className="rounded-[14px] border border-line bg-surface px-[18px] py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-subtle">Producción total</p>
-          <p className="t-kpi mt-2">{fmtNumber(stats.produced)}</p>
-        </div>
+        <KpiCard label="Lotes encontrados" value={fmtNumber(stats.count)} />
+        <KpiCard label="Producción total" value={fmtNumber(stats.produced)} note="unidades" />
       </div>
 
       <SectionCard

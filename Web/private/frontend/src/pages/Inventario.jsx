@@ -19,6 +19,7 @@ import { buttonClass } from "../lib/buttonStyles";
 import { fmtNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
 import { UNITS, MATERIAL_TYPES } from "../lib/inventoryOptions";
+import { statusTone } from "../lib/statusDomains";
 
 // Los lotes de Fabricación entran directo a Producto terminado al enviarse a
 // bodega (Fase 5), así que ya no hay pestaña de «Lotes reportados».
@@ -42,7 +43,7 @@ const emptyForm = {
 function Inventario() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/inventory");
-  const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
+  const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders, mutate: mutateOrders } = useFetch("/orders");
   // Bodegas configurables desde Configuración > Bodegas.
   const { data: warehousesData } = useFetch("/warehouses");
   const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
@@ -73,24 +74,24 @@ function Inventario() {
       return [
         { label: "Artículos", value: fmtNumber(finishedItems.length), tone: "blue" },
         { label: "Unidades", value: fmtNumber(finishedItems.reduce((s, i) => s + (Number(i.stock) || 0), 0)), tone: "green" },
-        { label: "Bajo mínimo", value: fmtNumber(finishedItems.filter(isBelowMinimum).length), tone: "rose" },
+        { label: "Bajo mínimo", value: fmtNumber(finishedItems.filter(isBelowMinimum).length), tone: statusTone("Bajo mínimo", "stock") },
       ];
     }
     if (activeTab === "materia") {
       return [
         { label: "Artículos", value: fmtNumber(rawMaterialItems.length), tone: "blue" },
-        { label: "Bajo mínimo", value: fmtNumber(rawMaterialItems.filter(isBelowMinimum).length), tone: "rose" },
+        { label: "Bajo mínimo", value: fmtNumber(rawMaterialItems.filter(isBelowMinimum).length), tone: statusTone("Bajo mínimo", "stock") },
       ];
     }
     return [];
   }, [activeTab, finishedItems, rawMaterialItems]);
 
-  // «Nuevo artículo» crea en la categoría de la pestaña activa: Materia
-  // prima en su pestaña, Producto terminado en las demás.
+  // «Nuevo artículo» solo existe en Materia prima: el producto terminado se
+  // llena solo al enviar un lote a bodega (Fase 5). La unidad arranca en «kg»
+  // pero se puede cambiar en el modal. Editar sigue sirviendo para ambos.
   function openCreate() {
-    const category = activeTab === "materia" ? "Materia Prima" : "Producto Terminado";
     setEditingId(null);
-    setForm({ ...emptyForm, category, unit: category === "Materia Prima" ? "kg" : "unidad", location: warehouses[0] || "" });
+    setForm({ ...emptyForm, category: "Materia Prima", unit: "kg", location: warehouses[0] || "" });
     setModalOpen(true);
   }
 
@@ -169,17 +170,26 @@ function Inventario() {
             ? "Pedidos — llegan solos, se verifican de una vez y se empacan sin confirmación"
             : "Materia prima y stock de productos terminados"
         }
+        // Pedidos no tiene KPIs: sus pestañas van en el encabezado para no
+        // dejar una fila casi vacía. En las demás, el encabezado solo lleva
+        // «Nuevo artículo» (Materia prima) y las pestañas van con los KPIs.
         actions={
-          <Button icon={IconPlus} onClick={openCreate}>
-            Nuevo artículo
-          </Button>
+          activeTab === "pedidos" ? (
+            <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+          ) : activeTab === "materia" ? (
+            <Button icon={IconPlus} onClick={openCreate}>
+              Nuevo artículo
+            </Button>
+          ) : null
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {kpiItems.length ? <KpiInline items={kpiItems} /> : <span />}
-        <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
-      </div>
+      {activeTab !== "pedidos" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <KpiInline items={kpiItems} />
+          <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+        </div>
+      ) : null}
 
       {activeTab === "terminado" ? (
         <ProductoTerminado items={finishedItems} loading={loading} error={error} onEdit={openEdit} onDelete={handleDelete} />
@@ -191,6 +201,7 @@ function Inventario() {
           ordersLoading={ordersLoading}
           ordersError={ordersError}
           refetchOrders={refetchOrders}
+          mutateOrders={mutateOrders}
           finishedItems={finishedItems}
           refetchInventory={refetch}
         />

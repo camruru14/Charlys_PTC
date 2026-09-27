@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
-import { useFetch } from "../../hooks/useFetch";
+import { useFetch, replaceById } from "../../hooks/useFetch";
 import { useUrlState } from "../../hooks/useUrlState";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -12,15 +12,17 @@ import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/Master
 import BatchDetail from "../../components/batches/BatchDetail";
 import SendToWarehouseModal from "../../components/batches/SendToWarehouseModal";
 import { toastUndo } from "../../lib/toastUndo";
+import { statusTone } from "../../lib/statusDomains";
 import { fmtNumber } from "../../lib/format";
 import { IconFactory } from "../../lib/icons";
 import { batchState, productLabel, lineOptions, batchSearchText, pendingUnits } from "../../lib/batchFlow";
 
+// El tono de cada chip es el de su estado (dominio lote).
 const CHIPS = [
   { key: "all", label: "Todos", tone: "gray" },
-  { key: "En proceso", label: "En proceso", tone: "blue" },
-  { key: "Por enviar", label: "Por enviar", tone: "amber" },
-  { key: "Detenido", label: "Detenidos", tone: "rose" },
+  { key: "En proceso", label: "En proceso", tone: statusTone("En proceso", "lote") },
+  { key: "Por enviar", label: "Por enviar", tone: statusTone("Por enviar", "lote") },
+  { key: "Detenido", label: "Detenidos", tone: statusTone("Detenido", "lote") },
 ];
 
 function BatchListRow({ batch, selected, onSelect }) {
@@ -62,7 +64,7 @@ function BatchListRow({ batch, selected, onSelect }) {
   acciones directas: Iniciar, Detener/Reanudar, Completar y Enviar a bodega,
   con «Deshacer» donde hay reversa.
 */
-function LotesFabricacion({ batches, list, loading, error, refetch, operators, onEdit, onDelete }) {
+function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatches, operators, onEdit, onDelete }) {
   const [selectedId, setSelectedId] = useUrlState("id");
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
@@ -100,22 +102,30 @@ function LotesFabricacion({ batches, list, loading, error, refetch, operators, o
     setOpenBox(null);
   }
 
+  // Reemplaza el lote con la respuesta de la acción (las transiciones
+  // responden el lote; enviar/deshacer envío, { batch }). Solo enviar a bodega
+  // y deshacerlo mueven existencia: ahí se recarga el inventario.
+  function applyResult(result, { stock }) {
+    const batch = result?.batch || (result?._id ? result : null);
+    if (batch) mutateBatches((prev) => replaceById(prev, batch));
+    else refetch();
+    if (stock) refetchInventory();
+  }
+
   // Acción directa: `run` hace el cambio; si hay `undo`, el toast ofrece «Deshacer».
-  async function act(run, message, undo) {
+  async function act(run, message, undo, { stock = false } = {}) {
     setBusy(true);
     try {
-      await run();
+      applyResult(await run(), { stock });
       setOpenBox(null);
       if (undo) {
         toastUndo(message, async () => {
           try {
-            await undo();
+            applyResult(await undo(), { stock });
             toast.success("Cambio deshecho");
           } catch (err) {
             toast.error(err.message, { duration: 6000 });
-          } finally {
             refetch();
-            refetchInventory();
           }
         });
       } else {
@@ -123,10 +133,10 @@ function LotesFabricacion({ batches, list, loading, error, refetch, operators, o
       }
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
+      // El lote pudo cambiar en otra pantalla: se vuelve a leer.
+      refetch();
     } finally {
       setBusy(false);
-      refetch();
-      refetchInventory();
     }
   }
 
@@ -162,6 +172,7 @@ function LotesFabricacion({ batches, list, loading, error, refetch, operators, o
         },
         `${fmtNumber(pendingUnits(b))} unidades de ${b.batchNumber} enviadas a ${warehouse}`,
         () => api.patch(url(b, "undo-send")),
+        { stock: true },
       ),
     edit: (b) => onEdit(b),
     remove: async (b) => {

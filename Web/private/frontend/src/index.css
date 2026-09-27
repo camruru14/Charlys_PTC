@@ -15,9 +15,11 @@
   /* Texto */
   --color-ink: #16203a;
   --color-ink-2: #4a5468;
-  --color-muted: #6b7689;
-  --color-subtle: #8a93a6;
-  --color-faint: #a3acbd;
+  /* muted y subtle cumplen AA (4.5:1) sobre surface y surface-2; faint es
+     solo para placeholders, elementos desactivados e íconos decorativos. */
+  --color-muted: #657084;
+  --color-subtle: #6a7387;
+  --color-faint: #8a93a6;
 
   /* Superficies y bordes */
   --color-canvas: #f2f5fa;
@@ -42,7 +44,7 @@
   --color-select-bg: #f3f7fd;
   --color-select-bar: #4a7fd4;
   --color-band: #4a6fa5;
-  --color-band-text: #e4ecf7;
+  --color-band-text: #eef3fa;
   --color-row-alert: #fdf7f8;
   --color-row-new: #f6fbf8;
 
@@ -59,13 +61,13 @@
   --color-tone-blue-text: #2c5ca8;
   --color-tone-blue-dot: #4a7fd4;
   --color-tone-amber: #faf1df;
-  --color-tone-amber-text: #96661a;
+  --color-tone-amber-text: #8a5d15;
   --color-tone-amber-dot: #d9a441;
   /* Avisos ámbar (pedido incompleto en una ruta): borde y texto */
   --color-tone-amber-line: #efd9ae;
   --color-tone-amber-strong: #7a5413;
   --color-tone-green: #eaf4ee;
-  --color-tone-green-text: #3b7d55;
+  --color-tone-green-text: #367450;
   --color-tone-green-dot: #5aa872;
   --color-tone-rose: #f8edef;
   --color-tone-rose-text: #9e4a5e;
@@ -86,16 +88,6 @@
   --color-chart-history: #b9c6e0;
   --color-chart-ref: #c3cbda;
   --color-chart-grid: #f0f3f8;
-
-  /* Alias temporales: las clases brand-* existentes apuntan a primary. */
-  --color-brand-50: var(--color-primary-soft);
-  --color-brand-100: var(--color-primary-soft);
-  --color-brand-200: var(--color-line);
-  --color-brand-400: var(--color-select-bar);
-  --color-brand-500: var(--color-select-bar);
-  --color-brand-600: var(--color-primary);
-  --color-brand-700: var(--color-primary-hover);
-  --color-brand-800: var(--color-primary-soft-text);
 
   --shadow-modal: 0 24px 60px rgb(22 32 58 / 0.28);
   /* Recuadros flotantes dentro de una tarjeta (p. ej. el mes de la gráfica de Finanzas) */
@@ -171,6 +163,12 @@ body {
   /* Cifras (montos, cantidades, IDs, fechas) siempre alineadas */
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Foco visible solo con teclado, en todo lo clicable. */
+:focus-visible {
+  outline: 2px solid var(--color-select-bar);
+  outline-offset: 2px;
 }
 
 /* Scrollbar sutil y minimalista */

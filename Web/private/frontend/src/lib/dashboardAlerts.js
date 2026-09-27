@@ -35,6 +35,9 @@ function stoppedAlerts(batches) {
     }));
 }
 
+// La unidad por defecto de un artículo es «unidad»: en plural si no es 1.
+const unitLabel = (unit, n) => (unit === "unidad" && Number(n) !== 1 ? "unidades" : unit || "");
+
 function lowStockAlerts(inventory) {
   return inventory
     .filter((i) => !i.batchNumber && i.category === "Producto Terminado" && isBelowMinimum(i))
@@ -42,7 +45,7 @@ function lowStockAlerts(inventory) {
       key: `stock-${i._id}`,
       tone: "rose",
       title: `${[i.name, i.color].filter(Boolean).join(" ")} bajo mínimo`,
-      detail: [`${fmtNumber(i.stock)} ${i.unit || ""}`.trim(), i.location].filter(Boolean).join(" · "),
+      detail: [`${fmtNumber(i.stock)} ${unitLabel(i.unit, i.stock)}`.trim(), i.location].filter(Boolean).join(" · "),
       to: "/inventario?tab=terminado&bajoMinimo=1",
     }));
 }

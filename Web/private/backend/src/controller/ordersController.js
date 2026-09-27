@@ -105,22 +105,26 @@ function lineAction(fn, okMessage) {
         setOrderStatus(order, computeOrderStatus(order));
         await order.save({ session });
       });
-      res.json({ message: okMessage });
+      // `order`: el pedido actualizado (poblado como en GET /orders).
+      res.json({ message: okMessage, order: await populateOrder(orderModel.findById(req.params.id)) });
     } catch (error) {
       sendError(res, error);
     }
   };
 }
 
+// Pedido con las mismas referencias pobladas que GET /orders, para que el
+// panel pueda reemplazarlo en su lista sin volver a pedirla completa.
+const populateOrder = (query) =>
+  query
+    .populate("delivery.driver", "name lastName phone")
+    .populate("items.manufacturingBatch", BATCH_FIELDS)
+    .populate("delivery.route", ROUTE_FIELDS);
+
 // SELECT - todos los pedidos
 ordersController.getOrders = async (req, res) => {
   try {
-    const orders = await orderModel
-      .find()
-      .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", BATCH_FIELDS)
-      .populate("delivery.route", ROUTE_FIELDS)
-      .sort({ createdAt: -1 });
+    const orders = await populateOrder(orderModel.find()).sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
     sendError(res, error);
@@ -130,11 +134,7 @@ ordersController.getOrders = async (req, res) => {
 // SELECT - un pedido por id
 ordersController.getOrder = async (req, res) => {
   try {
-    const order = await orderModel
-      .findById(req.params.id)
-      .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", BATCH_FIELDS)
-      .populate("delivery.route", ROUTE_FIELDS);
+    const order = await populateOrder(orderModel.findById(req.params.id));
     res.json(order);
   } catch (error) {
     sendError(res, error);
@@ -455,11 +455,7 @@ ordersController.verifyBulk = async (req, res) => {
       return touched;
     });
 
-    const orders = await orderModel
-      .find({ _id: { $in: ids } })
-      .populate("delivery.driver", "name lastName phone")
-      .populate("items.manufacturingBatch", BATCH_FIELDS)
-      .populate("delivery.route", ROUTE_FIELDS);
+    const orders = await populateOrder(orderModel.find({ _id: { $in: ids } }));
     res.json({ message: "Order items verified", orders });
   } catch (error) {
     sendError(res, error);

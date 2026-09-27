@@ -47,7 +47,7 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
       size="lg"
       footer={
         <>
-          <button onClick={handleClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
+          <button type="button" onClick={handleClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
           <button type="submit" form="product-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
         </>
       }
@@ -67,19 +67,19 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
 
         {/* Colores: checkboxes de catalogOptions.js, con puntito de color */}
         <div className="sm:col-span-2">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">Colores</span>
+          <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Colores</span>
           <div className="flex flex-wrap gap-2">
             {PRODUCT_COLORS.map((color) => {
               const checked = form.colors.includes(color);
               return (
                 <label
                   key={color}
-                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                    checked ? "border-brand-400 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  className={`flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-2 text-[13px] transition ${
+                    checked ? "border-select-bar bg-primary-soft text-primary-soft-text" : "border-line text-ink-2 hover:bg-surface-2"
                   }`}
                 >
-                  <input type="checkbox" checked={checked} onChange={() => onToggleColor(color)} className="rounded border-slate-300 text-brand-600 focus:ring-brand-400" />
-                  <span className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-slate-900/10" style={{ backgroundColor: PRODUCT_COLOR_HEX[color] }} />
+                  <input type="checkbox" checked={checked} onChange={() => onToggleColor(color)} className="rounded border-line accent-primary" />
+                  <span className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-ink/10" style={{ backgroundColor: PRODUCT_COLOR_HEX[color] }} />
                   {color}
                 </label>
               );
@@ -87,29 +87,30 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange} className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400" />
+        <label className="flex items-center gap-2 text-[13px] font-medium text-ink-2">
+          <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange} className="h-4 w-4 rounded border-line accent-primary" />
           Destacado (aparece en Inicio)
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" name="active" checked={form.active} onChange={handleChange} className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400" />
+        <label className="flex items-center gap-2 text-[13px] font-medium text-ink-2">
+          <input type="checkbox" name="active" checked={form.active} onChange={handleChange} className="h-4 w-4 rounded border-line accent-primary" />
           Visible en la tienda
         </label>
 
         {/* Imágenes existentes: solo aparecen editando un producto ya creado */}
         {editingId && form.images?.length ? (
           <div className="sm:col-span-2">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Imágenes actuales</span>
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Imágenes actuales</span>
             <div className="flex flex-wrap gap-3">
               {form.images.map((img) => (
-                <div key={img.publicId} className="group relative h-20 w-20 overflow-hidden rounded-xl border border-slate-200">
+                <div key={img.publicId} className="group relative h-20 w-20 overflow-hidden rounded-[10px] border border-line">
                   <img src={img.url} alt="" className="h-full w-full object-cover" />
                   <button
                     type="button"
                     onClick={() => onRemoveImage(img.publicId)}
                     disabled={removingImage === img.publicId}
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white opacity-0 transition group-hover:opacity-100 disabled:opacity-60"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/70 text-white opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-60"
                     title="Quitar imagen"
+                    aria-label="Quitar imagen"
                   >
                     <IconClose width={12} height={12} />
                   </button>
@@ -121,7 +122,7 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
 
         {/* Imágenes nuevas: se suben al guardar (crear o editar) */}
         <div className="sm:col-span-2">
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">
+          <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">
             {editingId ? "Agregar imágenes" : "Imágenes (opcional)"}
           </span>
           <input
@@ -130,10 +131,10 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
             accept="image/*"
             multiple
             onChange={handleFilesSelected}
-            className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-600 hover:file:bg-slate-200"
+            className="block w-full text-[13px] text-ink-2 file:mr-3 file:rounded-[8px] file:border-0 file:bg-tone-gray file:px-3 file:py-2 file:text-[13px] file:font-semibold file:text-ink-2 hover:file:bg-line"
           />
           {pendingFiles.length ? (
-            <p className="mt-1.5 text-xs text-slate-500">{pendingFiles.length} imagen(es) lista(s) para subir al guardar.</p>
+            <p className="t-aux mt-1.5">{pendingFiles.length} imagen(es) lista(s) para subir al guardar.</p>
           ) : null}
         </div>
       </form>

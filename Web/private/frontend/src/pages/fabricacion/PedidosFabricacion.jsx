@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { replaceById } from "../../hooks/useFetch";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -15,6 +16,7 @@ import DisclosureChevron from "../../components/ui/DisclosureChevron";
 import { Field, SelectField } from "../../components/ui/Field";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
+import { statusTone } from "../../lib/statusDomains";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { fmtNumber, fmtDate, fmtTime, fmtDateTime } from "../../lib/format";
 import { IconBox, IconOrders } from "../../lib/icons";
@@ -30,9 +32,9 @@ import {
 
 const CHIPS = [
   { key: "all", label: "Todos", tone: "gray" },
-  { key: "enProceso", label: "En proceso", tone: "blue" },
-  { key: "porEmpacar", label: "Por empacar", tone: "green" },
-  { key: "detenidos", label: "Detenidos", tone: "rose" },
+  { key: "enProceso", label: "En proceso", tone: statusTone("En proceso", "pedido-fabricacion") },
+  { key: "porEmpacar", label: "Por empacar", tone: statusTone("Por empacar", "pedido-fabricacion") },
+  { key: "detenidos", label: "Detenidos", tone: statusTone("En proceso · detenido", "pedido-fabricacion") },
 ];
 
 const CHIP_TEST = {
@@ -45,7 +47,8 @@ const CHIP_TEST = {
 const LOT_GRID = "84px minmax(0,1fr) 60px 112px 168px 18px";
 const productLabel = (item) => `${item.product}${item.color ? ` · ${item.color}` : ""}`;
 const plural = (n, one, many) => `${fmtNumber(n)} ${n === 1 ? one : many}`;
-const runAll = (calls) => calls.reduce((p, fn) => p.then(fn), Promise.resolve());
+// Ejecuta las llamadas en orden y devuelve todas sus respuestas.
+const runAll = (calls) => calls.reduce((p, fn) => p.then(async (results) => [...results, await fn()]), Promise.resolve([]));
 
 function OrderListRow({ group, selected, onSelect }) {
   const { order } = group;
@@ -419,7 +422,7 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   (Programado) y avanzan con acciones directas hasta el empaque, que queda
   para recoger en «Fabricación» en Logística.
 */
-function PedidosFabricacion({ orders, batches, loading, error, refetchAll, operators, lines }) {
+function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
   const [selectedId, setSelectedId] = useUrlState("id");
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
@@ -436,19 +439,39 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, opera
   }, [groups, chip, query]);
   const selected = groups.find((g) => g.order._id === selectedId) || null;
 
+  // Aplica la respuesta de una acción sin recargar todo:
+  //  - lotes actualizados (transiciones): se reemplazan y se recargan solo
+  //    los pedidos (traen el lote poblado);
+  //  - pedido actualizado (empacar/desempacar una línea): se reemplaza y se
+  //    recargan solo los lotes;
+  //  - cualquier otra respuesta (empacar varios): se recargan ambos.
+  function applyResult(result) {
+    const list = Array.isArray(result) ? result : [result];
+    const updatedBatches = list.filter((r) => r?.batchNumber);
+    const updatedOrders = list.map((r) => r?.order).filter(Boolean);
+    if (updatedBatches.length === list.length) {
+      mutateBatches((prev) => replaceById(prev, updatedBatches));
+      refetchOrders();
+    } else if (updatedOrders.length === list.length) {
+      mutateOrders((prev) => replaceById(prev, updatedOrders));
+      refetchBatches();
+    } else {
+      refetchAll();
+    }
+  }
+
   // Acción directa con «Deshacer». Devuelve true si se aplicó.
   async function act(run, message, undo) {
     setBusy(true);
     try {
-      await run();
+      applyResult(await run());
       if (undo) {
         toastUndo(message, async () => {
           try {
-            await undo();
+            applyResult(await undo());
             toast.success("Cambio deshecho");
           } catch (err) {
             toast.error(err.message, { duration: 6000 });
-          } finally {
             refetchAll();
           }
         });
@@ -458,10 +481,11 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, opera
       return true;
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
+      // Lotes o pedidos pudieron cambiar en otra pantalla: se vuelven a leer.
+      refetchAll();
       return false;
     } finally {
       setBusy(false);
-      refetchAll();
     }
   }
 

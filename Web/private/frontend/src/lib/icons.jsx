@@ -105,24 +105,9 @@ export const IconCalendar = (p) => (
   </svg>
 );
 
-export const IconDownload = (p) => (
-  <svg {...base} {...p}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="M7 10l5 5 5-5" />
-    <path d="M12 15V3" />
-  </svg>
-);
-
 export const IconPlus = (p) => (
   <svg {...base} {...p}>
     <path d="M12 5v14M5 12h14" />
-  </svg>
-);
-
-export const IconBell = (p) => (
-  <svg {...base} {...p}>
-    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
   </svg>
 );
 
@@ -148,18 +133,6 @@ export const IconAlert = (p) => (
 export const IconCheck = (p) => (
   <svg {...base} {...p}>
     <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
-export const IconExpand = (p) => (
-  <svg {...base} {...p}>
-    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-  </svg>
-);
-
-export const IconCollapse = (p) => (
-  <svg {...base} {...p}>
-    <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
   </svg>
 );
 

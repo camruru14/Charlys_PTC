@@ -23,6 +23,7 @@ import { orderJourneySteps, lastStatusEntry } from "../lib/orderJourney";
 import ColorSwatch from "../components/ui/ColorSwatch";
 import ActionsMenu from "../components/ui/ActionsMenu";
 import { IconPlus, IconClose, IconOrders } from "../lib/icons";
+import { statusTone } from "../lib/statusDomains";
 
 const PAYMENT = ["Pendiente", "Pagado", "Reembolsado"];
 const PRODUCTS = ["Pajilla", "Pelota"];
@@ -234,9 +235,9 @@ function Pedidos() {
   const chipOptions = useMemo(
     () => [
       { key: "all", label: "Todos", count: list.length },
-      { key: "pendientes", label: "Pendientes", count: list.filter(CHIP_FILTERS.pendientes).length, tone: "gray" },
-      { key: "enRuta", label: "En ruta", count: list.filter(CHIP_FILTERS.enRuta).length, tone: "teal" },
-      { key: "sinPago", label: "Sin pago", count: list.filter(CHIP_FILTERS.sinPago).length, tone: "amber" },
+      { key: "pendientes", label: "Pendientes", count: list.filter(CHIP_FILTERS.pendientes).length, tone: statusTone("Pendiente", "pedido") },
+      { key: "enRuta", label: "En ruta", count: list.filter(CHIP_FILTERS.enRuta).length, tone: statusTone("En Tránsito", "pedido") },
+      { key: "sinPago", label: "Sin pago", count: list.filter(CHIP_FILTERS.sinPago).length, tone: statusTone("Pendiente", "pago") },
     ],
     [list],
   );

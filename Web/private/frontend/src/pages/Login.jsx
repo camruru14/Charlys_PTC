@@ -39,21 +39,21 @@ function Login() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-lg font-black text-white">
+          <span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-primary text-lg font-extrabold text-white">
             IC
           </span>
-          <h1 className="text-xl font-extrabold tracking-tight text-brand-700">
+          <h1 className="text-xl font-extrabold tracking-tight text-ink">
             Industrias Charly
           </h1>
-          <p className="text-sm text-slate-500">Panel administrativo</p>
+          <p className="t-page-sub">Panel administrativo</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="space-y-4 rounded-[14px] border border-line bg-surface p-6"
         >
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">
               Correo
             </span>
             <input
@@ -62,12 +62,12 @@ function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="admin@industriascharly.com"
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              className="h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 text-[13.5px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">
               Contraseña
             </span>
             <input
@@ -76,19 +76,19 @@ function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              className="h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 text-[13.5px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft"
             />
           </label>
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+            className="h-10 w-full rounded-[10px] bg-primary px-4 text-[13.5px] font-semibold text-white transition hover:bg-primary-hover disabled:opacity-55"
           >
             {submitting ? "Ingresando…" : "Iniciar sesión"}
           </button>
 
-          <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-center text-xs text-slate-500">
+          <p className="rounded-[10px] bg-surface-2 px-3 py-2.5 text-center text-xs text-muted">
             Demo: <b>admin@industriascharly.com</b> / <b>admin123</b>
           </p>
         </form>

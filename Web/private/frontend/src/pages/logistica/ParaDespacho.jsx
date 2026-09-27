@@ -87,7 +87,7 @@ function OrderRow({ order, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
           {isPartialReturn(order) ? (
-            <span className="rounded-[6px] bg-tone-amber px-1.5 py-px text-[10.5px] font-bold text-tone-amber-text">Entrega parcial</span>
+            <StatusPill status="Entrega parcial" domain="despacho" />
           ) : null}
         </span>
         <StatusPill status={info.status} domain="despacho" variant="dot" />

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
-import { useFetch } from "../hooks/useFetch";
+import { useFetch, replaceById } from "../hooks/useFetch";
 import { useUrlState } from "../hooks/useUrlState";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
@@ -30,7 +30,7 @@ const SUBTITLES = {
   URL: ?tab= (transito | despacho), ?ruta= (ruta abierta), ?filtro= (lista de Para despacho).
 */
 function Logistica() {
-  const { data: routesData, loading: routesLoading, error: routesError, refetch: refetchRoutes } = useFetch("/routes");
+  const { data: routesData, loading: routesLoading, error: routesError, refetch: refetchRoutes, mutate: mutateRoutes } = useFetch("/routes");
   const { data: availability, refetch: refetchAvailability } = useFetch("/routes/availability");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   const [, setSearchParams] = useSearchParams();
@@ -51,19 +51,33 @@ function Logistica() {
     refetchOrders();
   }
 
+  // Toda acción de ruta responde la ruta actualizada (poblada): se reemplaza
+  // en la lista sin volver a pedir /routes. Los pedidos sí se recargan (la
+  // acción los cambia) y la disponibilidad solo si cambió el motorista, el
+  // vehículo o el estado de la ruta (una ruta Completada libera ambos).
+  function applyRoute(updated) {
+    if (!updated?._id) return refreshAll();
+    const previous = routes.find((r) => r._id === updated._id);
+    mutateRoutes((list) => replaceById(list, updated));
+    refetchOrders();
+    const driverOf = (r) => String(r?.driver?._id || r?.driver || "");
+    if (!previous || driverOf(previous) !== driverOf(updated) || previous.vehicle !== updated.vehicle || previous.status !== updated.status) {
+      refetchAvailability();
+    }
+  }
+
   // Acción directa; si hay `undo`, el toast ofrece «Deshacer». Devuelve true si se aplicó.
   async function act(run, message, undo) {
     setBusy(true);
     try {
-      await run();
+      applyRoute(await run());
       if (undo) {
         toastUndo(message, async () => {
           try {
-            await undo();
+            applyRoute(await undo());
             toast.success("Cambio deshecho");
           } catch (err) {
             toast.error(err.message, { duration: 6000 });
-          } finally {
             refreshAll();
           }
         });
@@ -73,10 +87,11 @@ function Logistica() {
       return true;
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
+      // La ruta pudo cambiar en otra pantalla: se vuelve a leer todo.
+      refreshAll();
       return false;
     } finally {
       setBusy(false);
-      refreshAll();
     }
   }
 
@@ -115,7 +130,7 @@ function Logistica() {
           selectedId={routeId}
           onSelect={setRouteId}
           unassignedCount={unassigned}
-          onAssign={() => goTo({ tab: "despacho", filtro: "sin-ruta" })}
+          onAssign={() => goTo({ tab: "despacho", filtro: "sin-ruta", ruta: null })}
           availability={availability}
           busy={busy}
           act={act}
