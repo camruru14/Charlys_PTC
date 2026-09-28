@@ -16,7 +16,7 @@ import { colors } from "../lib/theme";
 
 const CATEGORIES = ["Pelotas", "Pajillas"];
 // Máximo de imágenes por request, mismo límite que
-// Web/public/backend/src/routes/products.js (uploadProductImages.array("images", 6)).
+// Web/private/backend/src/routes/products.js (uploadProductImages.array("images", 6)).
 const MAX_IMAGES_PER_UPLOAD = 6;
 
 const emptyForm = {

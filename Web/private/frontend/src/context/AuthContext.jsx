@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import { API_URL, setAuthToken } from "../lib/api";
-import { setPublicApiToken } from "../lib/publicApi";
 import { AuthContext } from "./authContextValue";
 
 // Provider de la sesión: evita "prop drilling" al compartirla entre todas las vistas.
@@ -50,13 +49,11 @@ export function AuthProvider({ children }) {
   // un estado de carga intermedio).
   const [user, setUser] = useState(() => {
     const stored = readStoredSession();
-    // El token también se restaura -- tanto para publicApi.js (usado por
-    // Catalogo.jsx) como para api.js (todo el resto del panel): en
+    // El token también se restaura para api.js: en
     // Safari/iPhone la cookie httpOnly del login no persiste (ver
     // lib/api.js), así que este token de respaldo es el que realmente
     // mantiene la sesión activa después de recargar la página.
     if (stored?.token) {
-      setPublicApiToken(stored.token);
       setAuthToken(stored.token);
     }
     return stored?.user || null;
@@ -77,7 +74,6 @@ export function AuthProvider({ children }) {
       writeSessionPassword("");
       setSessionPasswordState("");
       setUser(null);
-      setPublicApiToken(null);
       setAuthToken(null);
       return;
     }
@@ -86,7 +82,6 @@ export function AuthProvider({ children }) {
       JSON.stringify({ user: nextUser, token: nextToken, authenticatedAt: new Date().toISOString() }),
     );
     setUser(nextUser);
-    setPublicApiToken(nextToken);
     setAuthToken(nextToken);
   }, []);
 

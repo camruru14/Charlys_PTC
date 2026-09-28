@@ -21,16 +21,20 @@ export function setTokenGetter(fn) {
   getToken = fn;
 }
 
+// FormData (Catálogo, subir imágenes): se manda tal cual como
+// multipart/form-data, sin header Content-Type, para que fetch le agregue el
+// boundary correcto solo.
 async function request(path, { method = "GET", body } = {}) {
   const token = await getToken();
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
 
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(body && !isForm ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   });
 
   // Sesión inválida/expirada: a diferencia de la web (que redirige con

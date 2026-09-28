@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
-import publicApi from "../lib/publicApi";
+import { api } from "../lib/api";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import ProductFormModal from "../components/catalog/ProductFormModal";
 import ProductCatalogCard from "../components/catalog/ProductCatalogCard";
@@ -37,16 +37,16 @@ const emptyForm = {
 };
 
 /*
-  Administración del catálogo de la tienda pública (public/backend). Vive en
-  el panel privado porque usa la misma sesión de empleado para autenticarse
-  contra public/backend (ver src/lib/publicApi.js) — no hay login aparte.
+  Administración del catálogo de la tienda pública. Pega a private/backend
+  (/products), que escribe en la misma colección que lee public/backend: el
+  catálogo del panel funciona aunque la tienda no esté corriendo.
   Muestra los productos como cards (no tabla): imagen, nombre, categoría,
   precio y colores, que es lo que un catálogo de e-commerce necesita ver de
   un vistazo, a diferencia de las tablas del resto del panel.
 */
 function Catalogo() {
   const { confirm, confirmProps } = useConfirm();
-  const { data, loading, error, refetch } = useFetch("/products/admin/all", { client: publicApi });
+  const { data, loading, error, refetch } = useFetch("/products/admin/all");
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
   // Pestañas: «Todas» y cada categoría que existe, con su conteo (?categoria=).
@@ -114,7 +114,7 @@ function Catalogo() {
   async function uploadImages(productId, files) {
     const formData = new FormData();
     files.forEach((file) => formData.append("images", file));
-    await publicApi.post(`/products/${productId}/images`, formData, { isForm: true });
+    await api.post(`/products/${productId}/images`, formData);
   }
 
   async function handleSubmit(pendingFiles) {
@@ -131,10 +131,10 @@ function Catalogo() {
     try {
       let productId = editingId;
       if (editingId) {
-        await publicApi.put(`/products/${editingId}`, payload);
+        await api.put(`/products/${editingId}`, payload);
         toast.success("Producto actualizado");
       } else {
-        const created = await publicApi.post("/products", payload);
+        const created = await api.post("/products", payload);
         productId = created._id;
         toast.success("Producto creado");
       }
@@ -155,7 +155,7 @@ function Catalogo() {
   async function handleDelete(product) {
     if (!(await confirm(`¿Eliminar "${product.name}"? También se borran sus imágenes en Cloudinary.`, { danger: true }))) return;
     try {
-      await publicApi.del(`/products/${product._id}`);
+      await api.del(`/products/${product._id}`);
       toast.success("Producto eliminado");
       refetch();
     } catch (err) {
@@ -181,7 +181,7 @@ function Catalogo() {
     if (!editingId) return;
     setRemovingImage(publicId);
     try {
-      await publicApi.del(`/products/${editingId}/images/${encodeURIComponent(publicId)}`);
+      await api.del(`/products/${editingId}/images/${encodeURIComponent(publicId)}`);
       setForm((f) => ({ ...f, images: f.images.filter((img) => img.publicId !== publicId) }));
       refetch();
     } catch (err) {

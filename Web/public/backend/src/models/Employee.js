@@ -4,11 +4,10 @@ import { Schema, model } from "mongoose";
 // panel privado (private/backend/src/models/Employee.js), igual que se hizo
 // con Order.js. Ambos backends apuntan a la MISMA base de datos y a la MISMA
 // colección "employees" — este backend NO crea ni edita empleados, solo lo
-// usa para: (1) que employeeAuthMiddleware.js pueda validar la cookie
-// "authCookie" de un empleado ya logueado en private/frontend y administrar
-// así el catálogo público, y (2) que "Employee" quede registrado como modelo
-// aquí también, para poder poblar (`.populate`) el motorista de un pedido
-// (Order.delivery.driver) el día que se necesite.
+// registra como modelo aquí también, para poder poblar (`.populate`) el
+// motorista de un pedido (Order.delivery.driver) el día que se necesite. (La
+// administración del catálogo, que antes validaba aquí la sesión de
+// empleado, ahora vive en private/backend.)
 //
 // Si se modifica el esquema en el panel privado, este archivo debe
 // actualizarse igual para que ambos lados sigan siendo compatibles.

@@ -14,9 +14,7 @@ carga llamando a la propia API, como lo haría cualquier cliente.
 
 1. **Archivo de entorno.** Ya usas tu propio `.env` (con `DB_URI` apuntando
    a la misma base `INDUSTRIAS_CHARLY` que `private/backend`, y las
-   credenciales de Cloudinary/Wompi que ya tenía el proyecto). No hace falta
-   ninguna llave nueva: la administración del catálogo usa la misma sesión
-   de empleado que `private/backend` (mismo `JWT_Secret_key`).
+   credenciales de Wompi que ya tenía el proyecto).
 
 2. **Instala dependencias:**
    ```bash
@@ -31,7 +29,8 @@ carga llamando a la propia API, como lo haría cualquier cliente.
 
 4. **Carga el catálogo inicial** — inicia sesión en `private/frontend` con
    cualquier empleado y ve a **Catálogo** en el menú lateral: ahí se crean
-   los productos y se suben sus imágenes (ver más abajo). No hay script ni
+   los productos y se suben sus imágenes (ver más abajo). Este backend no
+   necesita estar corriendo para eso. No hay script ni
    llamadas manuales a la API: el catálogo se administra desde esa pantalla,
    igual que cualquier otro dato del panel.
 
@@ -48,19 +47,11 @@ otra tarjeta desde el mismo checkout.
 
 ## Administración del catálogo
 
-Se administra desde `private/frontend` (pantalla **Catálogo**, en el
-Sidebar). No hay un mecanismo de auth aparte: estas rutas exigen la misma
-cookie `authCookie` de sesión de empleado que usa todo el panel privado
-(ver `src/middlewares/employeeAuthMiddleware.js`) — cualquier empleado ya
-logueado en `private/frontend` puede usarlas.
-
-- `POST /api/products` — crear producto
-- `PUT /api/products/:id` — editar producto
-- `DELETE /api/products/:id` — eliminar producto (borra también sus
-  imágenes en Cloudinary)
-- `POST /api/products/:id/images` — subir imágenes (multipart/form-data,
-  campo `images`, hasta 6 por llamada)
-- `DELETE /api/products/:id/images/:publicId` — eliminar una imagen
+Se administra desde `private/frontend` (pantalla **Catálogo**) y la app
+Movil, contra `private/backend` (`/api/products`, con la sesión del panel).
+Ambos backends usan la misma colección `products`, cada uno con su propia
+copia del modelo (`src/models/Product.js`): este backend solo la lee, para
+la tienda y para calcular los precios del checkout.
 
 ## Endpoints principales
 
@@ -72,8 +63,3 @@ logueado en `private/frontend` puede usarlas.
 | GET | `/api/products/:slug` | — | Detalle de producto |
 | POST | `/api/orders/checkout` | Cliente | Cobra la tarjeta con Wompi y, si aprueba, crea el pedido |
 | GET | `/api/orders/mine` | Cliente | Historial de pedidos del cliente |
-| POST | `/api/products` | Empleado | Crear producto |
-| PUT | `/api/products/:id` | Empleado | Editar producto |
-| DELETE | `/api/products/:id` | Empleado | Eliminar producto |
-| POST | `/api/products/:id/images` | Empleado | Subir imágenes del producto |
-| DELETE | `/api/products/:id/images/:publicId` | Empleado | Eliminar una imagen |

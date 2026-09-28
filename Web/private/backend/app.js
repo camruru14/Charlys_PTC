@@ -20,6 +20,8 @@ import vehiclesRoutes from "./src/routes/vehicles.js";
 import routesRoutes from "./src/routes/routes.js";
 import settingsRoutes from "./src/routes/settings.js";
 import productionLinesRoutes from "./src/routes/productionLines.js";
+import productsRoutes from "./src/routes/products.js";
+import { PRODUCT_IMAGE_MAX_MB } from "./src/lib/cloudinary.js";
 
 // Cargar especificación OpenAPI 3.1.0
 const openapiDoc = JSON.parse(
@@ -108,6 +110,10 @@ app.use("/api/routes", validateAuthCookie(), routesRoutes);
 // Líneas de producción (Configuración; opciones al crear/iniciar lotes)
 app.use("/api/productionLines", validateAuthCookie(), productionLinesRoutes);
 
+// Catálogo de la tienda pública: administración (crear/editar/eliminar e
+// imágenes). Misma colección "products" que lee public/backend.
+app.use("/api/products", validateAuthCookie(), productsRoutes);
+
 // Configuración compartida entre usuarios (horario laboral)
 app.use("/api/settings", validateAuthCookie(), settingsRoutes);
 
@@ -124,10 +130,19 @@ app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // antes del controlador (p. ej. multer rechazando el logo por tamaño o tipo)
 // no pasa por su try/catch, y el handler por defecto de Express responde sin
 // JSON; el panel espera { message }.
+const MULTER_MESSAGES = {
+  LIMIT_FILE_COUNT: "Puedes subir hasta 6 imágenes a la vez",
+  LIMIT_UNEXPECTED_FILE: "Puedes subir hasta 6 imágenes a la vez",
+};
+
 app.use((err, _req, res, _next) => {
   console.log("error " + err);
-  const status = err.status || err.http_code || (err.code === "LIMIT_FILE_SIZE" ? 400 : 500);
-  const message = err.code === "LIMIT_FILE_SIZE" ? "La imagen no puede pesar más de 5 MB" : err.message || "Error interno del servidor.";
+  const isMulter = err.name === "MulterError";
+  const status = err.status || err.http_code || (isMulter ? 400 : 500);
+  const message =
+    err.code === "LIMIT_FILE_SIZE"
+      ? `La imagen no puede pesar más de ${err.field === "images" ? PRODUCT_IMAGE_MAX_MB : 5} MB`
+      : (isMulter && MULTER_MESSAGES[err.code]) || err.message || "Error interno del servidor.";
   res.status(status).json({ message });
 });
 

@@ -1,15 +1,15 @@
 import { useCallback } from "react";
 import { useApi } from "./useApi";
-import { publicApi } from "../lib/publicApi";
+import { api } from "../lib/api";
 
-// GET /products/admin/all (public/backend): requiere el token de empleado,
-// que src/lib/publicApi.js ya manda como Authorization: Bearer (Fase 1).
-// Lee de "/products/admin/all" pero crea/edita/borra contra "/products"
-// (mutatePath), que es donde vive el resto de la API de productos.
+// Administración del catálogo contra private/backend (src/lib/api.js, con el
+// token de la sesión), igual que el panel web. Lee de "/products/admin/all"
+// pero crea/edita/borra contra "/products" (mutatePath), que es donde vive el
+// resto de la API de productos.
 export function useCatalog() {
   const { data, loading, refreshing, error, refresh, crear, actualizar, eliminar } = useApi(
     "/products/admin/all",
-    { client: publicApi, mutatePath: "/products" },
+    { mutatePath: "/products" },
   );
 
   // Sube hasta 6 imágenes (multipart/form-data, campo "images") a un
@@ -19,7 +19,7 @@ export function useCatalog() {
     async (id, files) => {
       const formData = new FormData();
       files.forEach((file) => formData.append("images", file));
-      const result = await publicApi.post(`/products/${id}/images`, formData, { isForm: true });
+      const result = await api.post(`/products/${id}/images`, formData);
       await refresh();
       return result;
     },
@@ -30,7 +30,7 @@ export function useCatalog() {
   // del backend). `publicId` va URL-encoded, igual que en el panel web.
   const eliminarImagen = useCallback(
     async (id, publicId) => {
-      const result = await publicApi.del(`/products/${id}/images/${encodeURIComponent(publicId)}`);
+      const result = await api.del(`/products/${id}/images/${encodeURIComponent(publicId)}`);
       await refresh();
       return result;
     },

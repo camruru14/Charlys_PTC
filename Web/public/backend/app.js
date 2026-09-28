@@ -16,9 +16,9 @@ const allowedOrigins = process.env.CORS_ORIGINS
   : [
       "http://localhost:5175",
       "http://localhost:5176",
-      // private/frontend (panel administrativo): administra el catálogo
-      // público desde ahí con la misma sesión de empleado, ver
-      // employeeAuthMiddleware.js.
+      // private/frontend (panel administrativo). Ya no llama a este backend
+      // (el catálogo se administra en private/backend); se puede quitar
+      // cuando ya no se necesite.
       "http://localhost:5173",
       "http://localhost:5174",
     ];
@@ -58,19 +58,17 @@ app.use("/api/auth", authRoutes);
 // Recuperación de contraseña por código (3 pasos, cookie temporal aparte de la sesión)
 app.use("/api/auth/recovery", recoveryPasswordRoutes);
 
-// Catálogo de productos (público + administración por sesión de empleado)
+// Catálogo de productos (público, solo lectura; se administra en private/backend)
 app.use("/api/products", productsRoutes);
 
 // Pedidos del e-commerce (checkout con cobro directo a Wompi, historial del cliente)
 app.use("/api/orders", ordersRoutes);
 
 // Manejador de errores global: sin esto, un error lanzado por un middleware
-// ANTES del controlador (ej. multer/Cloudinary rechazando el archivo por
-// formato, límite de tamaño, etc. en uploadProductImages) nunca pasa por el
+// ANTES del controlador (ej. el body JSON mal formado) nunca pasa por el
 // try/catch del controlador — Express usa su handler por defecto, que
-// responde 500 sin cuerpo. Los clientes (api.js/publicApi.js en Movil,
-// private/frontend) esperan JSON con "message", así que sin esto el error
-// nunca es legible del lado del cliente.
+// responde 500 sin cuerpo. Los clientes esperan JSON con "message", así que
+// sin esto el error nunca es legible del lado del cliente.
 app.use((err, _req, res, _next) => {
   console.log("error " + err);
   const status = err.status || err.http_code || 500;

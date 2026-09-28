@@ -5,9 +5,9 @@ import { api } from "../lib/api";
   Hook genérico de lectura (GET) con estado de carga, error, refetch y mutate.
   Uso:
     const { data, loading, error, refetch, mutate } = useFetch("/orders");
-  Por defecto pega a private/backend (lib/api.js). Para leer de otro backend
-  (ej. Catálogo.jsx contra public/backend) pasa `client`:
-    useFetch("/products", { client: publicApi });
+  Por defecto pega a private/backend (lib/api.js). Para leer con otro cliente
+  HTTP pasa `client` (un objeto con `get(path)`):
+    useFetch("/ruta", { client: otroCliente });
   - refetch() vuelve a pedir la ruta. Si ya hay datos, no pasa por «Cargando…»
     (la pantalla se queda como está hasta que llega la respuesta).
   - mutate(updater) cambia los datos locales sin pedir nada al servidor, p. ej.
