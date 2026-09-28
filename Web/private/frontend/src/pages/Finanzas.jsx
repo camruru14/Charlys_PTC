@@ -14,7 +14,7 @@ import { Field, SelectField, FilterSelect, ReadonlyField } from "../components/u
 import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import MonthlyChart from "../components/finance/MonthlyChart";
 import TransactionTable from "../components/transactions/TransactionTable";
-import { defaultTransactionFilters, filterTransactions, txDate, txDateParts } from "../lib/transactionFilters";
+import { defaultTransactionFilters, filterTransactions, inRange, txDateParts } from "../lib/transactionFilters";
 import { todayInput } from "../hooks/useBatchForm";
 import { blockNegativeKey } from "../lib/numberInput";
 import { IconPlus } from "../lib/icons";
@@ -93,16 +93,7 @@ function Finanzas() {
   const raw = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
   // Transacciones dentro del rango de fechas (KPIs); "Todo" = sin rango.
-  const rangeList = useMemo(
-    () =>
-      raw.filter((t) => {
-        if (!range.from || !range.to) return true;
-        const d = new Date(txDate(t));
-        if (Number.isNaN(d.getTime())) return true;
-        return d >= range.from && d <= range.to;
-      }),
-    [raw, range],
-  );
+  const rangeList = useMemo(() => raw.filter((t) => inRange(t, range)), [raw, range]);
 
   // Rango + buscador + tipo (tabla)
   const tableList = useMemo(

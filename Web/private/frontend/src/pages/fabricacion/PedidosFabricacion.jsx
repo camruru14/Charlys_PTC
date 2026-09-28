@@ -46,7 +46,9 @@ const CHIP_TEST = {
   detenidos: (g) => g.stopped.length > 0,
 };
 
-const LOT_GRID = "84px minmax(0,1fr) 60px 112px 168px 18px";
+// La 1.ª columna cabe en una línea un número real («LOTE-2026-0157»). Con
+// min-w-[640px] el producto conserva ~146px; a 1440px el panel da de sobra.
+const LOT_GRID = "124px minmax(0,1fr) 60px 112px 168px 18px";
 const productLabel = (item) => `${item.product}${item.color ? ` · ${item.color}` : ""}`;
 const plural = (n, one, many) => `${fmtNumber(n)} ${n === 1 ? one : many}`;
 // Ejecuta las llamadas en orden y devuelve todas sus respuestas.
@@ -384,7 +386,7 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
                       className="grid min-h-[46px] cursor-pointer items-center py-1.5 pr-3 transition hover:bg-surface-2"
                       style={{ gridTemplateColumns: LOT_GRID }}
                     >
-                      <span className="pl-4 text-[12.5px] font-semibold tabular-nums text-ink-2">{lot.batch.batchNumber}</span>
+                      <span className="whitespace-nowrap pl-4 text-[12.5px] font-semibold tabular-nums text-ink-2">{lot.batch.batchNumber}</span>
                       <span className="truncate pr-3 text-[13.5px] font-semibold text-ink">{productLabel(lot.item)}</span>
                       <span className="pr-3 text-right text-[13px] tabular-nums text-ink">{lot.qty != null ? `${fmtNumber(lot.qty)} u` : "—"}</span>
                       <span>

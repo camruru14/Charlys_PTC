@@ -1,24 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
 import useFetch from "../hooks/useFetch";
 
 const CATEGORIES = ["Todos", "Pelotas", "Pajillas"];
+// Espera tras la última tecla antes de buscar, para no pedir una vez por letra.
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function ProductosPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get("category") || "Todos";
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
     if (category !== "Todos") params.set("category", category);
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     const qs = params.toString();
     return `/products${qs ? `?${qs}` : ""}`;
-  }, [category, search]);
+  }, [category, debouncedSearch]);
 
-  const { data: products, loading } = useFetch(query, [query]);
+  const { data: products, loading, error } = useFetch(query, [query]);
 
   const setCategory = (value) => {
     const params = new URLSearchParams(searchParams);
@@ -64,14 +72,23 @@ export default function ProductosPage() {
 
       {loading && <p className="mt-16 text-muted-foreground">Cargando productos…</p>}
 
-      {!loading && products?.length === 0 && (
+      {/* Mismo rojo de error que Mis pedidos y Field. Mensaje fijo: si el
+          servidor no responde, fetch lanza "Failed to fetch" (en inglés). */}
+      {!loading && error && (
+        <p className="mt-16 text-red-600">
+          No pudimos cargar los productos. Revisa tu conexión e inténtalo de nuevo.
+        </p>
+      )}
+
+      {!loading && !error && products?.length === 0 && (
         <p className="mt-16 text-muted-foreground">
           No encontramos productos con esos filtros.
         </p>
       )}
 
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products?.map((product) => (
+        {/* Con error no se muestran los resultados de la búsqueda anterior. */}
+        {!error && products?.map((product) => (
           <ProductCard key={product._id} product={product} />
         ))}
       </div>

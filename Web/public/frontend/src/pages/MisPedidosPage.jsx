@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
 
@@ -13,6 +14,26 @@ const STATUS_STYLES = {
   Entregado: "bg-green-100 text-green-700",
 };
 
+const money = (n) => `$${(n ?? 0).toFixed(2)}`;
+
+// Chevron de trazo, mismo estilo que los íconos del Navbar.
+const Chevron = ({ open }) => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+    className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+  >
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString("es-SV", { day: "numeric", month: "long", year: "numeric" });
 
@@ -26,6 +47,15 @@ const formatDate = (iso) =>
 export default function MisPedidosPage() {
   const { data: orders, loading, error } = useFetch("/orders/mine");
   const list = Array.isArray(orders) ? orders : [];
+  // Pedidos abiertos (por _id); abrir uno no cierra los demás.
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggle = (id) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <section className="mx-auto max-w-4xl px-6 py-16 md:py-24">
@@ -53,40 +83,112 @@ export default function MisPedidosPage() {
       )}
 
       <div className="mt-10 space-y-5">
-        {list.map((order) => (
-          <article key={order._id} className="rounded-3xl border border-border bg-card p-6">
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-              <div>
-                <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
-                <p className="font-display font-semibold">Pedido {order.orderNumber}</p>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  STATUS_STYLES[order.status] || "bg-slate-100 text-slate-700"
-                }`}
+        {list.map((order) => {
+          const open = expanded.has(order._id);
+          const detailId = `pedido-${order._id}-detalle`;
+          const subtotal = (order.items || []).reduce((sum, item) => sum + (item.subtotal || 0), 0);
+          return (
+            <article key={order._id} className="rounded-3xl border border-border bg-card p-6">
+              {/* Resumen (lo mismo de siempre): clic o Enter/Espacio abre y cierra. */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={open}
+                aria-controls={detailId}
+                onClick={() => toggle(order._id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle(order._id);
+                  }
+                }}
+                className="cursor-pointer rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
               >
-                {order.status}
-              </span>
-            </header>
+                <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                    <p className="font-display font-semibold">Pedido {order.orderNumber}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        STATUS_STYLES[order.status] || "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {order.status}
+                    </span>
+                    <Chevron open={open} />
+                  </div>
+                </header>
 
-            <div className="divide-y divide-border/60">
-              {order.items?.map((item, i) => (
-                <div key={i} className="flex items-center justify-between gap-4 py-2.5 text-sm">
-                  <span className="text-muted-foreground">
-                    <span className="font-medium text-foreground">{item.quantity}×</span> {item.product}
-                    {item.color ? ` (${item.color})` : ""}
-                  </span>
-                  <span className="font-medium">${item.subtotal?.toFixed(2)}</span>
+                <div className="divide-y divide-border/60">
+                  {order.items?.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                      <span className="text-muted-foreground">
+                        <span className="font-medium text-foreground">{item.quantity}×</span> {item.product}
+                        {item.color ? ` (${item.color})` : ""}
+                      </span>
+                      <span className="font-medium">${item.subtotal?.toFixed(2)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-              <p className="text-sm text-muted-foreground">Enviar a: {order.customer?.address || "—"}</p>
-              <p className="font-display text-lg font-bold">${order.total?.toFixed(2)}</p>
-            </footer>
-          </article>
-        ))}
+                <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                  <p className="text-sm text-muted-foreground">Enviar a: {order.customer?.address || "—"}</p>
+                  <p className="font-display text-lg font-bold">${order.total?.toFixed(2)}</p>
+                </footer>
+              </div>
+
+              {open && (
+                <div id={detailId} className="mt-4 grid gap-6 border-t border-border pt-5 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Envío y pago
+                    </p>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div>
+                        <dt className="text-muted-foreground">Dirección</dt>
+                        <dd className="font-medium">{order.customer?.address || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Teléfono</dt>
+                        <dd className="font-medium">{order.customer?.phone || "—"}</dd>
+                      </div>
+                      {/* Sin transacción de pago asociada, esta línea no se muestra. */}
+                      {order.payment?.cardLast4 && (
+                        <div>
+                          <dt className="text-muted-foreground">Método de pago</dt>
+                          <dd className="font-medium">Tarjeta terminada en {order.payment.cardLast4}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Resumen
+                    </p>
+                    <div className="mt-3 flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="font-medium">{money(subtotal)}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      El envío se coordina después del pago según tu dirección.
+                    </p>
+                    <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                      <span className="font-display font-semibold">Total</span>
+                      <span className="font-display font-bold">{money(order.total)}</span>
+                    </div>
+                  </div>
+
+                  <Link to="/contacto" className="justify-self-start text-sm font-medium text-primary hover:underline sm:col-span-2">
+                    ¿Necesitas ayuda con este pedido?
+                  </Link>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </section>
   );

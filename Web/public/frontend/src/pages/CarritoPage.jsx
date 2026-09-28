@@ -1,17 +1,13 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import { useAuth } from "../context/AuthContext";
 
 export default function CarritoPage() {
   const { items, updateQuantity, removeItem, total } = useCart();
-  const { customer } = useAuth();
   const navigate = useNavigate();
 
-  const goToCheckout = () => {
-    navigate(customer ? "/checkout" : "/cuenta/login", {
-      state: { from: { pathname: "/checkout" } },
-    });
-  };
+  // Sin sesión, <PrivateRoute> (App.jsx) manda a /cuenta/login con
+  // state.from = /checkout, y LoginPage vuelve aquí al iniciar sesión.
+  const goToCheckout = () => navigate("/checkout");
 
   if (items.length === 0) {
     return (

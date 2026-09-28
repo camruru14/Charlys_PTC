@@ -107,6 +107,18 @@ function Logistica() {
     );
   }
 
+  // Cambio de pestaña. ?ruta= se conserva (En tránsito sigue en la misma
+  // ruta), salvo al ir a Para despacho con una ruta que ya salió: ahí se
+  // quita a la vez que ?tab= para que Para despacho abra la ruta por salir
+  // recordada (o la primera, o «Ninguna ruta abierta») en vez del aviso
+  // «La Ruta N ya salió». Ese aviso sigue apareciendo justo después de
+  // «Salir a ruta», porque eso no cambia de pestaña.
+  function changeTab(tab) {
+    const open = routes.find((r) => r._id === routeId);
+    if (tab === "despacho" && open?.departedAt) goTo({ tab, ruta: null });
+    else setActiveTab(tab);
+  }
+
   return (
     <div className="flex flex-col gap-3.5">
       <PageHeader
@@ -114,7 +126,7 @@ function Logistica() {
         subtitle={SUBTITLES[activeTab]}
         actions={
           <>
-            <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
             <Button icon={IconPlus} onClick={() => setNewRouteOpen(true)}>
               Armar ruta
             </Button>

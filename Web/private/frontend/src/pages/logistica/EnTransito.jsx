@@ -14,7 +14,10 @@ import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/for
 import { IconTruck } from "../../lib/icons";
 import { routeProgress, progressNote, personName } from "../../lib/logistics";
 
-const STOPS_GRID = "44px 128px minmax(0,1fr) 176px 92px 132px 120px";
+// Cliente y Dirección se reparten el espacio (con truncate); con min-w-[680px]
+// la tabla entera, botón «Entregado» incluido, cabe en el panel de detalle a
+// 1440px (~734px). El scroll horizontal queda solo para pantallas angostas.
+const STOPS_GRID = "40px 116px minmax(0,1fr) minmax(0,1fr) 64px 112px 108px";
 
 function RouteListRow({ route, selected, onSelect }) {
   const { delivered, total } = routeProgress(route);
@@ -152,7 +155,7 @@ function RouteDetail({ route, availability, busy, act }) {
           </div>
           <div className="overflow-hidden rounded-[12px] border border-line">
             <div className="overflow-x-auto">
-              <div className="min-w-[820px]">
+              <div className="min-w-[680px]">
                 <div className="grid h-8 items-center bg-band" style={{ gridTemplateColumns: STOPS_GRID }}>
                   {["#", "Pedido", "Cliente", "Dirección", "Hora", "Estado", "Acción"].map((h, i) => (
                     <span key={h} className={`t-label !text-band-text ${i === 0 ? "text-center" : ""}`}>
@@ -173,7 +176,7 @@ function RouteDetail({ route, availability, busy, act }) {
                       <span className="flex justify-center">
                         <StopNumber n={i + 1} state={state} />
                       </span>
-                      <span className="t-row-name tabular-nums">{order.orderNumber}</span>
+                      <span className="t-row-name whitespace-nowrap tabular-nums">{order.orderNumber}</span>
                       <span className="truncate pr-3 text-[13px] text-ink">{order.customer?.name || "—"}</span>
                       <span className="truncate pr-3 text-[12.5px] text-ink-2">{order.delivery?.address || order.customer?.address || "—"}</span>
                       <span className="text-[12.5px] tabular-nums text-ink-2">{stop.deliveredAt ? fmtTime(stop.deliveredAt) : "—"}</span>

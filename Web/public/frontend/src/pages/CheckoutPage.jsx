@@ -9,6 +9,10 @@ import api from "../lib/api";
 // Tarjeta de prueba de Wompi (cuenta en modo sandbox: no cobra dinero real,
 // pero la transacción sí viaja a la API de Wompi).
 const TARJETA_DEMO = { number: "4573 6900 0199 0693", cvv: "835", month: "12", year: "2029" };
+// Solo con la cuenta de Wompi en sandbox se ofrece la tarjeta de prueba y el
+// aviso de "no se cobra dinero real" (ver .env.example). Cualquier otro valor,
+// o la variable ausente, se trata como producción.
+const WOMPI_SANDBOX = import.meta.env.VITE_WOMPI_SANDBOX === "true";
 
 export default function CheckoutPage() {
   const { items, total, clearCart } = useCart();
@@ -126,16 +130,19 @@ export default function CheckoutPage() {
           <div className="rounded-2xl border border-border bg-secondary/40 p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold">Datos de la tarjeta</p>
-              <button
-                type="button"
-                onClick={fillDemoCard}
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                Usar tarjeta de prueba
-              </button>
+              {WOMPI_SANDBOX && (
+                <button
+                  type="button"
+                  onClick={fillDemoCard}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Usar tarjeta de prueba
+                </button>
+              )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Pago procesado por Wompi. La cuenta está en modo de prueba: no se cobra dinero real.
+              Pago procesado por Wompi.
+              {WOMPI_SANDBOX && " La cuenta está en modo de prueba: no se cobra dinero real."}
             </p>
 
             <div className="mt-4 space-y-4">

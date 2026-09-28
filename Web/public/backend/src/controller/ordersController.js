@@ -214,7 +214,24 @@ ordersController.getMyOrders = async (req, res) => {
       .sort({ createdAt: -1 });
 
     const orders = links.filter((l) => l.order).map((l) => l.order);
-    res.json(orders);
+
+    // Método de pago: vive en PaymentTransaction (no en Order). Una sola
+    // consulta para todos los pedidos; si hubiera varias por pedido gana la
+    // aprobada más reciente. Un pedido sin transacción queda con payment: null.
+    const transactions = await paymentTransactionModel
+      .find({ order: { $in: orders.map((o) => o._id) }, status: "aprobado" })
+      .sort({ createdAt: -1 })
+      .select("order provider formaPago cardLast4")
+      .lean();
+    const paymentByOrder = new Map();
+    for (const t of transactions) {
+      const key = String(t.order);
+      if (!paymentByOrder.has(key)) {
+        paymentByOrder.set(key, { provider: t.provider, formaPago: t.formaPago, cardLast4: t.cardLast4 || null });
+      }
+    }
+
+    res.json(orders.map((o) => ({ ...o.toObject(), payment: paymentByOrder.get(String(o._id)) || null })));
   } catch (error) {
     console.log("error " + error);
     res.status(500).json({ message: "Error interno del servidor." });

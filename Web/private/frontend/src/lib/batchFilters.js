@@ -2,6 +2,7 @@
   Utilidades de búsqueda y filtrado para los lotes de fabricación.
   Se usan tanto en la card del Dashboard como en la página Historial de Lotes.
 */
+import { fromDateOnly } from "./format";
 
 export const defaultBatchFilters = {
   q: "", // texto: num de lote, producto, línea, estado
@@ -37,14 +38,16 @@ export function batchFilterOptions(list = []) {
 
 /*
   Filtra la lista de lotes según los filtros y (opcionalmente) un rango de fechas.
-  @param range { from: Date, to: Date } — filtra por createdAt del lote.
+  @param range { from: Date, to: Date } — filtra por startDate del lote (o createdAt).
 */
 export function filterBatches(list = [], filters = defaultBatchFilters, range = null) {
   return list.filter((b) => {
     // Rango de fechas (usa la fecha de producción; respaldo: fecha de creación)
     if (range?.from && range?.to) {
-      const c = new Date(b.startDate || b.createdAt);
-      if (Number.isNaN(c.getTime()) || c < range.from || c > range.to) return false;
+      // startDate es fecha sin hora (medianoche UTC): se lee como el mismo día
+      // en hora local, igual que el rango; createdAt es un instante real.
+      const c = b.startDate ? fromDateOnly(b.startDate) : new Date(b.createdAt);
+      if (!c || Number.isNaN(c.getTime()) || c < range.from || c > range.to) return false;
     }
 
     // Búsqueda de texto libre

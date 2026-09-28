@@ -2,16 +2,37 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api from "../lib/api";
 
-// El pago se resuelve dentro de POST /orders/checkout (tokenización directa
-// con Wompi): si esta página existe, el pedido ya fue pagado. No hay estado
-// "pendiente" que verificar ni reintentar aquí.
+// Un texto por cada valor de paymentStatus del modelo Order (el mismo enum en
+// public/backend y private/backend: "Pendiente", "Pagado", "Reembolsado").
+// El checkout solo crea el pedido si Wompi aprueba el cobro, así que al
+// llegar aquí suele ser "Pagado"; pero el panel puede cambiarlo después
+// (p. ej. a "Reembolsado") y esta página se puede volver a abrir. Un pago
+// rechazado no crea pedido, por eso no hay estado "Rechazado".
+// Colores: los mismos que ya usa el sitio (MisPedidosPage, Field).
 const STATUS_COPY = {
   Pagado: {
     title: "¡Pago confirmado!",
     tone: "text-green-600",
     desc: "Tu pedido está siendo procesado. Te contactaremos para coordinar la entrega.",
   },
+  Pendiente: {
+    title: "Pago pendiente",
+    tone: "text-amber-700",
+    desc: "Todavía no hemos confirmado el pago de este pedido. Te avisaremos en cuanto se acredite.",
+  },
+  Reembolsado: {
+    title: "Pago reembolsado",
+    tone: "text-slate-700",
+    desc: "El pago de este pedido fue reembolsado. Si tienes dudas, escríbenos desde la página de contacto.",
+  },
 };
+
+// Un estado que no esté en la lista nunca se muestra como éxito.
+const unknownStatusCopy = (status) => ({
+  title: "Estado del pago por confirmar",
+  tone: "text-slate-700",
+  desc: `El pago de este pedido figura como «${status || "sin estado"}». Si tienes dudas, escríbenos desde la página de contacto.`,
+});
 
 export default function PedidoConfirmacionPage() {
   const { id } = useParams();
@@ -51,7 +72,7 @@ export default function PedidoConfirmacionPage() {
     );
   }
 
-  const copy = STATUS_COPY[order.paymentStatus] || STATUS_COPY.Pagado;
+  const copy = STATUS_COPY[order.paymentStatus] || unknownStatusCopy(order.paymentStatus);
 
   return (
     <section className="mx-auto max-w-3xl px-6 py-24 text-center">
