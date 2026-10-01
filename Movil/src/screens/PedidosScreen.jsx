@@ -11,6 +11,7 @@ import LoadingState from "../components/ui/LoadingState";
 import SearchField from "../components/ui/SearchField";
 import { colors } from "../lib/theme";
 import { formatNumber } from "../lib/format";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Chips de la lista: key -> filtro sobre el pedido (mismos grupos que
 // CHIP_FILTERS en Web/private/frontend/src/pages/Pedidos.jsx).
@@ -25,6 +26,7 @@ const CHIP_FILTERS = {
 // por N° de pedido, cliente o correo + chips. Al tocar uno se abre su
 // detalle (PedidoDetalleScreen); el "+" del encabezado crea uno nuevo.
 export default function PedidosScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const { orders, loading, refreshing, error, refresh } = useOrders();
   const [search, setSearch] = useState("");
   const [chip, setChip] = useState("all");
@@ -78,7 +80,7 @@ export default function PedidosScreen({ navigation }) {
   return (
     <FlatList
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       data={filtered}
       keyExtractor={(item, index) => item._id || item.orderNumber || String(index)}
       renderItem={({ item }) => (

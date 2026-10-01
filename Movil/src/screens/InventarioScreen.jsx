@@ -25,6 +25,7 @@ import { fonts } from "../lib/typography";
 import { formatNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
 import { MATERIAL_TYPES } from "../lib/inventoryOptions";
+import { useBottomPad } from "../hooks/useBottomPad";
 import {
   buildStockMap,
   finishedItemsOf,
@@ -89,6 +90,7 @@ function StockList({ items, showColor, emptyText, onEdit, onLongPress }) {
 // presionado ofrece eliminarlo. Tocar un pedido abre su detalle, donde se
 // verifica, empaca y resuelven faltantes.
 export default function InventarioScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const { items, loading, refreshing, error, refresh, crear, eliminar } = useInventory();
   const {
@@ -319,7 +321,7 @@ export default function InventarioScreen({ navigation }) {
       </View>
 
       {tab === "terminado" ? (
-        <ScrollView style={styles.flex} contentContainerStyle={styles.content} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
           <KpiInline items={kpis} style={styles.kpis} />
           <View style={styles.searchRow}>
             <SearchField
@@ -359,7 +361,7 @@ export default function InventarioScreen({ navigation }) {
           </Text>
         </ScrollView>
       ) : tab === "materia" ? (
-        <ScrollView style={styles.flex} contentContainerStyle={styles.content} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
           <KpiInline items={kpis} style={styles.kpis} />
           <FilterChips
             style={styles.chips}
@@ -392,7 +394,7 @@ export default function InventarioScreen({ navigation }) {
       ) : (
         <FlatList
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]}
           data={orderList}
           keyExtractor={(o) => o._id}
           renderItem={({ item: o }) => (

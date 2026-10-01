@@ -24,6 +24,7 @@ import { formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { defaultBatchFilters, batchFilterOptions, filterBatches } from "../lib/batchFilters";
 import { dashboardAlerts } from "../lib/dashboardAlerts";
 import { todayLabel } from "../navigation/navItems";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Lotes que se muestran en la tarjeta antes de "Ver historial completo".
 const BATCHES_PREVIEW_LIMIT = 8;
@@ -71,6 +72,7 @@ function AlertRow({ alert, onPress }) {
 // con filtros — lo mismo que Web/private/frontend/src/pages/Dashboard.jsx,
 // filtrado por el rango de fechas global (chip del encabezado).
 export default function DashboardScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const range = useDateRange();
   const { user } = useAuth();
   const { dashboard, kpis, productionMix, loading, refreshing, error, refresh } = useDashboard(range);
@@ -117,7 +119,7 @@ export default function DashboardScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       refreshControl={<RefreshControl refreshing={refreshing || batchesRefreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.kpiRow}>

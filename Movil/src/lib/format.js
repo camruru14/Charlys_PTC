@@ -130,15 +130,22 @@ export function fromDateOnly(value) {
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
+// Días de calendario (locales) entre `d` y `now`, medianoche contra
+// medianoche: anteayer da 2 aunque hayan pasado menos de 48 h. Math.round
+// absorbe los días de 23 o 25 h por cambio de horario.
+function calendarDaysAgo(d, now = new Date()) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(d);
+  day.setHours(0, 0, 0, 0);
+  return Math.round((today - day) / 86400000);
+}
+
 // "hoy" | "ayer" | "19 sep"
 export function formatRelativeDay(value) {
   const d = toDate(value);
   if (!d) return "—";
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const day = new Date(d);
-  day.setHours(0, 0, 0, 0);
-  const diff = Math.round((start - day) / 86400000);
+  const diff = calendarDaysAgo(d);
   if (diff === 0) return "hoy";
   if (diff === 1) return "ayer";
   return formatShortDate(d);
@@ -150,15 +157,14 @@ export function formatAge(value, now = new Date()) {
   const d = toDate(value);
   if (!d) return "";
   const minutes = Math.max(0, Math.floor((now - d) / 60000));
-  const relative = formatRelativeDay(d);
-  if (relative === "hoy") {
+  const days = calendarDaysAgo(d, now);
+  if (days <= 0) {
     if (minutes < 1) return "hace un momento";
     if (minutes < 60) return `hace ${minutes} min`;
     return `hace ${Math.floor(minutes / 60)} h`;
   }
-  if (relative === "ayer") return "ayer";
-  const days = Math.floor(minutes / 1440);
-  return days < 7 ? `hace ${days} días` : formatShortDate(d);
+  if (days === 1) return "ayer";
+  return days < 7 ? `hace ${days} ${days === 1 ? "día" : "días"}` : formatShortDate(d);
 }
 
 // Tiempo transcurrido: "hace 2 h 10 min" (fmtElapsed de la web).

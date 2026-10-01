@@ -12,12 +12,47 @@ import Icon from "./Icon";
 // Al presionar «Deshacer» se cierra el toast y se llama onUndo. Se muestra
 // uno a la vez: uno nuevo reemplaza al anterior.
 const DURATION = 6000;
+// Separación entre el toast y la BottomBar de la pantalla.
+const BAR_GAP = 12;
 
 const ToastContext = createContext(null);
+// Aparte del de useToast para que registrar una altura no cambie ese valor.
+const ToastInsetContext = createContext(null);
+
+let nextInsetId = 0;
+
+// La BottomBar de la pantalla enfocada informa su altura (con el inset
+// inferior incluido) para que el toast se ponga encima y no tape los botones.
+// `height` null o 0 = no ocupa nada; al desmontarse se quita sola.
+export function useToastBottomInset(height) {
+  const setInset = useContext(ToastInsetContext);
+  const id = useRef(null);
+  if (id.current == null) id.current = ++nextInsetId;
+
+  useEffect(() => {
+    if (!setInset || !height) return undefined;
+    const key = id.current;
+    setInset(key, height);
+    return () => setInset(key, null);
+  }, [setInset, height]);
+}
 
 export function ToastProvider({ children }) {
   const [toast, setToast] = useState(null);
+  const [bars, setBars] = useState({});
   const timer = useRef(null);
+
+  const setInset = useCallback((key, height) => {
+    setBars((prev) => {
+      const next = { ...prev };
+      if (height) next[key] = height;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+
+  // Durante una transición pueden coincidir dos barras: se usa la más alta.
+  const barHeight = Math.max(0, ...Object.values(bars));
 
   const hide = useCallback(() => {
     clearTimeout(timer.current);
@@ -41,8 +76,10 @@ export function ToastProvider({ children }) {
 
   return (
     <ToastContext.Provider value={value}>
-      {children}
-      {toast ? <ToastView key={toast.id} toast={toast} onHide={hide} /> : null}
+      <ToastInsetContext.Provider value={setInset}>
+        {children}
+        {toast ? <ToastView key={toast.id} toast={toast} onHide={hide} barHeight={barHeight} /> : null}
+      </ToastInsetContext.Provider>
     </ToastContext.Provider>
   );
 }
@@ -53,7 +90,7 @@ export function useToast() {
   return ctx;
 }
 
-function ToastView({ toast, onHide }) {
+function ToastView({ toast, onHide, barHeight }) {
   const insets = useSafeAreaInsets();
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -67,11 +104,14 @@ function ToastView({ toast, onHide }) {
   }, [progress]);
 
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
+  // Con BottomBar, encima de ella (su altura ya incluye el inset inferior);
+  // sin barra, donde siempre.
+  const bottom = barHeight ? barHeight + BAR_GAP : insets.bottom + 16;
 
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, { bottom: insets.bottom + 16, opacity: progress, transform: [{ translateY }] }]}
+      style={[styles.wrap, { bottom, opacity: progress, transform: [{ translateY }] }]}
     >
       <View style={styles.toast} accessibilityLiveRegion="polite" accessibilityRole="alert">
         <Icon name="check" size={18} color={tones.green.dot} strokeWidth={2.2} />

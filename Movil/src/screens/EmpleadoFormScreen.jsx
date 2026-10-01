@@ -11,11 +11,12 @@ import PasswordField from "../components/ui/PasswordField";
 import SelectField from "../components/ui/SelectField";
 import SwitchField from "../components/ui/SwitchField";
 import { useToast } from "../components/ui/Toast";
-import { api } from "../lib/api";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatDui, isValidDui, maskDui } from "../lib/dui";
 import { DEPARTMENTS } from "../lib/permissions";
+
+const MIN_PASSWORD_LENGTH = 6;
 
 const emptyForm = {
   name: "",
@@ -31,10 +32,10 @@ const emptyForm = {
 };
 
 // Alta y edición de empleados (EmployeeFormModal.jsx de la web; se abre desde
-// Configuración > Personal y permisos y desde la ficha del empleado). Al
-// editar, la contraseña se precarga con la guardada (GET
-// /employees/:id/password) y, si no se cambia, no se manda. Eliminar está en
-// el «···» del encabezado.
+// Configuración > Personal y permisos y desde la ficha del empleado). La
+// app nunca lee ni muestra la contraseña guardada: al editar, el campo
+// arranca vacío y solo se manda si se escribe una nueva. Eliminar está en el
+// «···» del encabezado.
 export default function EmpleadoFormScreen({ navigation, route }) {
   const id = route.params?.id;
   const isEditing = Boolean(id);
@@ -44,9 +45,6 @@ export default function EmpleadoFormScreen({ navigation, route }) {
 
   const [form, setForm] = useState(isEditing ? null : emptyForm);
   const [saving, setSaving] = useState(false);
-  // Contraseña guardada: null (cargando) | { password, legacy }
-  const [stored, setStored] = useState(null);
-  const [passwordError, setPasswordError] = useState(null);
 
   const employee = isEditing ? employees.find((e) => e._id === id) : null;
 
@@ -73,35 +71,6 @@ export default function EmpleadoFormScreen({ navigation, route }) {
       ]);
     }
   }, [isEditing, form, employee, loading, navigation]);
-
-  // Contraseña guardada (desencriptada por el backend), como la web. Las
-  // antiguas (hash bcrypt) no se pueden mostrar: el campo queda vacío.
-  useEffect(() => {
-    if (!isEditing) return undefined;
-    let ignore = false;
-    api
-      .get(`/employees/${id}/password`)
-      .then((result) => {
-        if (ignore) return;
-        setStored({ password: result?.password ?? null, legacy: Boolean(result?.legacy) });
-        if (result?.password) setForm((f) => (f && !f.password ? { ...f, password: result.password } : f));
-      })
-      .catch((err) => !ignore && setPasswordError(err.message));
-    return () => {
-      ignore = true;
-    };
-  }, [isEditing, id]);
-
-  // Si el formulario se llena después de cargar la contraseña, se precarga.
-  useEffect(() => {
-    if (form && !form.password && stored?.password && isEditing) {
-      setForm((f) => ({ ...f, password: stored.password }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(form), stored]);
-
-  const loadingPassword = isEditing && !stored && !passwordError;
-  const savedPassword = stored?.password ?? null;
 
   const confirmDelete = useCallback(() => {
     if (!employee) return;
@@ -153,13 +122,16 @@ export default function EmpleadoFormScreen({ navigation, route }) {
     if (!form.name.trim() || !form.lastName.trim()) return Alert.alert("Falta información", "Nombre y apellido son obligatorios");
     if (!form.email.trim()) return Alert.alert("Falta información", "El correo es obligatorio");
     if (!isEditing && !form.password) return Alert.alert("Falta información", "La contraseña es obligatoria");
+    if (form.password && form.password.length < MIN_PASSWORD_LENGTH) {
+      return Alert.alert("Revisa la contraseña", `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`);
+    }
     // Igual que el pattern del DUI de la web: vacío o «12345678-9».
     if (form.dui && !isValidDui(form.dui)) return Alert.alert("DUI inválido", "El DUI debe tener 9 números (ej. 12345678-9)");
 
     setSaving(true);
     const payload = { ...form, hourlyRate: Number(form.hourlyRate) || 0 };
-    // Sin cambio de contraseña: vacía o igual a la precargada.
-    if (isEditing && (!payload.password || payload.password === savedPassword)) delete payload.password;
+    // Al editar, vacía = no cambiarla: el campo no se manda.
+    if (!payload.password) delete payload.password;
     try {
       if (isEditing) {
         await actualizar(id, payload);
@@ -178,18 +150,6 @@ export default function EmpleadoFormScreen({ navigation, route }) {
   };
 
   if (!form) return <LoadingState />;
-
-  // Nota bajo la contraseña al editar (la misma lógica que la web).
-  let passwordNote;
-  if (isEditing) {
-    if (passwordError) passwordNote = `No se pudo cargar la contraseña guardada (${passwordError}). Déjalo vacío para no cambiarla.`;
-    else if (form.password && form.password === savedPassword) passwordNote = "Contraseña guardada. Si no la cambias, queda igual.";
-    else if (form.password) passwordNote = "Se guardará como la nueva contraseña.";
-    else if (stored?.legacy)
-      passwordNote =
-        "Esta contraseña no se puede mostrar hasta que se actualice; escribe una nueva para reemplazarla. Mientras tanto, el empleado sigue entrando con la actual.";
-    else passwordNote = "Vacío: la contraseña queda igual.";
-  }
 
   return (
     <View style={styles.screen}>
@@ -217,12 +177,10 @@ export default function EmpleadoFormScreen({ navigation, route }) {
           label="Contraseña"
           value={form.password}
           onChangeText={(v) => handleChange("password", v)}
-          placeholder={loadingPassword ? "Cargando…" : isEditing ? "Escribe una contraseña nueva" : "Contraseña"}
-          editable={!loadingPassword}
+          placeholder={isEditing ? "Nueva contraseña" : `Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
           autoComplete="new-password"
           required={!isEditing}
-          note={passwordNote}
-          noteColor={stored?.legacy && !form.password ? colors.amberStrong : undefined}
+          note={isEditing ? "Déjalo vacío para no cambiarla." : undefined}
         />
         <SelectField
           label="Área"

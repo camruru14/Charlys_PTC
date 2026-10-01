@@ -40,6 +40,7 @@ import {
 import { batchApi } from "../lib/batchActions";
 import { buildGroups, findOrderLot, lotState, STEP_LABELS } from "../lib/orderManufacturing";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const STOCK_STEPS = ["Programado", "En proceso", "Completado", "En bodega"];
 // Etapa del lote en su recorrido (0..3); la última se marca completada.
@@ -67,6 +68,7 @@ function journey(labels, stage) {
 // indicadores, gráfica de la línea, ficha y las acciones del estado actual
 // con «Deshacer» donde la web lo permite.
 export default function LoteDetalleScreen({ navigation, route }) {
+  const bottomPad = useBottomPad(24);
   const id = route.params?.id;
   const toast = useToast();
   const { batches, loading, refreshing, error, refresh, eliminar } = useBatches();
@@ -278,7 +280,7 @@ export default function LoteDetalleScreen({ navigation, route }) {
     <View style={styles.screen}>
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, barActions.length > 0 ? null : bottomPad]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => reload()} />}
       >
         {state === "Detenido" ? (

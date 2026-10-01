@@ -16,6 +16,7 @@ import { colors } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
 import { formatClock, formatWeekdayDate } from "../lib/format";
 import { dayKey, fmtHours, hoursPayload, recordDay } from "../lib/attendance";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Igual que SecureStore.getItemAsync/setItemAsync ya usa AuthContext para el
 // token: acá guarda la hora de "Marcar entrada" localmente hasta que se
@@ -61,6 +62,7 @@ function useNow() {
 // "Marcar salida" se arma el registro completo y se manda, con las horas
 // calculadas como la web (horario laboral de /settings/work-schedule).
 export default function AsistenciaScreen() {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const { user } = useAuth();
   const { attendance, loading, refreshing, error, refresh } = useMyAttendance();
@@ -133,7 +135,7 @@ export default function AsistenciaScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

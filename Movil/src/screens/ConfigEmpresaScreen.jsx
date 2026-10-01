@@ -15,6 +15,7 @@ import { api } from "../lib/api";
 import { colors, tones } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
 import { pickFromLibrary } from "../lib/pickImages";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // La app guardaba antes la ficha solo en el celular (AsyncStorage, misma
 // clave que usaba la web en localStorage). Si el backend todavía no tiene
@@ -51,6 +52,7 @@ function LogoTile({ url }) {
 // (/settings/company/logo, se sube al momento) y horario laboral
 // (/settings/work-schedule), con los mismos campos y validaciones que la web.
 export default function ConfigEmpresaScreen({ navigation }) {
+  const bottomPad = useBottomPad(24);
   const toast = useToast();
   const { company: saved, ready, error, refreshing, refresh, guardar, subirLogo } = useCompanySettings();
   const { schedule, loaded: scheduleLoaded, refresh: refreshSchedule } = useWorkSchedule();
@@ -164,7 +166,7 @@ export default function ConfigEmpresaScreen({ navigation }) {
     <View style={styles.screen}>
       <KeyboardScreen
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, dirty ? null : bottomPad]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >
         {dirty ? (

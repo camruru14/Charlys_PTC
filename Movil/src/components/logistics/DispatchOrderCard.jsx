@@ -77,7 +77,7 @@ export default function DispatchOrderCard({ order, buildingRoute, busy, onAdd, o
         <Text style={styles.customer} numberOfLines={1}>
           {order.customer?.name || "—"}
         </Text>
-        {assigned?.zone ? <Text style={styles.zone}>{assigned.zone}</Text> : null}
+        {assigned?.zone ? <Text numberOfLines={1} style={styles.zone}>{assigned.zone}</Text> : null}
       </View>
 
       <View style={[styles.row, styles.bottom]}>
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   titleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   number: { fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink, fontVariant: ["tabular-nums"] },
   customer: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
-  zone: { fontFamily: fonts.regular, fontSize: 11.5, color: colors.subtle },
+  zone: { maxWidth: "40%", fontFamily: fonts.regular, fontSize: 11.5, color: colors.subtle },
   bottom: { marginTop: 4, minHeight: 34 },
   chips: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {

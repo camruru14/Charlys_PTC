@@ -80,45 +80,11 @@ export const colors = {
   white: "#FFFFFF",
 
   tones,
-
-  // ---- Nombres de la paleta anterior ----
-  brand50: "#E9F0FB", // alias temporal, se elimina en el paso final (primarySoft)
-  brand100: "#E9F0FB", // alias temporal, se elimina en el paso final (primarySoft)
-  brand200: "#C9D6F0", // alias temporal, se elimina en el paso final (primaryDisabled)
-  brand500: "#4A7FD4", // alias temporal, se elimina en el paso final (selectBar)
-  brand600: "#3168D4", // alias temporal, se elimina en el paso final (primary)
-  brand700: "#2C5CA8", // alias temporal, se elimina en el paso final (primarySoftText)
-  brand800: "#2A5BBC", // alias temporal, se elimina en el paso final (primaryHover)
-  background: "#F2F5FA", // alias temporal, se elimina en el paso final (canvas)
-  text: "#16203A", // alias temporal, se elimina en el paso final (ink)
-  success: tones.green.dot, // alias temporal, se elimina en el paso final
-  warning: tones.amber.dot, // alias temporal, se elimina en el paso final
-  danger: tones.rose.text, // alias temporal, se elimina en el paso final
-  successSoftBg: tones.green.bg, // alias temporal, se elimina en el paso final
-  successSoftText: tones.green.text, // alias temporal, se elimina en el paso final
-  warningSoftBg: tones.amber.bg, // alias temporal, se elimina en el paso final
-  warningSoftText: tones.amber.text, // alias temporal, se elimina en el paso final
-  dangerSoftBg: tones.rose.bg, // alias temporal, se elimina en el paso final
-  neutralSoftBg: tones.gray.bg, // alias temporal, se elimina en el paso final
-  yellowSoftBg: tones.amber.bg, // alias temporal, se elimina en el paso final
-  yellowSoftText: tones.amber.text, // alias temporal, se elimina en el paso final
-  purpleSoftBg: tones.purple.bg, // alias temporal, se elimina en el paso final
-  purpleSoftText: tones.purple.text, // alias temporal, se elimina en el paso final
-  skySoftBg: tones.teal.bg, // alias temporal, se elimina en el paso final
-  skySoftText: tones.teal.text, // alias temporal, se elimina en el paso final
-  slate100: "#F0F3F8", // alias temporal, se elimina en el paso final (lineSoft)
-  slate200: "#E3E8F1", // alias temporal, se elimina en el paso final (line)
-  slate400: "#8A93A6", // alias temporal, se elimina en el paso final (faint)
-  slate500: "#657084", // alias temporal, se elimina en el paso final (muted)
-  slate700: "#4A5468", // alias temporal, se elimina en el paso final (ink2)
 };
 
-// Nombres de tono de la paleta anterior -> tono de la web. Solo para que
-// Pill acepte los valores viejos mientras se migran las pantallas.
-const LEGACY_TONES = { red: "rose", yellow: "amber", sky: "teal" };
-
+// Paleta de un tono (bg / text / dot); gris si el nombre no existe.
 export function getTone(name) {
-  return tones[name] || tones[LEGACY_TONES[name]] || tones.gray;
+  return tones[name] || tones.gray;
 }
 
 export default colors;

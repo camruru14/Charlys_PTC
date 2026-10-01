@@ -21,6 +21,7 @@ import { fonts, type } from "../lib/typography";
 import { formatDateYear, formatMoney, formatNumber, formatShortDate } from "../lib/format";
 import { lastStatusEntry, orderJourneySteps } from "../lib/orderJourney";
 import { normalizeStatus, statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 import {
   buildStockMap,
   finishedItemsOf,
@@ -61,7 +62,7 @@ function LotProgress({ batch }) {
   const produced = Number(batch.producedQuantity) || 0;
   return (
     <View style={styles.lot}>
-      <Text style={styles.lotText}>
+      <Text numberOfLines={1} style={styles.lotText}>
         Lote {batch.batchNumber}
         {batch.status ? ` · ${normalizeStatus(batch.status)}` : ""}
       </Text>
@@ -242,6 +243,7 @@ function VerifySheet({ index, item: current, stockMap, busy, onClose, onVerify }
 // «Deshacer». Fabricar, empacar lo fabricado y asignar la entrega siguen en
 // Fabricación y Logística, igual que en la web.
 export default function PedidoDetalleScreen({ navigation, route }) {
+  const bottomPad = useBottomPad(24);
   const id = route.params?.id;
   const toast = useToast();
   const { orders, loading, refreshing, error, refresh, eliminar } = useOrders();
@@ -412,7 +414,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     <View style={styles.screen}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, barActions.length > 0 ? null : bottomPad]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

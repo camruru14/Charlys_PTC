@@ -10,6 +10,7 @@ import BottomBar from "../components/ui/BottomBar";
 import BottomSheet from "../components/ui/BottomSheet";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import CurrentPasswordField from "../components/ui/CurrentPasswordField";
 import ErrorState from "../components/ui/ErrorState";
 import FormField from "../components/ui/FormField";
 import LoadingState from "../components/ui/LoadingState";
@@ -69,8 +70,18 @@ function ConfirmPasswordSheet({ state, busy, onChange, onClose, onConfirm }) {
 // permisos.
 export default function MiCuentaScreen({ navigation }) {
   const toast = useToast();
-  const { updateUser } = useAuth();
-  const { account, loading, refreshing, error, refresh, guardarPerfil, cambiarAcceso } = useAccount();
+  const { updateUser, sessionPassword, setSessionPassword } = useAuth();
+  const {
+    account,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    guardarPerfil,
+    cambiarAcceso,
+    storedPassword,
+    refreshStoredPassword,
+  } = useAccount();
   const [draft, setDraft] = useState(null);
   const [prompt, setPrompt] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -149,6 +160,12 @@ export default function MiCuentaScreen({ navigation }) {
         }
         setPrompt(null);
         if (saved?.email) updateUser({ email: saved.email });
+        // La contraseña nueva: se vuelve a pedir la que se muestra y la de
+        // esta sesión se actualiza (solo en memoria).
+        if (credentials.newPassword) {
+          setSessionPassword(credentials.newPassword);
+          refreshStoredPassword();
+        }
         // Ya aplicado: si falla algo después, reintentar no lo repite.
         setDraft((d) => (d ? { ...d, newEmail: "", newPassword: "" } : d));
       }
@@ -174,7 +191,15 @@ export default function MiCuentaScreen({ navigation }) {
       <KeyboardScreen
         style={styles.flex}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refresh();
+              refreshStoredPassword();
+            }}
+          />
+        }
       >
         <View style={styles.profile}>
           <Avatar name={fullName(account)} tone={personTone(account)} size={56} />
@@ -204,6 +229,12 @@ export default function MiCuentaScreen({ navigation }) {
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="off"
+        />
+        {/* Fija, como el correo; si el backend no la puede descifrar (hash
+            viejo), se usa la escrita al iniciar esta sesión. */}
+        <CurrentPasswordField
+          password={storedPassword?.password || (storedPassword?.legacy ? sessionPassword : "") || ""}
+          legacy={Boolean(storedPassword?.legacy)}
         />
         <PasswordField
           label="Cambiar contraseña"

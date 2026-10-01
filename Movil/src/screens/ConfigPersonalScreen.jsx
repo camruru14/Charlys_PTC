@@ -16,6 +16,7 @@ import SearchField from "../components/ui/SearchField";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { fullName } from "../lib/attendance";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const STATUS_FILTERS = {
   all: () => true,
@@ -54,6 +55,7 @@ function PersonRow({ employee, onPress }) {
 // qué paneles tendría acceso según su área y puesto (informativo, ver
 // lib/permissions.js). «+» agrega y tocar una fila edita (EmpleadoFormScreen).
 export default function ConfigPersonalScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
@@ -95,7 +97,7 @@ export default function ConfigPersonalScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
     >

@@ -15,12 +15,14 @@ import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { personName } from "../lib/logistics";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Configuración > Vehículos (Configuracion.jsx de la web): la placa se cambia
 // en la misma fila; el detalle y el estado salen de las rutas de hoy
 // (/routes/availability) y un vehículo en ruta no se puede eliminar. «+»
 // agrega uno (VehiculoFormScreen).
 export default function ConfigVehiculosScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const { vehicles, loading, refreshing, error, refresh, actualizar, eliminar } = useVehicles();
   const { routes, availability, refresh: refreshRoutes } = useRoutes();
@@ -74,7 +76,7 @@ export default function ConfigVehiculosScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl

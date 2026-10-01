@@ -1,5 +1,44 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useCart } from "../context/CartContext";
+import { validateQuantity } from "../lib/quantity";
+import QuantityInput from "../components/QuantityInput";
+
+// Cantidad de una línea del carrito: texto libre; se valida al salir del
+// campo o con Enter. Si no es válida avisa con toast y restaura la última
+// cantidad válida de la línea.
+function CartQuantity({ item, onCommit }) {
+  const [text, setText] = useState(String(item.quantity));
+
+  useEffect(() => {
+    setText(String(item.quantity));
+  }, [item.quantity]);
+
+  const commit = () => {
+    const result = validateQuantity(text, item.minOrderQuantity || 1);
+    if (!result.ok) {
+      toast.error(result.message);
+      setText(String(item.quantity));
+      return;
+    }
+    if (result.value !== item.quantity) onCommit(item, result.value);
+    setText(String(result.value));
+  };
+
+  return (
+    <QuantityInput
+      value={text}
+      onChange={setText}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      aria-label={`Cantidad de ${item.name}`}
+      inputClassName="w-24 px-3 py-1.5"
+    />
+  );
+}
 
 export default function CarritoPage() {
   const { items, updateQuantity, removeItem, total } = useCart();
@@ -59,13 +98,7 @@ export default function CarritoPage() {
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
-                    <input
-                      type="number"
-                      min={item.minOrderQuantity}
-                      value={item.quantity}
-                      onChange={(e) => updateQuantity(item, Number(e.target.value))}
-                      className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-                    />
+                    <CartQuantity item={item} onCommit={updateQuantity} />
                     <span className="font-display text-sm font-semibold">
                       ${(item.price * item.quantity).toFixed(2)}
                     </span>

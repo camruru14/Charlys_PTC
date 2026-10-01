@@ -123,5 +123,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.muted,
+    fontVariant: ["tabular-nums"],
   },
 });

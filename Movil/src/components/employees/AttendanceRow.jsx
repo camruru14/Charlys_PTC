@@ -39,7 +39,7 @@ export default function AttendanceRow({ dayLabel, record, schedule, showHours = 
 const styles = StyleSheet.create({
   row: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 15, paddingVertical: 9 },
   absent: { backgroundColor: colors.rowAlert },
-  day: { fontFamily: fonts.bold, fontSize: 13, color: colors.ink },
+  day: { fontFamily: fonts.bold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
   times: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2, fontVariant: ["tabular-nums"] },
   hours: { minWidth: 30, textAlign: "right", fontFamily: fonts.bold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
   pill: { minWidth: 84, alignItems: "flex-end" },

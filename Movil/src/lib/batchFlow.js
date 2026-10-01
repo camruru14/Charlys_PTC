@@ -12,6 +12,7 @@ export const isStockBatch = (b) => b?.category !== "Pedido";
 
 // Estado visible del lote (dominio "lote" de statusTones.js).
 export function batchState(b) {
+  if (!b) return "—";
   if (b.status === "Completado" && isStockBatch(b)) return b.sentToWarehouseAt ? "En bodega" : "Por enviar";
   if (b.status === "En Proceso") return "En proceso";
   return b.status || "—";
@@ -23,10 +24,11 @@ export function batchHeaderState(b) {
   return state === "Por enviar" ? "Completado · por enviar" : state;
 }
 
-export const productLabel = (b) => [b.product, b.color].filter(Boolean).join(" ");
+// Seguras ante null/undefined: productLabel(null) -> "", pendingUnits(null) -> 0.
+export const productLabel = (b) => (b ? [b.product, b.color].filter(Boolean).join(" ") : "");
 
 // Unidades que faltan por sumar a inventario al enviar.
-export const pendingUnits = (b) => Math.max(0, (b.producedQuantity || 0) - (b.sentQuantity || 0));
+export const pendingUnits = (b) => (b ? Math.max(0, (b.producedQuantity || 0) - (b.sentQuantity || 0)) : 0);
 
 // Inicio y fin: con hora si el flujo nuevo los registró; en lotes viejos
 // solo la fecha (startDate/endDate se guardan sin hora).

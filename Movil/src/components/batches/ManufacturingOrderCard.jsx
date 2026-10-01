@@ -51,7 +51,7 @@ export default function ManufacturingOrderCard({ group, busy, onOpenLot, onOpenO
                 <Text style={styles.lotName} numberOfLines={1}>
                   {[lot.item.product, lot.item.color].filter(Boolean).join(" · ")}
                 </Text>
-                <Text style={styles.lotMeta}>
+                <Text numberOfLines={1} style={styles.lotMeta}>
                   {lot.batch.batchNumber}
                   {lot.qty != null ? ` · ${formatNumber(lot.qty)} u` : ""}
                 </Text>
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   second: { marginTop: 4 },
   number: { flex: 1, fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink, fontVariant: ["tabular-nums"] },
   customer: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
-  count: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  count: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   bar: { flexDirection: "row", gap: 4, marginTop: 12 },
   segment: { flex: 1, height: 5, borderRadius: 3 },
   lots: { marginTop: 10 },

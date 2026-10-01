@@ -134,23 +134,7 @@ export function statusTone(status, domain) {
 
 // ---- Atajos que ya usan las pantallas ----
 
-export function batchStatusTone(status) {
-  return statusTone(status, "lote");
-}
-
 export function transactionStatusTone(status) {
   return statusTone(status, "transaccion");
 }
 
-export function paymentStatusTone(status) {
-  return statusTone(status, "pago");
-}
-
-export function inventoryStockTone(item) {
-  const min = Number(item?.minStock || 0);
-  const stock = Number(item?.stock || 0);
-  if (min <= 0) return "gray";
-  if (stock <= 0) return "rose";
-  if (stock <= min) return "amber";
-  return "gray";
-}

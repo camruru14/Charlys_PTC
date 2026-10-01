@@ -95,8 +95,8 @@ export default function BottomSheet({
           <View style={styles.handle} />
           {title || subtitle ? (
             <View style={styles.header}>
-              {title ? <Text style={styles.title}>{title}</Text> : null}
-              {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+              {title ? <Text numberOfLines={2} style={styles.title}>{title}</Text> : null}
+              {subtitle ? <Text numberOfLines={2} style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
           ) : null}
 

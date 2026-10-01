@@ -6,8 +6,19 @@ import { api } from "../lib/api";
 // teléfono y DUI) y el cambio de correo o contraseña (PUT
 // /auth/me/credentials, que exige la contraseña actual), como Mi cuenta en
 // Configuracion.jsx de la web.
+//
+// storedPassword: la contraseña propia para «Contraseña actual» (GET
+// /auth/me/password -> { password, legacy }). Vive solo en el estado de la
+// pantalla que usa el hook (memoria): no se guarda en disco ni se reutiliza
+// entre sesiones.
 export function useAccount() {
   const { data, loading, refreshing, error, refresh } = useApi("/auth/me");
+  const {
+    data: passwordData,
+    loading: passwordLoading,
+    error: passwordError,
+    refresh: refreshPassword,
+  } = useApi("/auth/me/password");
 
   // { phone, dui }
   const guardarPerfil = useCallback(
@@ -29,7 +40,19 @@ export function useAccount() {
     [refresh],
   );
 
-  return { account: data, loading, refreshing, error, refresh, guardarPerfil, cambiarAcceso };
+  return {
+    account: data,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    guardarPerfil,
+    cambiarAcceso,
+    storedPassword: passwordData || null,
+    storedPasswordLoading: passwordLoading,
+    storedPasswordError: passwordError,
+    refreshStoredPassword: refreshPassword,
+  };
 }
 
 export default useAccount;

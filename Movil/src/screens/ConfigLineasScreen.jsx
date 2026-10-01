@@ -14,6 +14,7 @@ import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber } from "../lib/format";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const inProcessText = (n) => `${formatNumber(n)} ${n === 1 ? "lote en proceso" : "lotes en proceso"}`;
 
@@ -24,6 +25,7 @@ const inProcessText = (n) => `${formatNumber(n)} ${n === 1 ? "lote en proceso" :
 // puede eliminar y siempre debe quedar al menos una activa. «+» agrega una
 // (LineaFormScreen).
 export default function ConfigLineasScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const { lines, loading, refreshing, error, refresh, actualizar, eliminar } = useProductionLines();
   const activeCount = lines.filter((l) => l.active).length;
@@ -107,7 +109,7 @@ export default function ConfigLineasScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
     >

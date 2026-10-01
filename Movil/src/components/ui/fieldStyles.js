@@ -35,6 +35,7 @@ export const fieldStyles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 15,
     color: colors.ink,
+    fontVariant: ["tabular-nums"],
   },
   placeholder: {
     flex: 1,

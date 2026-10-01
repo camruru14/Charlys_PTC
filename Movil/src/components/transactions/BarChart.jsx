@@ -121,7 +121,7 @@ export default function BarChart({ months, selected, onSelect }) {
               {months.map((m) => {
                 const active = m.key === selectedMonth?.key;
                 return (
-                  <Text
+                  <Text numberOfLines={1}
                     key={m.key}
                     style={[styles.month, { width: colW }, (m.current || active) && styles.monthStrong]}
                   >

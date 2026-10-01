@@ -112,11 +112,17 @@ export default function Navbar() {
           <Link
             to="/carrito"
             onClick={closeMenu}
-            className="relative inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:opacity-90"
+            aria-label="Carrito"
+            title="Carrito"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90"
           >
-            Carrito
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="9" cy="20" r="1" />
+              <circle cx="18" cy="20" r="1" />
+              <path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6" />
+            </svg>
             {count > 0 && (
-              <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1 text-xs font-bold text-primary">
+              <span className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background px-1 text-xs font-bold text-primary ring-2 ring-primary">
                 {count}
               </span>
             )}

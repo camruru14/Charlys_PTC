@@ -4,6 +4,8 @@ import toast from "react-hot-toast";
 import useFetch from "../hooks/useFetch";
 import { useCart } from "../context/CartContext";
 import { PRODUCT_COLOR_HEX } from "../lib/catalogOptions";
+import { validateQuantity } from "../lib/quantity";
+import QuantityInput from "../components/QuantityInput";
 
 export default function ProductoDetallePage() {
   const { slug } = useParams();
@@ -13,13 +15,15 @@ export default function ProductoDetallePage() {
   const [activeImage, setActiveImage] = useState(0);
   const [color, setColor] = useState("");
   const [size, setSize] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState("1");
+  const [quantityError, setQuantityError] = useState("");
 
   useEffect(() => {
     if (!product) return;
     setColor(product.colors?.[0] || "");
     setSize(product.sizes?.[0] || "");
-    setQuantity(product.minOrderQuantity || 1);
+    setQuantity(String(product.minOrderQuantity || 1));
+    setQuantityError("");
     setActiveImage(0);
   }, [product]);
 
@@ -38,9 +42,21 @@ export default function ProductoDetallePage() {
     );
   }
 
+  const min = product.minOrderQuantity || 1;
+  const parsed = validateQuantity(quantity, min);
+
+  const handleQuantityChange = (text) => {
+    setQuantity(text);
+    if (quantityError) setQuantityError("");
+  };
+
   const handleAddToCart = () => {
-    addItem(product, { color, size, quantity });
-    toast.success(`${product.name} agregado al carrito`);
+    if (!parsed.ok) {
+      setQuantityError(parsed.message);
+      return;
+    }
+    const capped = addItem(product, { color, size, quantity: parsed.value });
+    if (!capped) toast.success(`${product.name} agregado al carrito`);
   };
 
   return (
@@ -146,16 +162,18 @@ export default function ProductoDetallePage() {
             )}
 
             <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <label
+                htmlFor="detail-quantity"
+                className="block text-xs font-medium uppercase tracking-wider text-muted-foreground"
+              >
                 Cantidad (mínimo {product.minOrderQuantity})
-              </p>
-              <input
-                type="number"
-                min={product.minOrderQuantity}
-                step={1}
+              </label>
+              <QuantityInput
+                id="detail-quantity"
                 value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                className="mt-2 w-32 rounded-xl border border-border bg-background px-4 py-2 text-sm outline-none focus:border-primary"
+                onChange={handleQuantityChange}
+                error={quantityError}
+                className="mt-2"
               />
             </div>
           </div>
@@ -163,10 +181,9 @@ export default function ProductoDetallePage() {
           <button
             type="button"
             onClick={handleAddToCart}
-            disabled={quantity < product.minOrderQuantity}
-            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 sm:w-auto"
           >
-            Agregar al carrito — ${(product.price * quantity).toFixed(2)}
+            Agregar al carrito{parsed.ok ? ` — $${(product.price * parsed.value).toFixed(2)}` : ""}
           </button>
         </div>
       </div>

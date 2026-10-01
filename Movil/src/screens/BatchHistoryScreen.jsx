@@ -19,12 +19,14 @@ import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber } from "../lib/format";
 import { defaultBatchFilters, batchFilterOptions, filterBatches } from "../lib/batchFilters";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Historial de lotes (BatchHistoryView.jsx de la web): todos los lotes del
 // rango de fechas con búsqueda y todos los filtros (producto, línea, estado,
 // operario y producido mínimo). Con `route.params.editable` (el «Ver
 // historial» de Fabricación) permite crear, editar y eliminar lotes.
 export default function BatchHistoryScreen({ navigation, route }) {
+  const bottomPad = useBottomPad(32);
   const editable = Boolean(route.params?.editable);
   const toast = useToast();
   const range = useDateRange();
@@ -91,7 +93,7 @@ export default function BatchHistoryScreen({ navigation, route }) {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       keyboardShouldPersistTaps="handled"
     >

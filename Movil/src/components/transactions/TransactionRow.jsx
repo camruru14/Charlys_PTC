@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   concept: { flex: 1, fontFamily: fonts.semibold, fontSize: 13.5, color: colors.ink },
   amount: { fontFamily: fonts.bold, fontSize: 13.5, fontVariant: ["tabular-nums"] },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 6 },
-  meta: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 11.5, color: colors.muted },
+  meta: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 11.5, color: colors.muted, fontVariant: ["tabular-nums"] },
   orderChip: { backgroundColor: colors.primarySoft, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   orderText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.primarySoftText, fontVariant: ["tabular-nums"] },
 });

@@ -14,6 +14,7 @@ import SearchField from "../components/ui/SearchField";
 import StatTile from "../components/ui/StatTile";
 import { colors, tones } from "../lib/theme";
 import { formatMoney, formatNumber } from "../lib/format";
+import { useBottomPad } from "../hooks/useBottomPad";
 import {
   defaultTransactionFilters,
   filterTransactions,
@@ -28,6 +29,7 @@ const cleanAmount = (v) => v.replace(",", ".").replace(/[^\d.]/g, "");
 // global con buscador, filtros de tipo, categoría, estado y monto, y sus
 // totales. Solo lectura, como en la web.
 export default function HistorialTransaccionesScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const range = useDateRange();
   const { transactions, loading, refreshing, error, refresh } = useTransactions();
   const [filters, setFilters] = useState(defaultTransactionFilters);
@@ -51,7 +53,7 @@ export default function HistorialTransaccionesScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
     >

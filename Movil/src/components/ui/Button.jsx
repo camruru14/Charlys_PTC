@@ -3,7 +3,7 @@ import { colors, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 import Icon from "./Icon";
 
-// Botón de la app. CustomButton queda como envoltorio de este (LoginScreen).
+// Botón de la app (acciones de pantalla, de fila y de las barras inferiores).
 //   variant: primary | soft | secondary | danger | success
 //   size:    normal (50 de alto) | small (34 de alto)
 //   icon:    nombre de <Icon />, opcional, a la izquierda del texto

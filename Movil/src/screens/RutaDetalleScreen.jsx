@@ -30,6 +30,7 @@ import {
   routeProgress,
 } from "../lib/logistics";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const LOCATION_ICON = { "Almacén": "warehouse", "Fabricación": "factory" };
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -59,6 +60,7 @@ function StopNumber({ n, state }) {
 //     (pickup), avisos de pedidos incompletos, motorista/vehículo y «Salir a
 //     ruta» (depart), deshabilitado mientras falte algo.
 export default function RutaDetalleScreen({ navigation, route: navRoute }) {
+  const bottomPad = useBottomPad(24);
   const id = navRoute.params?.id;
   const toast = useToast();
   const {
@@ -215,7 +217,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
     <View style={styles.screen}>
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, !departed ? null : bottomPad]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadAll} />}
       >
         <View style={styles.tiles}>

@@ -21,6 +21,12 @@ function useLast(value) {
   return value || ref.current;
 }
 
+// Mientras no se ha abierto nunca (sin lote actual ni anterior), la hoja se
+// monta cerrada y vacía: su contenido depende del lote y no se arma sin él.
+function ClosedSheet({ onClose }) {
+  return <BottomSheet visible={false} onClose={onClose} />;
+}
+
 function Actions({ onCancel, confirmTitle, onConfirm, disabled, busy }) {
   return (
     <View style={styles.actions}>
@@ -42,6 +48,8 @@ export function StartBatchSheet({ batch: current, lines, operators, busy, onClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?._id]);
   const needsOperator = operators.length > 0;
+
+  if (!batch) return <ClosedSheet onClose={onClose} />;
 
   return (
     <BottomSheet
@@ -86,6 +94,8 @@ export function StopBatchSheet({ batch: current, busy, onClose, onConfirm }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?._id]);
 
+  if (!batch) return <ClosedSheet onClose={onClose} />;
+
   return (
     <BottomSheet
       visible={Boolean(current)}
@@ -112,6 +122,8 @@ export function CompleteBatchSheet({ batch: current, busy, onClose, onConfirm })
   const target = batch?.targetQuantity;
   const pct = target ? Math.round((produced / target) * 100) : null;
   const step = (delta) => setValue(String(Math.max(0, produced + delta)));
+
+  if (!batch) return <ClosedSheet onClose={onClose} />;
 
   return (
     <BottomSheet
@@ -168,7 +180,8 @@ export function CompleteBatchSheet({ batch: current, busy, onClose, onConfirm })
 // bodega. Solo producto terminado real (sin reportes de lote).
 function stockByWarehouse(batch, finishedItems) {
   const map = new Map();
-  for (const i of finishedItems) {
+  if (!batch) return map;
+  for (const i of finishedItems || []) {
     if (i.batchNumber || i.name !== batch.product || (i.color || "") !== (batch.color || "")) continue;
     map.set(i.location, (map.get(i.location) || 0) + (Number(i.stock) || 0));
   }
@@ -176,7 +189,7 @@ function stockByWarehouse(batch, finishedItems) {
 }
 
 // Bodega preseleccionada: la que ya tiene el artículo (la de más stock).
-function suggestedWarehouse(warehouses, stock) {
+function suggestedWarehouse(warehouses = [], stock) {
   let best = null;
   for (const w of warehouses) {
     if (!stock.has(w)) continue;
@@ -188,13 +201,16 @@ function suggestedWarehouse(warehouses, stock) {
 // Enviar a bodega un lote completado (SendToWarehouseModal de la web).
 export function SendToWarehouseSheet({ batch: current, warehouses, finishedItems, busy, onClose, onConfirm }) {
   const batch = useLast(current);
-  const stock = batch ? stockByWarehouse(batch, finishedItems) : new Map();
+  const stock = stockByWarehouse(batch, finishedItems);
   const [warehouse, setWarehouse] = useState("");
   useEffect(() => {
     if (current) setWarehouse(suggestedWarehouse(warehouses, stockByWarehouse(current, finishedItems)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?._id]);
-  const units = batch ? pendingUnits(batch) : 0;
+  const units = pendingUnits(batch);
+
+  // Sin lote no se arma la lista de bodegas ni las notas (dependen de él).
+  if (!batch) return <ClosedSheet onClose={onClose} />;
 
   return (
     <BottomSheet

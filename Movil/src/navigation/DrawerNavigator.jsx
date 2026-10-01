@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import Avatar from "../components/ui/Avatar";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import Icon from "../components/ui/Icon";
+import BrandMark from "../components/ui/BrandMark";
 import IconButton from "../components/ui/IconButton";
 import ScreenHeader from "../components/ui/ScreenHeader";
 import { colors } from "../lib/theme";
@@ -70,9 +71,7 @@ function CustomDrawerContent({ state, navigation }) {
   return (
     <View style={[styles.drawer, { paddingTop: insets.top + 12 }]}>
       <View style={styles.brand}>
-        <View style={styles.logo}>
-          <Text style={styles.logoText}>IC</Text>
-        </View>
+        <BrandMark size={32} />
         <Text style={styles.brandName}>Ind. Charly</Text>
         <Pressable
           onPress={() => navigation.closeDrawer()}
@@ -168,19 +167,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 20,
     paddingBottom: 14,
-  },
-  logo: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoText: {
-    fontFamily: fonts.extrabold,
-    fontSize: 13,
-    color: colors.white,
   },
   brandName: {
     flex: 1,

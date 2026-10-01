@@ -15,6 +15,7 @@ import { colors } from "../lib/theme";
 import { formatNumber } from "../lib/format";
 import { pickPhotoSource } from "../lib/pickImages";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const ALL = "__all";
 
@@ -23,6 +24,7 @@ const ALL = "__all";
 // cuadrícula de productos. Tocar un producto abre sus acciones: editar,
 // subir foto, destacado, visible y eliminar.
 export default function CatalogoScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   // Dos columnas: (ancho - márgenes de 20 - separación de 10) / 2.
   const cardWidth = (useWindowDimensions().width - 40 - 10) / 2;
@@ -124,7 +126,7 @@ export default function CatalogoScreen({ navigation }) {
     <View style={styles.screen}>
       <FlatList
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, bottomPad]}
         data={filtered}
         keyExtractor={(item) => item._id}
         numColumns={2}

@@ -18,6 +18,7 @@ import { colors, tones } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatDayLong, formatNumber } from "../lib/format";
 import { attendanceDays, attendanceMonths, defaultMonth, fullName, monthLabel } from "../lib/attendance";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const TABS = [
   { value: "personal", label: "Personal" },
@@ -39,6 +40,7 @@ function matches(emp, query, area) {
 // Agregar y editar empleados se hace desde Configuración > Personal y
 // permisos, como en la web; aquí «+» registra una marcación.
 export default function EmpleadosScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
 
@@ -122,7 +124,7 @@ export default function EmpleadosScreen({ navigation }) {
     body = (
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, bottomPad]}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} />}
       >
@@ -149,7 +151,7 @@ export default function EmpleadosScreen({ navigation }) {
     body = (
       <FlatList
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, bottomPad]}
         keyboardShouldPersistTaps="handled"
         data={groups}
         keyExtractor={(g) => g.day.key}
@@ -233,6 +235,6 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     backgroundColor: colors.surface2,
   },
-  dayTitle: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.ink },
+  dayTitle: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.ink, fontVariant: ["tabular-nums"] },
   dayCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
 });

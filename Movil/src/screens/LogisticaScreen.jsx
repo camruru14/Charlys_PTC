@@ -19,6 +19,7 @@ import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber, formatShortDate } from "../lib/format";
 import { dispatchInfo, dispatchOrders } from "../lib/logistics";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Mismas vistas que Web/private/frontend/src/pages/Logistica.jsx.
 const TABS = [
@@ -37,6 +38,7 @@ const CHIPS = [
 // los pedidos empacados que todavía no salen y los agrega a la ruta que se
 // está armando. «+» arma una ruta nueva.
 export default function LogisticaScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const {
     routes,
@@ -166,7 +168,7 @@ export default function LogisticaScreen({ navigation }) {
       body = (
         <FlatList
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, bottomPad]}
           data={routes}
           keyExtractor={(r) => r._id}
           renderItem={({ item }) => <RouteCard route={item} onPress={() => openRoute(item._id)} />}
@@ -251,7 +253,7 @@ export default function LogisticaScreen({ navigation }) {
       ) : (
         <FlatList
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, bottomPad]}
           data={visibleOrders}
           keyExtractor={(o) => o._id}
           ListHeaderComponent={listHeader}

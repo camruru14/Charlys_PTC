@@ -14,6 +14,9 @@ import { recordSaleTransaction } from "../utils/salesTransaction.js";
 // guardar este nombre; la tienda sigue mostrando la categoría en plural.
 const INVENTORY_NAME = { Pajillas: "Pajilla", Pelotas: "Pelota" };
 
+// Cantidad máxima por línea (la tienda aplica el mismo tope en src/lib/quantity.js).
+const MAX_QUANTITY = 9_999_999;
+
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...).
 // Mismo esquema que private/backend/src/controller/ordersController.js: ambos
 // backends escriben a la misma colección "orders", así que un pedido hecho
@@ -52,6 +55,13 @@ async function buildOrderItems(rawItems) {
       throw {
         status: 400,
         message: `"${product.name}" requiere un pedido mínimo de ${product.minOrderQuantity} unidades.`,
+      };
+    }
+
+    if (!Number.isInteger(quantity) || quantity > MAX_QUANTITY) {
+      throw {
+        status: 400,
+        message: `"${product.name}" requiere una cantidad entera de máximo ${MAX_QUANTITY.toLocaleString("en-US")} unidades.`,
       };
     }
 

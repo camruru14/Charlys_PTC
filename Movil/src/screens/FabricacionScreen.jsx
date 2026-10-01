@@ -30,6 +30,7 @@ import { batchApi } from "../lib/batchActions";
 import { runAll } from "../lib/inventoryOrders";
 import { buildGroups, groupSearchText } from "../lib/orderManufacturing";
 import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Mismas vistas que Web/private/frontend/src/pages/Fabricacion.jsx.
 const TABS = [
@@ -105,6 +106,7 @@ function MonthChip({ value, options, onChange }) {
 // (LoteDetalleScreen), donde avanza: iniciar, detener, completar, enviar a
 // bodega o empacar.
 export default function FabricacionScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const range = useDateRange();
   const { batches, loading, refreshing, error, refresh } = useBatches();
@@ -388,7 +390,7 @@ export default function FabricacionScreen({ navigation }) {
       {tab === "lotes" ? (
         <FlatList
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, bottomPad]}
           data={visibleLots}
           keyExtractor={(b) => b._id}
           renderItem={({ item }) => (
@@ -417,7 +419,7 @@ export default function FabricacionScreen({ navigation }) {
       ) : tab === "diaria" ? (
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, bottomPad]}
           refreshControl={refreshControl}
           keyboardShouldPersistTaps="handled"
         >
@@ -450,7 +452,7 @@ export default function FabricacionScreen({ navigation }) {
       ) : (
         <FlatList
           style={styles.flex}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, bottomPad]}
           data={visibleGroups}
           keyExtractor={(g) => g.order._id}
           renderItem={({ item: g }) => (

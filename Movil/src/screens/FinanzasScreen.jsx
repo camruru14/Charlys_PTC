@@ -22,6 +22,7 @@ import { fonts } from "../lib/typography";
 import { formatMoney, formatNumber } from "../lib/format";
 import { financeKpis, lastMonths } from "../lib/finance";
 import { defaultTransactionFilters, filterTransactions, inRange } from "../lib/transactionFilters";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 const TABS = [
   { value: "resumen", label: "Resumen" },
@@ -40,6 +41,7 @@ const TYPE_CHIPS = [
 // transacción nueva; tocar una fila la edita y mantenerla presionada ofrece
 // Editar / Eliminar, como el menú «…» de la web.
 export default function FinanzasScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const range = useDateRange();
   const { transactions, loading, refreshing, error, refresh, eliminar } = useTransactions();
@@ -155,7 +157,7 @@ export default function FinanzasScreen({ navigation }) {
       {header}
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, bottomPad]}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >

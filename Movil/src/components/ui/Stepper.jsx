@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { colors, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
@@ -21,17 +21,40 @@ function stepState(step, index, current) {
 
 const STATE_LABEL = { done: ", completado", current: ", actual", skipped: ", omitido", pending: "" };
 
+// Etiquetas: pueden ocupar más que su paso (LABEL_SPREAD veces su ancho),
+// centradas bajo el círculo e invadiendo el tramo del conector, y solo
+// saltan de línea en los espacios. La letra baja de 10.5 a 10 solo cuando
+// la palabra más larga no cabe en el ancho del paso (estimación por
+// caracteres, Figtree semibold ≈ 0.56 em por letra).
+const LABEL_SPREAD = 1.5;
+const LABEL_SIZE = 10.5;
+const LABEL_SIZE_MIN = 10;
+const CHAR_EM = 0.56;
+
+function labelText(step) {
+  return typeof step === "object" ? step.label : step;
+}
+
 export default function Stepper({ steps, current = 0, style }) {
   const states = steps.map((step, index) => stepState(step, index, current));
+  const [width, setWidth] = useState(0);
+
+  const stepWidth = width / Math.max(1, steps.length);
+  const longestWord = Math.max(
+    0,
+    ...steps.flatMap((step) => String(labelText(step) ?? "").split(/\s+/).map((w) => w.length))
+  );
+  const labelSize = !width || longestWord * CHAR_EM * LABEL_SIZE <= stepWidth ? LABEL_SIZE : LABEL_SIZE_MIN;
+  const labelStyle = { fontSize: labelSize, lineHeight: Math.round(labelSize * 1.25) };
 
   // Un paso está "alcanzado" si no está pendiente; el tramo que llega a él va
   // en verde.
   const reached = (i) => i >= 0 && i < states.length && states[i] !== "pending";
 
   return (
-    <View style={[styles.row, style]}>
+    <View style={[styles.row, style]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {steps.map((step, index) => {
-        const label = typeof step === "object" ? step.label : step;
+        const label = labelText(step);
         const date = typeof step === "object" ? step.date : null;
         const state = states[index];
         return (
@@ -57,13 +80,13 @@ export default function Stepper({ steps, current = 0, style }) {
                 </View>
               </View>
               <Text
-                style={[styles.label, (state === "pending" || state === "skipped") && styles.labelMuted]}
-                numberOfLines={2}
+                style={[styles.label, labelStyle, (state === "pending" || state === "skipped") && styles.labelMuted]}
+                textBreakStrategy="simple"
               >
                 {label}
               </Text>
               {date ? (
-                <Text style={styles.date} numberOfLines={1}>
+                <Text style={[styles.date, styles.wide]} numberOfLines={1}>
                   {date}
                 </Text>
               ) : null}
@@ -124,14 +147,18 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 12,
     color: colors.faint,
+    fontVariant: ["tabular-nums"],
   },
   numberCurrent: {
     color: colors.white,
   },
+  // Más ancho que el paso y centrado: se sale por igual a los dos lados.
+  wide: {
+    width: `${LABEL_SPREAD * 100}%`,
+  },
   label: {
+    width: `${LABEL_SPREAD * 100}%`,
     fontFamily: fonts.semibold,
-    fontSize: 10.5,
-    lineHeight: 13,
     color: colors.ink,
     textAlign: "center",
   },
@@ -143,6 +170,7 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     color: colors.faint,
     textAlign: "center",
+    fontVariant: ["tabular-nums"],
   },
   connector: {
     position: "absolute",

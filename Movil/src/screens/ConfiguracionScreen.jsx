@@ -13,6 +13,7 @@ import ListGroup from "../components/ui/ListGroup";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatElapsed, formatNumber, formatRelativeDay } from "../lib/format";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Versión de app.json (expo.version).
 const APP_VERSION = Constants.expoConfig?.version || "1.0.0";
@@ -30,11 +31,14 @@ function since(value) {
 // celular, las secciones del menú de la web son una lista; cada una es su
 // propia pantalla del stack.
 export default function ConfiguracionScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const { company, refresh: refreshCompany } = useCompanySettings();
-  const { warehouses, refreshing, refresh: refreshWarehouses } = useWarehouses();
-  const { vehicles, refresh: refreshVehicles } = useVehicles();
-  const { lines, refresh: refreshLines } = useProductionLines();
-  const { employees, refresh: refreshEmployees } = useEmployees();
+  const { warehouses, loading: warehousesLoading, refreshing, refresh: refreshWarehouses } = useWarehouses();
+  const { vehicles, loading: vehiclesLoading, refresh: refreshVehicles } = useVehicles();
+  const { lines, loading: linesLoading, refresh: refreshLines } = useProductionLines();
+  const { employees, loading: employeesLoading, refresh: refreshEmployees } = useEmployees();
+  // El contador solo aparece cuando ya cargó (mientras tanto no se muestra «0»).
+  const countOf = (list, loading) => (loading && !list.length ? null : list.length);
 
   const reload = useCallback(() => {
     refreshCompany();
@@ -48,17 +52,17 @@ export default function ConfiguracionScreen({ navigation }) {
 
   const sections = [
     { screen: "ConfigEmpresa", icon: "building", title: "Empresa", description: "Datos, logo y horario laboral" },
-    { screen: "ConfigBodegas", icon: "box", title: "Bodegas", description: "Destinos del inventario", count: warehouses.length },
-    { screen: "ConfigVehiculos", icon: "truck", title: "Vehículos", description: "Flota para armar rutas", count: vehicles.length },
-    { screen: "ConfigLineas", icon: "factory", title: "Líneas de producción", description: "Opciones al crear lotes", count: lines.length },
-    { screen: "ConfigPersonal", icon: "users", title: "Personal y permisos", description: "Alta y edición de empleados", count: employees.length },
+    { screen: "ConfigBodegas", icon: "box", title: "Bodegas", description: "Destinos del inventario", count: countOf(warehouses, warehousesLoading) },
+    { screen: "ConfigVehiculos", icon: "truck", title: "Vehículos", description: "Flota para armar rutas", count: countOf(vehicles, vehiclesLoading) },
+    { screen: "ConfigLineas", icon: "factory", title: "Líneas de producción", description: "Opciones al crear lotes", count: countOf(lines, linesLoading) },
+    { screen: "ConfigPersonal", icon: "users", title: "Personal y permisos", description: "Alta y edición de empleados", count: countOf(employees, employeesLoading) },
     { screen: "MiCuenta", icon: "user", title: "Mi cuenta", description: "Tu correo, contraseña y datos" },
   ];
 
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} />}
     >
       <ListGroup>

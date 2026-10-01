@@ -78,6 +78,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 9.5,
     color: colors.subtle,
+    fontVariant: ["tabular-nums"],
   },
   column: { flex: 1, height: "100%", alignItems: "center", justifyContent: "flex-end" },
   value: { marginBottom: 3, fontFamily: fonts.regular, fontSize: 10, color: colors.subtle, fontVariant: ["tabular-nums"] },

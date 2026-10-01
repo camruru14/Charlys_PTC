@@ -13,6 +13,7 @@ import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber } from "../lib/format";
+import { useBottomPad } from "../hooks/useBottomPad";
 
 // Abreviatura de cada unidad de inventario en el resumen de una bodega.
 const UNIT_ABBR = { unidad: "u", unidades: "u" };
@@ -21,6 +22,7 @@ const UNIT_ABBR = { unidad: "u", unidades: "u" };
 // en la misma fila y una bodega con existencia no se puede eliminar. «+»
 // agrega una (BodegaFormScreen).
 export default function ConfigBodegasScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
   const toast = useToast();
   const { warehouses, loading, refreshing, error, refresh, actualizar, eliminar } = useWarehouses();
   const { items, refresh: refreshInventory } = useInventory();
@@ -86,7 +88,7 @@ export default function ConfigBodegasScreen({ navigation }) {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, bottomPad]}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
     >
