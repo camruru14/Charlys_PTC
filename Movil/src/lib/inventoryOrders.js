@@ -79,8 +79,73 @@ function isWaitingBatch(item) {
   return Boolean(item.sentToManufacturing && !item.packed);
 }
 
+// Pendiente ya verificada, lista para empacar.
+function isVerifiedPending(item) {
+  if (isSplit(item)) return Boolean(item.manufacturePackedAt && !item.stockPackedAt);
+  return Boolean(item.verified && !item.sentToManufacturing && !item.packed);
+}
+
 function isProcessed(item) {
   return Boolean(item.verified || item.sentToManufacturing || item.packed || item.stockPackedAt || item.manufacturePackedAt);
+}
+
+// Estado macro del pedido (dominio pedido-inventario).
+export function inventoryMacroStatus(order) {
+  const items = order.items || [];
+  if (items.length > 0 && items.every((i) => i.packed)) return "Empacado";
+  const pending = items.filter((i) => !i.packed);
+  if (pending.length > 0 && pending.every(isWaitingBatch)) return "Esperando lote";
+  if (pending.length > 0 && pending.every(isVerifiedPending)) return "Listo para empacar";
+  if (!items.some(isProcessed)) return "Sin verificar";
+  return "Verificando";
+}
+
+// Conteo por estado principal de cada línea, en el orden de la ficha.
+export function lineCounts(order, stockMap) {
+  const counts = { empacado: 0, verificado: 0, porVerificar: 0, parcial: 0, sinExistencia: 0, enFabricacion: 0 };
+  for (const item of order.items || []) {
+    if (item.packed) counts.empacado += 1;
+    else if (isWaitingBatch(item)) counts.enFabricacion += 1;
+    else if (isVerifiedPending(item)) counts.verificado += 1;
+    else {
+      const kind = suggestWarehouse(item, stockMap).kind;
+      if (kind === "full") counts.porVerificar += 1;
+      else if (kind === "partial") counts.parcial += 1;
+      else counts.sinExistencia += 1;
+    }
+  }
+  return counts;
+}
+
+// [clave de lineCounts, estado de la línea (dominio linea-inventario)], en
+// el orden de la barra de avance de la web.
+export const COUNT_STATUS = [
+  ["empacado", "Empacado"],
+  ["verificado", "Verificado"],
+  ["porVerificar", "Por verificar"],
+  ["parcial", "Existencia parcial"],
+  ["sinExistencia", "Sin existencia"],
+  ["enFabricacion", "En fabricación"],
+];
+
+// Líneas sin procesar (por verificar, parciales o sin existencia).
+export function unprocessedCount(order) {
+  return (order.items || []).filter((i) => !isProcessed(i) && !isSplit(i)).length;
+}
+
+// Despachado: ya salió, o está en una ruta de Logística y todas sus líneas
+// por llevar (empacadas sin entregar) ya se recogieron.
+export function isDispatched(order) {
+  if (order.status === "En Tránsito" || order.status === "Entregado") return true;
+  if (!order.delivery?.route) return false;
+  const carried = (order.items || []).filter((i) => i.packed && !i.deliveredAt);
+  return carried.length > 0 && carried.every((i) => i.pickedUpAt);
+}
+
+// Fecha del último cambio de status (para «Despachados, últimos 30 días»).
+export function lastStatusAt(order) {
+  const history = order.statusHistory || [];
+  return history.length ? history[history.length - 1].at : order.updatedAt;
 }
 
 // «2 de 6 listos» o «1 de 2 · LOTE-2026-0012 en proceso» si espera un lote.
