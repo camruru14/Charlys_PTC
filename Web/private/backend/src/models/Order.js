@@ -1,0 +1,159 @@
+import { Schema, model } from "mongoose";
+
+// Cada línea del pedido
+const orderItemSchema = new Schema(
+  {
+    product: { type: String, required: true }, // ej. "Pajilla", "Pelota"
+    color: { type: String }, // ej. "Rojo", "Azul"
+    quantity: { type: Number, required: true, min: 1 },
+    unitPrice: { type: Number, required: true, min: 0 },
+    subtotal: { type: Number, required: true, min: 0 },
+    // Verificación en Inventario > Pedidos: se marca al confirmar el modal
+    // "Verificar producto en inventario", que resta la cantidad pedida del
+    // stock de la bodega elegida.
+    verified: { type: Boolean, default: false },
+    verifiedWarehouse: { type: String },
+    verifiedAt: { type: Date },
+    // Se marca al presionar "Empacar" (solo disponible una vez verificado).
+    // También pone todo el pedido en estado "Empacado" para Logística.
+    packed: { type: Boolean, default: false },
+    packedAt: { type: Date },
+    // Dónde se empacó la línea: se llena solo (nunca a mano) al marcarla como
+    // empacada. "Almacén" desde el flujo normal de Inventario > Pedidos
+    // (packOrderItem); "Fabricación" desde Fabricación > Fabricación de
+    // pedidos (packManufacturedItem), cuando el producto no había en stock y
+    // se fabricó exclusivamente para este pedido. Logística lo usa para saber
+    // dónde tiene que pasar el motorista a recoger (ver getRequiredPickups).
+    packedLocation: { type: String, enum: ["Almacén", "Fabricación"] },
+    // Se marca al presionar "Enviar a fabricación" en el modal "Verificar
+    // producto en inventario" (Inventario > Pedidos), cuando no hay stock
+    // suficiente para cubrir el pedido. La línea aparece entonces en
+    // Fabricación > Pedidos; en Inventario > Pedidos queda como "Enviado".
+    sentToManufacturing: { type: Boolean, default: false },
+    sentToManufacturingAt: { type: Date },
+    // Se llena al presionar "Fabricar" en Fabricación > Pedidos: crea un lote
+    // en Lotes de fabricación (categoría "Pedido", meta = cantidad pedida) y
+    // queda enlazado aquí.
+    manufacturingBatch: { type: Schema.Types.ObjectId, ref: "ProductionBatch" },
+    manufacturedAt: { type: Date },
+    // Línea dividida por existencia parcial («Tomar X y fabricar Y» en
+    // Inventario > Pedidos): fromStockQty se tomó de verifiedWarehouse y
+    // toManufactureQty se mandó a fabricar (manufacturingBatch). Siempre
+    // suman quantity, así que totales y subtotales no cambian.
+    fromStockQty: { type: Number, min: 1 },
+    toManufactureQty: { type: Number, min: 1 },
+    // Empaque de cada parte de una línea dividida: la de bodega en Almacén y
+    // la fabricada en Fabricación. `packed` solo es true con las dos.
+    stockPackedAt: { type: Date },
+    manufacturePackedAt: { type: Date },
+    // Rutas de Logística (Fase 7): cuándo el motorista recogió la línea
+    // (todas sus ubicaciones confirmadas en la ruta) y cuándo la entregó.
+    pickedUpAt: { type: Date },
+    deliveredAt: { type: Date },
+  },
+  { _id: false },
+);
+
+// Información de despacho / logística asociada al pedido
+const deliverySchema = new Schema(
+  {
+    driver: { type: Schema.Types.ObjectId, ref: "Employee" }, // motorista
+    vehicle: { type: String }, // placa o identificador de vehículo
+    dispatchStatus: {
+      type: String,
+      enum: ["Saliendo", "A tiempo", "Demorado", "Entregado"],
+      default: "Saliendo",
+    },
+    dispatchedAt: { type: Date },
+    deliveredAt: { type: Date },
+    address: { type: String },
+    // Checklist de recolección: se llenan cuando Logística confirma que el
+    // motorista ya recogió lo que le tocaba en ese lugar (ver confirmPickup y
+    // getRequiredPickups en Logistica.jsx). Si el pedido nunca tuvo nada que
+    // recoger en un lugar, el campo correspondiente se queda vacío.
+    pickupWarehouseAt: { type: Date },
+    pickupFactoryAt: { type: Date },
+    // Ruta de Logística en la que va el pedido (ver models/Route.js). Mientras
+    // la tenga, driver y vehicle se sincronizan desde la ruta.
+    route: { type: Schema.Types.ObjectId, ref: "Route" },
+  },
+  { _id: false },
+);
+
+// Un registro del historial de estados del pedido.
+const statusHistorySchema = new Schema(
+  {
+    status: { type: String, required: true },
+    at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const orderSchema = new Schema(
+  {
+    orderNumber: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    customer: {
+      name: { type: String, required: true },
+      email: { type: String },
+      phone: { type: String },
+      address: { type: String },
+    },
+    items: {
+      type: [orderItemSchema],
+      default: [],
+    },
+    total: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    status: {
+      type: String,
+      enum: [
+        "Pendiente",
+        "Procesando",
+        "En Fabricación",
+        "Empacado",
+        "En Tránsito",
+        "Entregado",
+      ],
+      default: "Pendiente",
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["Pendiente", "Pagado", "Reembolsado"],
+      default: "Pendiente",
+    },
+    source: {
+      type: String,
+      default: "ecommerce",
+    },
+    delivery: deliverySchema,
+    notes: {
+      type: String,
+    },
+    // Fecha en que el pedido pasó a Inventario. Se llena sola al crearse el
+    // pedido (aquí en insertOrder y en el checkout de public/backend); el
+    // PATCH /orders/:id/request-inventory solo la vuelve a poner si falta.
+    // Inventario > Pedidos la usa para listar el pedido y el panel la
+    // muestra como «Pasó solo a Inventario». No afecta stock.
+    sentToInventoryAt: {
+      type: Date,
+    },
+    // Registro de cada cambio de status (incluida la creación). Solo se
+    // escribe a través de setOrderStatus (src/lib/orderStatus.js).
+    statusHistory: {
+      type: [statusHistorySchema],
+      default: [],
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
+export default model("Order", orderSchema);
