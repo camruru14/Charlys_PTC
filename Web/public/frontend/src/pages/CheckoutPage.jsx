@@ -10,7 +10,7 @@ import api from "../lib/api";
 // pero la transacción sí viaja a la API de Wompi).
 const TARJETA_DEMO = { number: "4573 6900 0199 0693", cvv: "835", month: "12", year: "2029" };
 // Solo con la cuenta de Wompi en sandbox se ofrece la tarjeta de prueba y el
-// aviso de "no se cobra dinero real" (ver .env.example). Cualquier otro valor,
+// aviso de "no se cobra dinero real" (ver README). Cualquier otro valor,
 // o la variable ausente, se trata como producción.
 const WOMPI_SANDBOX = import.meta.env.VITE_WOMPI_SANDBOX === "true";
 

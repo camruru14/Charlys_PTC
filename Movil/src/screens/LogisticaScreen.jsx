@@ -30,7 +30,6 @@ import {
   dispatchGroup,
   dispatchOrders,
   groupDispatchOrders,
-  canRemoveFromRoute,
   groupRoutes,
   matchesQuery,
   routeCounts,

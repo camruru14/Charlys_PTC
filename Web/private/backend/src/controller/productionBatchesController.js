@@ -1,7 +1,6 @@
 const productionBatchesController = {};
 
 import batchModel from "../models/ProductionBatch.js";
-import inventoryModel from "../models/InventoryItem.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import { assertProductName } from "../lib/productName.js";
 import {
@@ -198,94 +197,6 @@ productionBatchesController.packCompleted = async (req, res) => {
     res.json({ message: "Batches packed", packed: [...new Set((req.body.batchIds || []).map(String))].length, orders: orders.map((o) => o._id) });
   } catch (error) {
     sendError(res, error);
-  }
-};
-
-// --- Flujo antiguo de «Reportar» ---------------------------------------------
-// El panel web ya no lo usa (Fase 5: los lotes se envían directo a bodega).
-// Se conserva igual para la app Movil, que todavía reporta lotes y los envía
-// desde Inventario > Lotes reportados.
-
-// Registro manual de producción reportada por el empleado. Reporta la misma
-// cantidad que ya está guardada como producción del lote, y agrega/actualiza
-// el artículo «reportado» (con batchNumber) en Inventario.
-productionBatchesController.reportProduction = async (req, res) => {
-  try {
-    const { producedQuantity, warehouse } = req.body;
-
-    const batch = await batchModel.findById(req.params.id);
-
-    if (!batch) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
-    if (batch.sentToWarehouseAt) {
-      return res
-        .status(409)
-        .json({ message: `El lote ${batch.batchNumber} ya está en ${batch.destinationWarehouse || "bodega"}` });
-    }
-
-    batch.producedQuantity = Number(producedQuantity || 0);
-    batch.lastReportedAt = new Date();
-
-    if (batch.status === "Programado") {
-      batch.status = "En Proceso";
-      batch.startedAt = batch.startedAt || new Date();
-    }
-
-    await batch.save();
-
-    await inventoryModel.findOneAndUpdate(
-      { batchNumber: batch.batchNumber },
-      {
-        name: batch.product,
-        category: "Producto Terminado",
-        color: batch.color,
-        stock: batch.producedQuantity,
-        batchNumber: batch.batchNumber,
-        location: warehouse,
-      },
-      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
-    );
-
-    res.json({ message: "Production reported" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
-  }
-};
-
-// Revierte un lote a "no reportado": solo se limpia lastReportedAt. No
-// guarda el documento, eso queda a cargo de quien llama.
-export function resetBatchToUnreported(batch) {
-  batch.lastReportedAt = undefined;
-}
-
-// Borra el artículo «reportado» de un lote. Si ya se había enviado, sus
-// unidades siguen sumadas en el producto terminado real.
-export async function releaseReportedItem(item) {
-  if (!item) return;
-  await inventoryModel.deleteOne({ _id: item._id });
-}
-
-// Deshace el reporte de un lote (Movil).
-productionBatchesController.undoReport = async (req, res) => {
-  try {
-    const batch = await batchModel.findById(req.params.id);
-
-    if (!batch) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
-
-    const item = await inventoryModel.findOne({ batchNumber: batch.batchNumber });
-
-    resetBatchToUnreported(batch);
-    await batch.save();
-    await releaseReportedItem(item);
-
-    res.json({ message: "Report undone" });
-  } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
   }
 };
 

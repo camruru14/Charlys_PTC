@@ -26,7 +26,7 @@ export function setOrderStatus(order, status, at = new Date()) {
 // Inventario/Fabricación lo fije a mano mirando solo la línea que acaba de
 // tocar. Prioridad:
 //   1. Si ya hay motorista asignado, el ciclo de despacho activo lo maneja
-//      assignDelivery/updateStatus aparte: no se toca.
+//      Logística (rutas, ver lib/routes.js) aparte: no se toca.
 //   2. Todas las líneas empacadas -> "Empacado".
 //   3. Alguna línea enviada a fabricación y ninguna empacada -> "En Fabricación".
 //   4. Alguna línea con avance (verificada o empacada) -> "Procesando".

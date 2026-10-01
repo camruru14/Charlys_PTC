@@ -16,8 +16,6 @@ export const tones = {
   teal: { bg: "#E8F3F7", text: "#2C7189", dot: "#4E9CB5" },
 };
 
-export const TONE_NAMES = Object.keys(tones);
-
 // Paleta de gráficos en orden (como CHART_COLORS de la web).
 export const chartColors = ["#3D6FC9", "#C4841C", "#3C8F5E", "#7F5FC7", "#B85268"];
 

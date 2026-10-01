@@ -8,8 +8,6 @@ router
   .get(transactionsController.getTransactions)
   .post(transactionsController.insertTransaction);
 
-router.route("/summary").get(transactionsController.getSummary);
-
 router
   .route("/:id")
   .put(transactionsController.updateTransaction)

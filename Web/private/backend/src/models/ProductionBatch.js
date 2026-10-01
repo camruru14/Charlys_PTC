@@ -29,9 +29,8 @@ const productionBatchSchema = new Schema(
       type: Number,
       min: 0,
     },
-    // Se llena solo cuando se usa el botón "Reportar" en Fabricación (endpoint
-    // /report). Sirve para distinguir producción reportada de producción
-    // simplemente capturada al crear/editar el lote a mano.
+    // Marca de producción reportada con el antiguo flujo «Reportar» (ya retirado
+    // de la API). Se conserva en el esquema por los lotes que ya la tienen.
     lastReportedAt: {
       type: Date,
     },

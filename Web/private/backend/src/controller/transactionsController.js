@@ -63,23 +63,4 @@ transactionsController.deleteTransaction = async (req, res) => {
   res.json({ message: "Transaction deleted" });
 };
 
-// Resumen financiero (ingresos, gastos, rentabilidad)
-transactionsController.getSummary = async (req, res) => {
-  const transactions = await transactionModel.find();
-
-  const income = transactions
-    .filter((t) => t.type === "Ingreso")
-    .reduce((sum, t) => sum + t.amount, 0);
-  const expense = transactions
-    .filter((t) => t.type === "Gasto")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  res.json({
-    income,
-    expense,
-    net: income - expense,
-    count: transactions.length,
-  });
-};
-
 export default transactionsController;

@@ -4,8 +4,7 @@ import { config } from "../../config.js";
 
 // Logo de la empresa (Configuración) y fotos de producto (Catálogo), con las
 // mismas credenciales que public/backend. Aquí multer guarda el archivo en
-// memoria y se sube con el SDK de cloudinary: el multer-storage-cloudinary
-// instalado en este backend es la 2.x, con otra API y atado a cloudinary 1.x.
+// memoria y se sube con el SDK de cloudinary.
 cloudinary.config({
   cloud_name: config.cloudinary.cloudinary_name,
   api_key: config.cloudinary.cloudinary_api_key,

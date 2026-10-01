@@ -28,7 +28,7 @@ const deliverySchema = new Schema(
 const routeSchema = new Schema(
   {
     // Código único de la ruta: R-AAAA-NNNN. Las rutas anteriores a este campo
-    // no lo tienen hasta correr scripts/migrate-route-codes.js (índice sparse).
+    // no lo tienen y se muestran con su número (índice sparse).
     code: { type: String, trim: true },
     // OBSOLETO: antes era el correlativo por día (se reiniciaba cada día y dejó
     // de ser único). Ya no se calcula por día ni se usa en código nuevo; solo

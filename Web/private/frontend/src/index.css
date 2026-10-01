@@ -6,7 +6,7 @@
   Al declararlos en @theme, Tailwind v4 genera utilidades como bg-canvas,
   text-ink, border-line, bg-tone-blue, etc. `static` hace que todas las
   variables se emitan en :root aunque ninguna clase las use, porque los
-  gráficos (BarChart, DonutChart) las leen como var(--color-chart-N).
+  gráficos (DonutChart, MonthlyChart) las leen como var(--color-chart-N).
   Ningún componente debe usar un hex suelto: todo color sale de aquí.
 */
 @theme static {

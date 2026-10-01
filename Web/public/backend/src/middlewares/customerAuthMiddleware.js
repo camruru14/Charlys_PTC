@@ -35,20 +35,3 @@ export const requireCustomerAuth = () => {
     }
   };
 };
-
-// Variante que NO bloquea si no hay sesión (útil en rutas donde el cliente
-// puede o no estar logueado), pero adjunta req.customer si la cookie es
-// válida.
-export const attachCustomerIfPresent = () => {
-  return (req, _res, next) => {
-    try {
-      const token = req.cookies?.[CUSTOMER_COOKIE_NAME];
-      if (token) {
-        req.customer = jsonwebtoken.verify(token, config.JWT.secret);
-      }
-    } catch {
-      // Cookie inválida/expirada: seguimos como invitado, no es un error.
-    }
-    next();
-  };
-};

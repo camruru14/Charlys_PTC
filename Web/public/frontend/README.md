@@ -6,9 +6,8 @@ ajustada a Industrias Charly.
 
 ## Puesta en marcha
 
-1. **Renombra el archivo de entorno:** busca `ENV_RENOMBRAR_A_.env.txt` en
-   esta carpeta y renómbralo a `.env` (ya trae `VITE_API_URL` apuntando al
-   backend local).
+1. **Crea el archivo de entorno:** crea un archivo `.env` en esta carpeta con
+   las variables descritas en [Variables de entorno](#variables-de-entorno).
 2. Instala dependencias:
    ```bash
    npm install
@@ -19,6 +18,28 @@ ajustada a Industrias Charly.
    npm run dev
    ```
    Abre en `http://localhost:5175`.
+
+## Variables de entorno
+
+Se definen en el archivo `.env` de esta carpeta (no se sube al repositorio).
+Son variables de Vite: se leen al compilar, así que **después de cambiarlas
+hay que reiniciar `npm run dev`** (o volver a hacer build).
+
+- `VITE_API_URL` — URL de `public/backend` (la API de la tienda). Si no se
+  define, se usa `http://localhost:4100/api`. En producción apúntala al
+  backend desplegado.
+- `VITE_WOMPI_SANDBOX` — modo sandbox de Wompi. Solo con el valor `true` el
+  checkout muestra el botón «Usar tarjeta de prueba» y el aviso «no se cobra
+  dinero real». Úsala en `true` **únicamente** mientras `public/backend` tenga
+  credenciales de prueba de Wompi. En producción déjala vacía o en `false`
+  (cualquier otro valor se trata como producción).
+
+Ejemplo para desarrollo local:
+
+```
+VITE_API_URL=http://localhost:4100/api
+VITE_WOMPI_SANDBOX=false
+```
 
 ## Estructura
 

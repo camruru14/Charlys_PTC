@@ -5,12 +5,8 @@ import transactionModel from "../models/Transaction.js";
 import routeModel from "../models/Route.js";
 import customerOrderModel from "../models/CustomerOrder.js";
 import { setOrderStatus, computeOrderStatus } from "../lib/orderStatus.js";
-import { HttpError, sendError, withTransaction, returnStock } from "../lib/stock.js";
+import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import {
-  packedLocations,
-  hasStockTaken,
-  takenQty,
-  resetLine,
   verifyLine,
   unverifyLine,
   packLine,
@@ -28,21 +24,6 @@ import {
 const BATCH_FIELDS = "batchNumber status targetQuantity producedQuantity";
 // Campos de la ruta de Logística al poblar delivery.route («Zona · Ruta N»).
 const ROUTE_FIELDS = "code number zone status date";
-
-// Un pedido en una ruta conserva su delivery (motorista, vehículo y ruta los
-// maneja la ruta; ver lib/routes.js), aunque su status cambie a mano.
-const keepsDelivery = (order, status) => status === "En Tránsito" || status === "Entregado" || Boolean(order.delivery?.route);
-
-// El motorista ya pasó por todas las paradas de recolección que este pedido
-// requiere (o no requiere ninguna). Se le pasa `delivery` aparte del `order`
-// porque a veces se evalúa contra el delivery ya guardado en DB y a veces
-// contra uno recién armado en memoria (ver assignDelivery/confirmPickup).
-function isFullyCollected(order, delivery) {
-  const required = packedLocations(order);
-  if (required.includes("Almacén") && !delivery?.pickupWarehouseAt) return false;
-  if (required.includes("Fabricación") && !delivery?.pickupFactoryAt) return false;
-  return true;
-}
 
 // Carga un pedido y una de sus líneas dentro de una transacción, aplica
 // `fn` sobre la línea, recalcula el status y guarda. Todo o nada: si `fn`
@@ -95,85 +76,6 @@ ordersController.getOrder = async (req, res) => {
   try {
     const order = await populateOrder(orderModel.findById(req.params.id));
     res.json(order);
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-// ACTUALIZAR solo el estado (avanzar en el ciclo del pedido)
-ordersController.updateStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) throw new HttpError(404, "Pedido no encontrado");
-
-    setOrderStatus(order, status);
-    // Si el pedido sale del flujo de despacho activo (deja de estar "En Tránsito" o "Entregado"),
-    // se limpia la asignación de logística previa: motorista, vehículo, etc. Así, si más adelante
-    // vuelve a "En Tránsito", aparece sin asignar en vez de arrastrar al motorista anterior.
-    if (!keepsDelivery(order, status)) {
-      order.delivery = undefined;
-    }
-
-    await order.save();
-
-    res.json({ message: "Order status updated" });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-// ASIGNAR logística (motorista / vehículo) al pedido, o editar una entrega ya
-// asignada (mismo endpoint: Logística usa este PATCH tanto para "Asignar"
-// como para "Editar entrega"). El pedido pasa a "En Tránsito" solo cuando ya
-// no le falta ninguna parada de recolección (o nunca la tuvo) — mientras el
-// motorista todavía tenga que pasar por Almacén y/o Fabricación, el pedido
-// se queda en su status de "para despacho" (Empacado/Procesando/etc.) y
-// Logística lo sigue mostrando en esa pestaña, no en "En Tránsito". Salvo
-// que el estado de despacho elegido ya sea "Entregado", en cuyo caso el
-// pedido mismo pasa a "Entregado": así Logística libera al motorista (ver
-// busyDriverMap en Logistica.jsx, que excluye pedidos con status
-// "Entregado") en cuanto se marca la entrega como completada, en vez de
-// dejarlo "ocupado" para siempre en un pedido ya cerrado.
-ordersController.assignDelivery = async (req, res) => {
-  try {
-    const { driver, vehicle, dispatchStatus, address } = req.body;
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) throw new HttpError(404, "Pedido no encontrado");
-
-    // Se copian pickupWarehouseAt/pickupFactoryAt del delivery existente en
-    // vez de reemplazar todo el subdocumento: reemplazarlo (como antes)
-    // borraba las recolecciones ya confirmadas por confirmPickup, así que
-    // guardar la entrega (aunque fuera solo para cambiar vehículo o estado de
-    // despacho) las deshacía silenciosamente.
-    const delivery = {
-      driver,
-      vehicle,
-      dispatchStatus,
-      address,
-      pickupWarehouseAt: order.delivery?.pickupWarehouseAt,
-      pickupFactoryAt: order.delivery?.pickupFactoryAt,
-      // Se conserva la ruta de Logística si la tiene (este endpoint no la maneja).
-      route: order.delivery?.route,
-    };
-
-    let status;
-    if (dispatchStatus === "Entregado") {
-      status = "Entregado";
-    } else if (packedLocations(order).length === 0 || isFullyCollected(order, order.delivery)) {
-      status = "En Tránsito";
-    } else {
-      status = computeOrderStatus(order);
-    }
-
-    order.delivery = delivery;
-    setOrderStatus(order, status);
-    order.markModified("delivery");
-    await order.save();
-
-    res.json({ message: "Delivery assigned" });
   } catch (error) {
     sendError(res, error);
   }
@@ -253,58 +155,6 @@ function orderSnapshot(order) {
     createdAt: order.createdAt,
   };
 }
-
-// Reenvía el aviso a Inventario: pone sentToInventoryAt solo si falta
-// (idempotente; todo pedido ya lo recibe al crearse). No reserva ni
-// descuenta stock y no se dispara automáticamente desde ningún otro punto.
-ordersController.requestInventory = async (req, res) => {
-  try {
-    await orderModel.updateOne(
-      { _id: req.params.id, sentToInventoryAt: { $exists: false } },
-      { $set: { sentToInventoryAt: new Date() } },
-    );
-    res.json({ message: "Inventory requested" });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-// Quita un pedido de Inventario (lo usa Movil): borra todo su rastro de
-// verificación. Por cada producto con stock tomado, le devuelve esa cantidad
-// a la bodega donde se había restado, y desmarca verificado/empacado/enviado
-// a fabricación. Como sentToInventoryAt se borra, el pedido sale de la lista
-// de Inventario de Movil hasta que se reenvíe con PATCH request-inventory.
-ordersController.cancelInventoryRequest = async (req, res) => {
-  try {
-    await withTransaction(async (session) => {
-      const order = await orderModel.findById(req.params.id).session(session);
-      if (!order) throw new HttpError(404, "Pedido no encontrado");
-
-      for (const item of order.items) {
-        if (hasStockTaken(item)) {
-          await returnStock(
-            { product: item.product, color: item.color, warehouse: item.verifiedWarehouse, quantity: takenQty(item) },
-            session,
-          );
-        }
-        // Los lotes ya creados no se borran: se conservan en Fabricación, solo
-        // se desvinculan de la línea (mismo criterio de antes).
-        resetLine(item);
-      }
-
-      order.markModified("items");
-      order.sentToInventoryAt = undefined;
-      if (order.status === "Empacado" || order.status === "En Fabricación" || order.status === "Procesando") {
-        setOrderStatus(order, "Pendiente");
-      }
-      await order.save({ session });
-    });
-
-    res.json({ message: "Inventory request cancelled" });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
 
 // Verificar un producto: toma toda la cantidad de la bodega elegida.
 ordersController.verifyOrderItem = lineAction(
@@ -404,43 +254,5 @@ ordersController.unpackManufacturedItem = lineAction(
   ({ order, item, session }) => unpackManufacturedLine(item, order, session),
   "Order item unpacked from manufacturing",
 );
-
-// Confirma que el motorista ya recogió lo que le tocaba en una ubicación del
-// pedido (Almacén o Fabricación). No es un estado nuevo del pedido: solo
-// metadata dentro de delivery.
-ordersController.confirmPickup = async (req, res) => {
-  try {
-    const { location } = req.body;
-    if (location !== "Almacén" && location !== "Fabricación") {
-      throw new HttpError(400, "Ubicación inválida");
-    }
-
-    const order = await orderModel.findById(req.params.id);
-    if (!order) throw new HttpError(404, "Pedido no encontrado");
-    if (!order.delivery?.driver) {
-      throw new HttpError(400, "El pedido todavía no tiene motorista asignado");
-    }
-
-    if (location === "Almacén") {
-      order.delivery.pickupWarehouseAt = new Date();
-    } else {
-      order.delivery.pickupFactoryAt = new Date();
-    }
-
-    // Si con esta parada ya quedó todo recogido, el pedido pasa de "para
-    // despacho" a "en tránsito" (salvo que ya estuviera "Entregado", que no
-    // debería retroceder por confirmar una parada tardía).
-    if (isFullyCollected(order, order.delivery) && order.delivery.dispatchStatus !== "Entregado") {
-      setOrderStatus(order, "En Tránsito");
-    }
-
-    order.markModified("delivery");
-    await order.save();
-
-    res.json({ message: "Pickup confirmed" });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
 
 export default ordersController;

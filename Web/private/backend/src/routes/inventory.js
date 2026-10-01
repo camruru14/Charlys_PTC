@@ -17,7 +17,4 @@ router
 // Enviar un lote reportado a Artículos en almacén
 router.route("/:id/send").patch(inventoryController.sendToWarehouse);
 
-// Eliminar un lote reportado (deshace el reporte, se refleja también en Fabricación)
-router.route("/:id/report").delete(inventoryController.undoReport);
-
 export default router;

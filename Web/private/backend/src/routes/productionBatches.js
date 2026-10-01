@@ -26,10 +26,4 @@ router.patch("/:id/reopen", productionBatchesController.reopenBatch);
 router.patch("/:id/send-to-warehouse", productionBatchesController.sendToWarehouse);
 router.patch("/:id/undo-send", productionBatchesController.undoSend);
 
-// Flujo antiguo (solo lo usa la app Movil): reportar producción / deshacer reporte
-router
-  .route("/:id/report")
-  .patch(productionBatchesController.reportProduction)
-  .delete(productionBatchesController.undoReport);
-
 export default router;

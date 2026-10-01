@@ -203,8 +203,7 @@ export const routeIdOf = (order) => String(order.delivery?.route?._id || order.d
 // --- Código de la ruta ---------------------------------------------------------
 // COPIA de Web/private/frontend/src/lib/logistics.js (mantener igual).
 
-// «R-2026-0042». Una ruta vieja que todavía no tiene código usa «Ruta N»
-// (respaldo temporal hasta correr scripts/migrate-route-codes.js del backend).
+// «R-2026-0042». Una ruta vieja que todavía no tiene código usa «Ruta N».
 export const routeLabel = (route) => route?.code || (route?.number != null ? `Ruta ${route.number}` : "Ruta");
 
 // Cómo se nombra la ruta dentro de una frase: «la ruta R-2026-0042» / «la Ruta 3».

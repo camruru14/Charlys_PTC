@@ -29,18 +29,6 @@ export function isSplit(item) {
   return item.fromStockQty != null && item.toManufactureQty != null;
 }
 
-// Cantidad tomada de bodega por esta línea (toda la línea o la parte dividida).
-export function takenQty(item) {
-  return isSplit(item) ? item.fromStockQty : item.quantity;
-}
-
-// La línea tiene stock tomado de bodega: verificada desde Inventario (toda o
-// la parte dividida). Una línea fabricada completa también queda con
-// verified=true al empacarse en Fabricación, pero nunca tomó stock.
-export function hasStockTaken(item) {
-  return Boolean(item.verified && (isSplit(item) || !item.sentToManufacturing));
-}
-
 export function lineLabel(item) {
   return `${item.product}${item.color ? ` · ${item.color}` : ""}`;
 }
@@ -48,15 +36,6 @@ export function lineLabel(item) {
 // Algún empaque hecho sobre la línea (completo o de una de sus partes).
 export function hasAnyPack(item) {
   return Boolean(item.packed || item.stockPackedAt || item.manufacturePackedAt);
-}
-
-// Ubicaciones donde el pedido tiene algo empacado esperando al motorista.
-export function packedLocations(order) {
-  const items = order.items || [];
-  const locations = [];
-  if (items.some((i) => (i.packed && i.packedLocation === "Almacén") || i.stockPackedAt)) locations.push("Almacén");
-  if (items.some((i) => (i.packed && i.packedLocation === "Fabricación") || i.manufacturePackedAt)) locations.push("Fabricación");
-  return locations;
 }
 
 function isUntouched(item) {

@@ -230,8 +230,6 @@ const ICONS = {
   ),
 };
 
-export const ICON_NAMES = Object.keys(ICONS);
-
 export default function Icon({ name, size = 20, color = colors.ink, strokeWidth = 1.8, style }) {
   const render = ICONS[name];
   if (!render) {

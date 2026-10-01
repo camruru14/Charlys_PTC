@@ -132,8 +132,7 @@ const orderSchema = new Schema(
       type: String,
     },
     // Fecha en que el pedido pasó a Inventario. Se llena sola al crearse el
-    // pedido (en el checkout de public/backend); el
-    // PATCH /orders/:id/request-inventory solo la vuelve a poner si falta.
+    // pedido (en el checkout de public/backend).
     // Inventario > Pedidos la usa para listar el pedido y el panel la
     // muestra como «Pasó solo a Inventario». No afecta stock.
     sentToInventoryAt: {

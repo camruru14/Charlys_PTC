@@ -75,13 +75,8 @@ function applyRouteStatus(route, orders, at = new Date()) {
   else route.completedAt = undefined;
 }
 
-// Código para mostrar: «R-2026-0042». Una ruta vieja que todavía no tiene
-// código usa «Ruta N» (respaldo temporal hasta correr migrate-route-codes).
-export function routeLabel(route) {
-  return route.code || `Ruta ${route.number}`;
-}
-
 // Cómo se nombra la ruta dentro de los mensajes: «la Ruta R-2026-0042 (Zona Norte)».
+// Una ruta vieja que todavía no tiene código usa su número («Ruta N»).
 function routeRef(route) {
   return `la Ruta ${route.code || route.number} (${route.zone})`;
 }
@@ -506,11 +501,6 @@ export async function availability() {
       route: byVehicle.get(v.plate) || null,
     })),
   };
-}
-
-// Route.date (medianoche UTC) -> "YYYY-MM-DD".
-export function localDayKeyOfStored(date) {
-  return new Date(date).toISOString().slice(0, 10);
 }
 
 // --- Listado por rango --------------------------------------------------------

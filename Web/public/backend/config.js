@@ -16,11 +16,6 @@ export const config = {
     user_email: process.env.USER_EMAIL,
     user_password: process.env.USER_PASSWORD,
   },
-  cloudinary: {
-    cloudinary_name: process.env.CLOUDINARY_CLOUD_NAME,
-    cloudinary_api_key: process.env.CLOUDINARY_API_KEY,
-    cloudinary_api_secret: process.env.CLOUDINARY_API_SECRET,
-  },
   // Wompi El Salvador usa OAuth2 (Client Credentials) para autenticarse, y
   // tokenización directa para cobrar: la tarjeta se tokeniza y se cobra
   // desde este backend (ver src/utils/wompiClient.js), sin enlaces de pago
