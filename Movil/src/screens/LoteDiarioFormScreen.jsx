@@ -1,120 +1,149 @@
-import { useEffect, useState } from "react";
-import { Alert, StyleSheet } from "react-native";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useDailyBatches } from "../hooks/useDailyBatches";
-import { useSaveCancelHeader } from "../hooks/useSaveCancelHeader";
-import FormField from "../components/ui/FormField";
+import BottomBar from "../components/ui/BottomBar";
+import Button from "../components/ui/Button";
 import DateField from "../components/ui/DateField";
-import DeleteButton from "../components/ui/DeleteButton";
 import LoadingState from "../components/ui/LoadingState";
+import SegmentedField from "../components/ui/SegmentedField";
+import SelectField from "../components/ui/SelectField";
+import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { todayInput, toDateInputValue } from "../lib/format";
+import { COLORS, PRODUCTS, previewDailyBatchNumber } from "../lib/batchFlow";
 
-const emptyForm = { date: todayInput(), product: "", color: "" };
-
-// Crear/editar un lote diario (programación previa de un lote de
-// fabricación). El dailyBatchNumber lo genera el backend solo.
+// Crear o editar un lote diario, con los mismos campos que
+// DailyBatchFormModal/useDailyBatchForm de la web. El ID lo genera el backend
+// (acá solo se muestra la vista previa).
 export default function LoteDiarioFormScreen({ navigation, route }) {
   const id = route.params?.id;
   const isEditing = Boolean(id);
+  const toast = useToast();
 
-  const { dailyBatches, loading: dailyLoading, crear, actualizar, eliminar } = useDailyBatches();
-
-  const [form, setForm] = useState(emptyForm);
-  const [loaded, setLoaded] = useState(!isEditing);
+  const { dailyBatches, loading, crear, actualizar, eliminar } = useDailyBatches();
+  const [form, setForm] = useState(isEditing ? null : { date: todayInput(), product: "Pajilla", color: "Rojo" });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const daily = isEditing ? dailyBatches.find((b) => b._id === id) : null;
+
   useEffect(() => {
-    if (!isEditing || loaded) return;
-    const batch = dailyBatches.find((b) => b._id === id);
-    if (batch) {
+    if (!isEditing || form) return;
+    if (daily) {
       setForm({
-        date: toDateInputValue(batch.date) || todayInput(),
-        product: batch.product || "",
-        color: batch.color || "",
+        date: toDateInputValue(daily.date),
+        product: daily.product || "Pajilla",
+        color: daily.color || "",
       });
-      setLoaded(true);
       return;
     }
-    if (!dailyLoading) {
-      Alert.alert("No se encontró el lote diario", "Puede que ya haya sido eliminado.", [
+    if (!loading) {
+      Alert.alert("No se encontró el lote diario", "Puede que ya se haya programado o eliminado.", [
         { text: "OK", onPress: () => navigation.goBack() },
       ]);
     }
-  }, [isEditing, loaded, id, dailyBatches, dailyLoading, navigation]);
+  }, [isEditing, form, daily, loading, navigation]);
+
+  const numberPreview = isEditing ? daily?.dailyBatchNumber : previewDailyBatchNumber(dailyBatches);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: isEditing ? "Editar lote diario" : "Nuevo lote diario",
+      headerSubtitle: numberPreview || undefined,
+    });
+  }, [navigation, isEditing, numberPreview]);
 
   const handleChange = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
   const handleSave = async () => {
-    if (!form.product.trim()) {
-      Alert.alert("Falta información", "El producto es obligatorio");
+    if (!form.date) {
+      Alert.alert("Falta información", "La fecha es obligatoria");
       return;
     }
     setSaving(true);
-    const payload = {
-      date: form.date || undefined,
-      product: form.product.trim(),
-      color: form.color.trim() || undefined,
-    };
+    const payload = { ...form, date: form.date || undefined };
     try {
       if (isEditing) {
         await actualizar(id, payload);
+        toast.show("Lote diario actualizado");
       } else {
-        await crear(payload);
+        const res = await crear(payload);
+        toast.show(res?.dailyBatchNumber ? `Lote ${res.dailyBatchNumber} creado` : "Lote diario creado");
       }
       navigation.goBack();
     } catch (error) {
-      Alert.alert("No se pudo guardar", error.message || "Intentá de nuevo");
+      Alert.alert("No se pudo guardar", error.message || "Intenta de nuevo");
     } finally {
       setSaving(false);
     }
   };
 
-  useSaveCancelHeader({
-    navigation,
-    title: isEditing ? "Editar lote diario" : "Nuevo lote diario",
-    saving,
-    onSave: handleSave,
-  });
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await eliminar(id);
-      navigation.goBack();
-    } catch (error) {
-      setDeleting(false);
-      Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-    }
+  const handleDelete = () => {
+    Alert.alert("Eliminar lote diario", `¿Eliminar el lote ${daily?.dailyBatchNumber || ""}?`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            await eliminar(id);
+            toast.show("Lote diario eliminado");
+            navigation.goBack();
+          } catch (error) {
+            setDeleting(false);
+            Alert.alert("No se pudo eliminar", error.message || "Intenta de nuevo");
+          }
+        },
+      },
+    ]);
   };
 
-  if (isEditing && !loaded) return <LoadingState />;
+  if (!form) return <LoadingState />;
 
   return (
-    <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
-      <DateField label="Fecha" value={form.date} onChange={(v) => handleChange("date", v)} required />
-      <FormField label="Producto" value={form.product} onChangeText={(v) => handleChange("product", v)} required />
-      <FormField label="Color" value={form.color} onChangeText={(v) => handleChange("color", v)} />
-
-      {isEditing ? (
-        <DeleteButton
-          confirmMessage={`¿Eliminar el lote diario ${form.product}? Esta acción no se puede deshacer.`}
-          onConfirm={handleDelete}
-          disabled={deleting}
-          label={deleting ? "Eliminando…" : "Eliminar"}
+    <View style={styles.screen}>
+      <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
+        <DateField label="Fecha" value={form.date} onChange={(v) => handleChange("date", v)} required />
+        <SegmentedField
+          label="Producto"
+          value={form.product}
+          options={PRODUCTS}
+          onChange={(v) => handleChange("product", v)}
+          required
         />
-      ) : null}
-    </KeyboardScreen>
+        <SelectField
+          label="Color"
+          value={form.color}
+          options={[{ label: "Sin color", value: "" }, ...COLORS.map((c) => ({ label: c, value: c }))]}
+          onChange={(v) => handleChange("color", v)}
+        />
+        {isEditing ? (
+          <Button
+            title={deleting ? "Eliminando…" : "Eliminar lote diario"}
+            variant="danger"
+            icon="trash"
+            disabled={deleting || saving}
+            onPress={handleDelete}
+            style={styles.delete}
+          />
+        ) : null}
+      </KeyboardScreen>
+
+      <BottomBar
+        actions={[
+          { title: "Cancelar", variant: "secondary", disabled: saving, onPress: () => navigation.goBack() },
+          { title: "Guardar", loading: saving, disabled: deleting, onPress: handleSave },
+        ]}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-  },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24 },
+  delete: { marginTop: 8 },
 });

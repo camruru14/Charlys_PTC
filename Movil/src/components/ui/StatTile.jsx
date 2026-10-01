@@ -7,7 +7,7 @@ import { fonts, type } from "../../lib/typography";
 // `tone` (opcional) pone un punto de ese color antes de la etiqueta.
 // `note` puede ser texto o un nodo (ej. la variación en color + texto).
 // `size="small"` baja el valor a 20 para cuando van 2 o 3 por fila.
-export default function StatTile({ label, value, note, noteColor, tone, size = "normal", style }) {
+export default function StatTile({ label, value, valueColor, note, noteColor, tone, size = "normal", style }) {
   return (
     <View style={[styles.tile, style]}>
       <View style={styles.labelRow}>
@@ -16,7 +16,11 @@ export default function StatTile({ label, value, note, noteColor, tone, size = "
           {label}
         </Text>
       </View>
-      <Text style={[styles.value, size === "small" && styles.valueSmall]} numberOfLines={1} adjustsFontSizeToFit>
+      <Text
+        style={[styles.value, size === "small" && styles.valueSmall, valueColor && { color: valueColor }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
         {value}
       </Text>
       {note ? (

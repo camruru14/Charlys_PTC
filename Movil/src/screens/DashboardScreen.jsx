@@ -6,6 +6,7 @@ import { useInventory } from "../hooks/useInventory";
 import { useOrders } from "../hooks/useOrders";
 import { useDateRange } from "../context/DateRangeContext";
 import { useAuth } from "../hooks/useAuth";
+import BatchRow from "../components/batches/BatchRow";
 import DonutChart from "../components/dashboard/DonutChart";
 import Card from "../components/ui/Card";
 import EmptyState from "../components/ui/EmptyState";
@@ -19,11 +20,9 @@ import SelectField from "../components/ui/SelectField";
 import StatTile from "../components/ui/StatTile";
 import { chartColors, colors, getTone, tones } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
-import { formatDateYear, formatMoney, formatNumber, formatPercent } from "../lib/format";
+import { formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { defaultBatchFilters, batchFilterOptions, filterBatches } from "../lib/batchFilters";
-import { batchStart, batchState } from "../lib/batchFlow";
 import { dashboardAlerts } from "../lib/dashboardAlerts";
-import { statusTone } from "../lib/statusTones";
 import { todayLabel } from "../navigation/navItems";
 
 // Lotes que se muestran en la tarjeta antes de "Ver historial completo".
@@ -64,26 +63,6 @@ function AlertRow({ alert, onPress }) {
       </View>
       <Icon name="chevronRight" size={16} color={colors.chevron} />
     </Pressable>
-  );
-}
-
-function BatchRow({ batch }) {
-  const state = batchState(batch);
-  const start = batchStart(batch)?.date || batch.createdAt;
-  const meta = [batch.product, batch.color, batch.productionLine].filter(Boolean).join(" · ");
-  return (
-    <View style={styles.batchRow}>
-      <View style={styles.batchMain}>
-        <Text style={styles.batchNumber}>{batch.batchNumber}</Text>
-        <Text style={styles.batchMeta} numberOfLines={1}>
-          {[formatDateYear(start), meta].filter(Boolean).join(" · ")}
-        </Text>
-      </View>
-      <View style={styles.batchSide}>
-        <Pill label={state} tone={statusTone(state, "lote")} />
-        <Text style={styles.batchProduced}>{formatNumber(batch.producedQuantity)} u</Text>
-      </View>
-    </View>
   );
 }
 
@@ -294,12 +273,6 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: "row", gap: 10 },
   filterItem: { flex: 1, marginBottom: 10 },
   inlineError: { paddingVertical: 8, gap: 4 },
-  batchRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 15, paddingVertical: 11 },
-  batchMain: { flex: 1, gap: 2 },
-  batchNumber: { fontFamily: fonts.bold, fontSize: 14, color: colors.ink, fontVariant: ["tabular-nums"] },
-  batchMeta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
-  batchSide: { alignItems: "flex-end", gap: 4 },
-  batchProduced: { fontFamily: fonts.semibold, fontSize: 12.5, color: colors.ink2, fontVariant: ["tabular-nums"] },
   footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 4 },
   footerText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
 });

@@ -15,6 +15,7 @@ import InventarioItemFormScreen from "../screens/InventarioItemFormScreen";
 import PedidoFormScreen from "../screens/PedidoFormScreen";
 import PedidoDetalleScreen from "../screens/PedidoDetalleScreen";
 import BatchHistoryScreen from "../screens/BatchHistoryScreen";
+import LoteDetalleScreen from "../screens/LoteDetalleScreen";
 import HistorialTransaccionesScreen from "../screens/HistorialTransaccionesScreen";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import DetailHeader from "../components/ui/DetailHeader";
@@ -64,6 +65,10 @@ export default function RootNavigator() {
             component={PedidoDetalleScreen}
             options={{ ...detailHeader, title: "Pedido" }}
           />
+
+          {/* Detalle de un lote de fabricación: recorrido, indicadores y las
+              acciones del estado (iniciar, completar, enviar a bodega…). */}
+          <Stack.Screen name="LoteDetalle" component={LoteDetalleScreen} options={{ ...detailHeader, title: "Lote" }} />
 
           {/* Historial de lotes / de transacciones (Fase 5): también
               push normal, drill-down desde el "Ver todo" del Dashboard (y,

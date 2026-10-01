@@ -1,182 +1,189 @@
-import { useEffect, useState } from "react";
-import { Alert, StyleSheet } from "react-native";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useBatches } from "../hooks/useBatches";
 import { useEmployees } from "../hooks/useEmployees";
-import { useSaveCancelHeader } from "../hooks/useSaveCancelHeader";
+import { useProductionLines, withCurrentLine } from "../hooks/useProductionLines";
+import BottomBar from "../components/ui/BottomBar";
 import FormField from "../components/ui/FormField";
-import SegmentedField from "../components/ui/SegmentedField";
-import DateField from "../components/ui/DateField";
-import DeleteButton from "../components/ui/DeleteButton";
 import LoadingState from "../components/ui/LoadingState";
+import SegmentedField from "../components/ui/SegmentedField";
+import SelectField from "../components/ui/SelectField";
+import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { todayInput, toDateInputValue } from "../lib/format";
-
-const STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
+import { BATCH_STATUSES, COLORS, PRODUCTS, previewBatchNumber } from "../lib/batchFlow";
 
 const emptyForm = {
-  product: "",
-  color: "",
+  product: "Pajilla",
+  color: "Rojo",
   productionLine: "",
   producedQuantity: "",
   targetQuantity: "",
   status: "Programado",
   operator: "",
-  startDate: todayInput(),
-  endDate: "",
+  startDate: "",
 };
 
-// Crear/editar un lote de fabricación. El número de lote lo genera el
-// backend solo (no es un campo del formulario); en edición se agrega
-// `endDate`, que no aparece al crear.
+const onlyDigits = (v) => v.replace(/\D/g, "");
+
+// Crear o editar un lote de fabricación de stock, con los mismos campos y
+// payload que BatchFormModal/useBatchForm de la web. El número lo genera el
+// backend (acá solo se muestra la vista previa). Eliminar está en el detalle
+// del lote.
 export default function LoteFabricacionFormScreen({ navigation, route }) {
   const id = route.params?.id;
   const isEditing = Boolean(id);
+  const toast = useToast();
 
-  const { batches, loading: batchesLoading, crear, actualizar, eliminar } = useBatches();
+  const { batches, loading: batchesLoading, crear, actualizar } = useBatches();
   const { employees } = useEmployees();
-  // Solo empleados de Fabricación pueden ser "operario responsable", mismo
-  // criterio que useBatchForm.js del panel web.
-  const operators = employees.filter((e) => e.department === "Fabricación");
+  const { options: lineOptions } = useProductionLines();
+  // «Operario responsable»: solo empleados del Área Fabricación.
+  const operators = useMemo(() => employees.filter((e) => e.department === "Fabricación"), [employees]);
 
-  const [form, setForm] = useState(emptyForm);
-  const [loaded, setLoaded] = useState(!isEditing);
+  const [form, setForm] = useState(isEditing ? null : { ...emptyForm, startDate: todayInput() });
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+
+  const batch = isEditing ? batches.find((b) => b._id === id) : null;
 
   useEffect(() => {
-    if (!isEditing || loaded) return;
-    const batch = batches.find((b) => b._id === id);
+    if (!isEditing || form) return;
     if (batch) {
       setForm({
-        product: batch.product || "",
+        product: batch.product || "Pajilla",
         color: batch.color || "",
         productionLine: batch.productionLine || "",
         producedQuantity: batch.producedQuantity != null ? String(batch.producedQuantity) : "",
         targetQuantity: batch.targetQuantity != null ? String(batch.targetQuantity) : "",
         status: batch.status || "Programado",
         operator: batch.operator?._id || batch.operator || "",
-        startDate: toDateInputValue(batch.startDate) || todayInput(),
-        endDate: toDateInputValue(batch.endDate),
+        startDate: toDateInputValue(batch.startDate || batch.createdAt),
       });
-      setLoaded(true);
       return;
     }
-    // No apareció en la lista (ej. ya lo eliminaron desde otra pantalla):
-    // en vez de dejar el spinner de carga para siempre, se avisa y se vuelve.
     if (!batchesLoading) {
       Alert.alert("No se encontró el lote", "Puede que ya haya sido eliminado.", [
         { text: "OK", onPress: () => navigation.goBack() },
       ]);
     }
-  }, [isEditing, loaded, id, batches, batchesLoading, navigation]);
+  }, [isEditing, form, batch, batchesLoading, navigation]);
+
+  // Un lote nuevo arranca en la primera línea activa, como la web (una sola
+  // vez, apenas cargan las líneas: después «Sin línea» es una elección).
+  const lineDefaulted = useRef(false);
+  useEffect(() => {
+    if (isEditing || lineDefaulted.current || !lineOptions.length) return;
+    lineDefaulted.current = true;
+    setForm((f) => (f.productionLine ? f : { ...f, productionLine: lineOptions[0] }));
+  }, [isEditing, lineOptions]);
+
+  const numberPreview = isEditing ? batch?.batchNumber : previewBatchNumber(batches);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: isEditing ? "Editar lote" : "Nuevo lote de fabricación",
+      headerSubtitle: numberPreview || undefined,
+    });
+  }, [navigation, isEditing, numberPreview]);
 
   const handleChange = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
   const handleSave = async () => {
-    if (!form.product.trim()) {
-      Alert.alert("Falta información", "El producto es obligatorio");
-      return;
-    }
     setSaving(true);
     const payload = {
-      product: form.product.trim(),
-      color: form.color.trim() || undefined,
-      productionLine: form.productionLine.trim() || undefined,
+      ...form,
       producedQuantity: Number(form.producedQuantity) || 0,
+      // Sin meta no se manda: así editar no borra una meta que ya tenga.
       targetQuantity: form.targetQuantity === "" ? undefined : Number(form.targetQuantity),
-      status: form.status,
       operator: form.operator || undefined,
       startDate: form.startDate || undefined,
     };
     try {
       if (isEditing) {
-        await actualizar(id, { ...payload, endDate: form.endDate || undefined });
+        await actualizar(id, payload);
+        toast.show("Lote actualizado");
       } else {
-        await crear(payload);
+        const res = await crear(payload);
+        toast.show(res?.batchNumber ? `Lote ${res.batchNumber} creado` : "Lote creado");
       }
       navigation.goBack();
     } catch (error) {
-      Alert.alert("No se pudo guardar", error.message || "Intentá de nuevo");
+      Alert.alert("No se pudo guardar", error.message || "Intenta de nuevo");
     } finally {
       setSaving(false);
     }
   };
 
-  useSaveCancelHeader({
-    navigation,
-    title: isEditing ? "Editar lote" : "Nuevo lote",
-    saving,
-    onSave: handleSave,
-  });
+  if (!form) return <LoadingState />;
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await eliminar(id);
-      navigation.goBack();
-    } catch (error) {
-      setDeleting(false);
-      Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-    }
-  };
-
-  if (isEditing && !loaded) return <LoadingState />;
+  const lines = withCurrentLine(lineOptions, form.productionLine);
 
   return (
-    <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
-      <FormField label="Producto" value={form.product} onChangeText={(v) => handleChange("product", v)} required />
-      <FormField label="Color" value={form.color} onChangeText={(v) => handleChange("color", v)} />
-      <FormField
-        label="Línea de producción"
-        value={form.productionLine}
-        onChangeText={(v) => handleChange("productionLine", v)}
-        placeholder="Ej. Línea 1"
-      />
-      <FormField
-        label="Cantidad producida"
-        value={form.producedQuantity}
-        onChangeText={(v) => handleChange("producedQuantity", v)}
-        keyboardType="numeric"
-      />
-      <FormField
-        label="Cantidad objetivo"
-        value={form.targetQuantity}
-        onChangeText={(v) => handleChange("targetQuantity", v)}
-        keyboardType="numeric"
-      />
-      <SegmentedField label="Estado" value={form.status} options={STATUSES} onChange={(v) => handleChange("status", v)} />
-      <SegmentedField
-        label="Operario responsable"
-        value={form.operator}
-        options={[{ id: "", label: "Sin asignar" }, ...operators.map((o) => ({ id: o._id, label: `${o.name} ${o.lastName}` }))]}
-        getLabel={(o) => o.label}
-        getValue={(o) => o.id}
-        onChange={(v) => handleChange("operator", v)}
-      />
-      <DateField label="Fecha de inicio" value={form.startDate} onChange={(v) => handleChange("startDate", v)} />
-      {isEditing ? (
-        <DateField label="Fecha de fin" value={form.endDate} onChange={(v) => handleChange("endDate", v)} />
-      ) : null}
-
-      {isEditing ? (
-        <DeleteButton
-          confirmMessage={`¿Eliminar el lote ${form.product}? Esta acción no se puede deshacer.`}
-          onConfirm={handleDelete}
-          disabled={deleting}
-          label={deleting ? "Eliminando…" : "Eliminar"}
+    <View style={styles.screen}>
+      <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
+        <SegmentedField
+          label="Producto"
+          value={form.product}
+          options={PRODUCTS}
+          onChange={(v) => handleChange("product", v)}
+          required
         />
-      ) : null}
-    </KeyboardScreen>
+        <SelectField
+          label="Color"
+          value={form.color}
+          options={[{ label: "Sin color", value: "" }, ...COLORS.map((c) => ({ label: c, value: c }))]}
+          onChange={(v) => handleChange("color", v)}
+        />
+        <SelectField
+          label="Línea de producción"
+          value={form.productionLine}
+          options={[{ label: "Sin línea", value: "" }, ...lines.map((l) => ({ label: l, value: l }))]}
+          onChange={(v) => handleChange("productionLine", v)}
+        />
+        <FormField
+          label="Meta (unidades)"
+          value={form.targetQuantity}
+          onChangeText={(v) => handleChange("targetQuantity", onlyDigits(v))}
+          keyboardType="number-pad"
+          suffix="u"
+        />
+        <FormField
+          label="Cantidad producida"
+          value={form.producedQuantity}
+          onChangeText={(v) => handleChange("producedQuantity", onlyDigits(v))}
+          keyboardType="number-pad"
+          suffix="u"
+        />
+        <SelectField
+          label="Estado"
+          value={form.status}
+          options={BATCH_STATUSES.map((s) => ({ label: s, value: s }))}
+          onChange={(v) => handleChange("status", v)}
+        />
+        <SelectField
+          label="Operario responsable"
+          value={form.operator}
+          options={[
+            { label: "Sin asignar", value: "" },
+            ...operators.map((o) => ({ label: `${o.name} ${o.lastName}`, value: o._id })),
+          ]}
+          onChange={(v) => handleChange("operator", v)}
+        />
+      </KeyboardScreen>
+
+      <BottomBar
+        actions={[
+          { title: "Cancelar", variant: "secondary", disabled: saving, onPress: () => navigation.goBack() },
+          { title: "Guardar", loading: saving, onPress: handleSave },
+        ]}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-  },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24 },
 });

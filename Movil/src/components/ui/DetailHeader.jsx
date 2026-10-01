@@ -28,6 +28,7 @@ function previousLabel(navigation, route, back) {
 //   - options.headerStatus     { label, tone } -> Pill al lado del título
 //   - options.headerSubtitle   subtítulo, opcional
 //   - options.headerRight      acción de la derecha
+//   - options.headerBackTitle  texto del «‹» (si no, el de la pantalla anterior)
 //   - options.headerLeft       reemplaza al "‹ Anterior" (ej. "Cancelar"
 //                              de useSaveCancelHeader)
 export default function DetailHeader({ navigation, route, options, back }) {
@@ -35,6 +36,9 @@ export default function DetailHeader({ navigation, route, options, back }) {
   // En iOS los modales son una hoja que ya queda debajo de la barra de estado.
   const isIosModal = Platform.OS === "ios" && options.presentation === "modal";
   const left = options.headerLeft?.({ tintColor: colors.primary, canGoBack: Boolean(back) });
+  // options.headerBackTitle (opcional) reemplaza el nombre calculado, p. ej.
+  // la pestaña de la que se vino («‹ Lotes»).
+  const backLabel = options.headerBackTitle || previousLabel(navigation, route, back);
   const right = options.headerRight?.({ tintColor: colors.primary, canGoBack: Boolean(back) });
   const status = options.headerStatus;
 
@@ -47,12 +51,12 @@ export default function DetailHeader({ navigation, route, options, back }) {
               onPress={() => navigation.goBack()}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel={`Volver a ${previousLabel(navigation, route, back)}`}
+              accessibilityLabel={`Volver a ${backLabel}`}
               style={({ pressed }) => [styles.back, pressed && styles.pressed]}
             >
               <Icon name="back" size={18} color={colors.primary} strokeWidth={2.2} />
               <Text style={styles.backText} numberOfLines={1}>
-                {previousLabel(navigation, route, back)}
+                {backLabel}
               </Text>
             </Pressable>
           ) : (
