@@ -172,13 +172,3 @@ export function formatElapsed(value, now = Date.now()) {
   if (!h) return `hace ${m} min`;
   return m ? `hace ${h} h ${m} min` : `hace ${h} h`;
 }
-
-// Formatea un DUI de 9 dígitos guardados sin guión (ver
-// EmpleadoFormScreen.handleDuiChange) al formato "########-#" que usa el
-// panel web. Si no son 9 dígitos, se muestra tal cual.
-export function formatDui(value) {
-  if (!value) return "";
-  const digits = String(value).replace(/\D/g, "");
-  if (digits.length !== 9) return value;
-  return `${digits.slice(0, 8)}-${digits.slice(8)}`;
-}

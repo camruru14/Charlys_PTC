@@ -18,6 +18,13 @@ import BatchHistoryScreen from "../screens/BatchHistoryScreen";
 import LoteDetalleScreen from "../screens/LoteDetalleScreen";
 import RutaDetalleScreen from "../screens/RutaDetalleScreen";
 import EmpleadoDetalleScreen from "../screens/EmpleadoDetalleScreen";
+import ConfigEmpresaScreen from "../screens/ConfigEmpresaScreen";
+import ConfigBodegasScreen from "../screens/ConfigBodegasScreen";
+import ConfigVehiculosScreen from "../screens/ConfigVehiculosScreen";
+import ConfigLineasScreen from "../screens/ConfigLineasScreen";
+import ConfigPersonalScreen from "../screens/ConfigPersonalScreen";
+import MiCuentaScreen from "../screens/MiCuentaScreen";
+import LineaFormScreen from "../screens/LineaFormScreen";
 import HistorialTransaccionesScreen from "../screens/HistorialTransaccionesScreen";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import DetailHeader from "../components/ui/DetailHeader";
@@ -38,11 +45,9 @@ const detailHeader = {
 // Punto de entrada de la navegación: sin sesión, solo LoginScreen; recién
 // logueado (justLoggedIn en AuthContext), solo PostLoginSplashScreen, que se
 // muestra un momento y pasa sola al Drawer; con sesión ya asentada, el
-// Drawer con las 10 secciones, más las 7 pantallas de formulario de la Fase
-// 3 (crear/editar en Fabricación, Finanzas, Logística, Empleados y Catálogo)
-// registradas como un grupo modal — cada una trae su propio header
-// (Cancelar/Guardar, ver useSaveCancelHeader) en vez del header del Drawer —
-// y el detalle de un pedido (Fase 4), un push normal aparte. App.js ya se
+// Drawer con las secciones, más las pantallas de detalle (push normal, con
+// DetailHeader) y los formularios, registrados como un grupo modal (con
+// BottomBar Cancelar/Guardar en la pantalla). App.js ya se
 // encarga de mostrar un indicador de carga mientras AuthContext resuelve si
 // hay sesión guardada, así que acá `isAuthenticated` ya es un valor
 // definitivo. Al restaurar una sesión guardada (reabrir la app) no pasa por
@@ -77,6 +82,15 @@ export default function RootNavigator() {
           <Stack.Screen name="RutaDetalle" component={RutaDetalleScreen} options={{ ...detailHeader, title: "Ruta" }} />
 
           {/* Ficha de un empleado: horas y asistencia del mes, y sus datos. */}
+          {/* Secciones de Configuración (en la web, pestañas de la misma
+              página): cada una es una pantalla con «‹ Configuración». */}
+          <Stack.Screen name="ConfigEmpresa" component={ConfigEmpresaScreen} options={{ ...detailHeader, title: "Empresa" }} />
+          <Stack.Screen name="ConfigBodegas" component={ConfigBodegasScreen} options={{ ...detailHeader, title: "Bodegas" }} />
+          <Stack.Screen name="ConfigVehiculos" component={ConfigVehiculosScreen} options={{ ...detailHeader, title: "Vehículos" }} />
+          <Stack.Screen name="ConfigLineas" component={ConfigLineasScreen} options={{ ...detailHeader, title: "Líneas de producción" }} />
+          <Stack.Screen name="ConfigPersonal" component={ConfigPersonalScreen} options={{ ...detailHeader, title: "Personal y permisos" }} />
+          <Stack.Screen name="MiCuenta" component={MiCuentaScreen} options={{ ...detailHeader, title: "Mi cuenta" }} />
+
           <Stack.Screen
             name="EmpleadoDetalle"
             component={EmpleadoDetalleScreen}
@@ -113,6 +127,7 @@ export default function RootNavigator() {
             <Stack.Screen name="TransaccionForm" component={TransaccionFormScreen} />
             <Stack.Screen name="VehiculoForm" component={VehiculoFormScreen} />
             <Stack.Screen name="BodegaForm" component={BodegaFormScreen} />
+            <Stack.Screen name="LineaForm" component={LineaFormScreen} />
             <Stack.Screen name="EmpleadoForm" component={EmpleadoFormScreen} />
             <Stack.Screen name="ProductoForm" component={ProductoFormScreen} />
             <Stack.Screen name="RegistrarMarcacionForm" component={RegistrarMarcacionFormScreen} />

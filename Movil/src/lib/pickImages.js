@@ -14,6 +14,7 @@ const toFiles = (assets) =>
     uri: asset.uri,
     name: asset.fileName || `imagen-${Date.now()}-${index}.jpg`,
     type: asset.mimeType || "image/jpeg",
+    size: asset.fileSize,
   }));
 
 export async function takePhoto() {

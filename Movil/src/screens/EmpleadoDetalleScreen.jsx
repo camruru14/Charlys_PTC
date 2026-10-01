@@ -13,7 +13,8 @@ import LoadingState from "../components/ui/LoadingState";
 import StatTile from "../components/ui/StatTile";
 import { colors, tones } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
-import { formatDateYear, formatDui, formatMoney, formatWeekdayDate } from "../lib/format";
+import { formatDateYear, formatMoney, formatWeekdayDate } from "../lib/format";
+import { formatDui } from "../lib/dui";
 import {
   attendanceDays,
   defaultMonth,

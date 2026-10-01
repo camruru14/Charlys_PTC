@@ -15,8 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
-// Hoja que sube desde abajo sobre un fondo oscurecido. Reemplaza a FormModal
-// donde el diseño lo pida.
+// Hoja que sube desde abajo sobre un fondo oscurecido.
 //   <BottomSheet visible={open} onClose={close} title="Reportar lote"
 //     subtitle="Lote 24-118" footer={<Button title="Guardar" />}>
 //     ...campos...

@@ -29,8 +29,7 @@ function previousLabel(navigation, route, back) {
 //   - options.headerSubtitle   subtítulo, opcional
 //   - options.headerRight      acción de la derecha
 //   - options.headerBackTitle  texto del «‹» (si no, el de la pantalla anterior)
-//   - options.headerLeft       reemplaza al "‹ Anterior" (ej. "Cancelar"
-//                              de useSaveCancelHeader)
+//   - options.headerLeft       reemplaza al "‹ Anterior" (opcional)
 export default function DetailHeader({ navigation, route, options, back }) {
   const insets = useSafeAreaInsets();
   // En iOS los modales son una hoja que ya queda debajo de la barra de estado.

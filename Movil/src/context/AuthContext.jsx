@@ -131,6 +131,21 @@ export function AuthProvider({ children }) {
     }
   }, [persistSession]);
 
+  // Actualiza datos del usuario en sesión (p. ej. el correo nuevo desde Mi
+  // cuenta), igual que updateUser de la web; el token no cambia.
+  const updateUser = useCallback(
+    async (partial) => {
+      const next = { ...(user || {}), ...partial };
+      setUser(next);
+      try {
+        await SecureStore.setItemAsync(USER_KEY, JSON.stringify(next));
+      } catch {
+        // Si no se puede guardar, igual queda en memoria hasta cerrar la app.
+      }
+    },
+    [user],
+  );
+
   const value = {
     user,
     token,
@@ -140,6 +155,7 @@ export function AuthProvider({ children }) {
     clearJustLoggedIn,
     login,
     logout,
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
