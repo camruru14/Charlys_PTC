@@ -1,239 +1,101 @@
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import Card from "../ui/Card";
-import Badge from "../ui/Badge";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import Icon from "../ui/Icon";
+import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
-import { formatCurrency } from "../../lib/format";
+import { fonts } from "../../lib/typography";
+import { formatMoney, formatNumber } from "../../lib/format";
+import { PRODUCT_COLOR_HEX, catalogStatus } from "../../lib/catalogOptions";
+import { statusTone } from "../../lib/statusTones";
 
-const MAX_IMAGES_PER_UPLOAD = 6;
-
-// Tarjeta de un producto del catálogo público (administrado por empleados).
-// El botón de "+ Foto" es un TouchableOpacity separado del que envuelve toda
-// la card en CatalogoScreen.jsx (el que navega a editar) — al estar
-// anidados, React Native le asigna el toque solo al más interno, así que no
-// dispara la navegación además de la subida.
-export default function ProductCard({ product, onAddImages, uploading = false }) {
+// Tarjeta de la cuadrícula del Catálogo (ProductCatalogCard.jsx de la web):
+// foto principal con el estado en la tienda, nombre, mínimo y existencia,
+// precio (con el anterior tachado si hay oferta) y los colores. Tocarla (o
+// mantenerla presionada) abre las acciones del producto.
+export default function ProductCard({ product, onPress, uploading = false, style }) {
   const image = product.images?.[0]?.url;
-  const colorChips = product.colors || [];
-  const extraImages = (product.images?.length || 0) - 1;
-
-  const handlePickImages = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permiso necesario", "Se necesita acceso a la galería para elegir imágenes");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_IMAGES_PER_UPLOAD,
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.length) return;
-
-    const files = result.assets.map((asset, index) => ({
-      uri: asset.uri,
-      name: asset.fileName || `imagen-${Date.now()}-${index}.jpg`,
-      type: asset.mimeType || "image/jpeg",
-    }));
-
-    onAddImages?.(product, files);
-  };
+  const status = catalogStatus(product);
+  const productColors = product.colors || [];
 
   return (
-    <Card style={styles.card}>
-      <View style={styles.row}>
-        <View style={styles.imageWrap}>
-          {image ? (
-            <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
-          ) : (
-            <View style={[styles.image, styles.imagePlaceholder]}>
-              <Text style={styles.imagePlaceholderText}>IC</Text>
-            </View>
-          )}
-          {extraImages > 0 ? (
-            <View style={styles.imageCountBadge}>
-              <Text style={styles.imageCountText}>+{extraImages}</Text>
-            </View>
-          ) : null}
-          <TouchableOpacity
-            style={styles.addPhotoButton}
-            onPress={handlePickImages}
-            disabled={uploading}
-            activeOpacity={0.8}
-            hitSlop={6}
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={styles.addPhotoIcon}>+</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.info}>
-          <View style={styles.titleRow}>
-            <Text style={styles.name} numberOfLines={1}>
-              {product.name}
-            </Text>
-            {product.active === false ? <Badge label="Inactivo" tone="red" /> : null}
+    <Pressable
+      onPress={onPress}
+      onLongPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={product.name}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed, style]}
+    >
+      <View style={styles.imageWrap}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={styles.placeholder}>
+            <Icon name="image" size={24} color={colors.faint} />
           </View>
-
-          <Text style={styles.category}>{product.category}</Text>
-
-          {colorChips.length > 0 ? (
-            <View style={styles.chips}>
-              {colorChips.map((color) => (
-                <View key={color} style={styles.chip}>
-                  <Text style={styles.chipText}>{color}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.noColors}>Sin colores</Text>
-          )}
-
-          <View style={styles.footer}>
-            <View style={styles.priceGroup}>
-              <Text style={styles.price}>{formatCurrency(product.price)}</Text>
-              {product.compareAtPrice ? (
-                <Text style={styles.comparePrice}>{formatCurrency(product.compareAtPrice)}</Text>
-              ) : null}
-            </View>
-            <Text style={styles.stock}>Stock: {product.stock ?? 0}</Text>
+        )}
+        <Pill label={status} tone={statusTone(status, "catalogo")} style={styles.pill} />
+        {uploading ? (
+          <View style={styles.uploading}>
+            <ActivityIndicator color={colors.white} />
           </View>
-        </View>
+        ) : null}
       </View>
-    </Card>
+
+      <View style={styles.body}>
+        <Text style={styles.name} numberOfLines={1}>
+          {product.name}
+        </Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          Mín. {formatNumber(product.minOrderQuantity ?? 1)} · {formatNumber(product.stock ?? 0)}
+        </Text>
+        <View style={styles.priceRow}>
+          <Text style={styles.price}>{formatMoney(product.price)}</Text>
+          {product.compareAtPrice ? <Text style={styles.before}>{formatMoney(product.compareAtPrice)}</Text> : null}
+        </View>
+        {productColors.length ? (
+          <View style={styles.dots}>
+            {productColors.map((c) => (
+              <View key={c} style={[styles.dot, { backgroundColor: PRODUCT_COLOR_HEX[c] || colors.lineSoft }]} />
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Sin colores</Text>
+        )}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    padding: 12,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  imageWrap: {
-    width: 64,
-    height: 64,
-  },
-  image: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
-    backgroundColor: colors.slate200,
-  },
-  imagePlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imagePlaceholderText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: colors.slate500,
-  },
-  imageCountBadge: {
-    position: "absolute",
-    bottom: -4,
-    right: -4,
-    borderRadius: 8,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
-  },
-  imageCountText: {
-    color: colors.white,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  addPhotoButton: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    height: 22,
-    width: 22,
-    borderRadius: 11,
-    backgroundColor: colors.brand600,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addPhotoIcon: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 16,
-  },
-  info: {
-    flex: 1,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  name: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.text,
-    flexShrink: 1,
-  },
-  category: {
-    marginTop: 2,
-    fontSize: 12,
-    color: colors.slate500,
-  },
-  chips: {
-    marginTop: 6,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.slate200,
+    borderColor: colors.line,
+    borderRadius: 16,
+    overflow: "hidden",
   },
-  chipText: {
-    fontSize: 10,
-    color: colors.slate700,
-    fontWeight: "600",
-  },
-  noColors: {
-    marginTop: 6,
-    fontSize: 11,
-    color: colors.slate400,
-  },
-  footer: {
-    marginTop: 8,
-    flexDirection: "row",
+  pressed: { opacity: 0.85 },
+  imageWrap: { height: 118, backgroundColor: colors.canvas },
+  image: { width: "100%", height: "100%" },
+  placeholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  pill: { position: "absolute", top: 8, right: 8 },
+  uploading: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.backdrop,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
-  priceGroup: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
-  },
-  price: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: colors.brand700,
-  },
-  comparePrice: {
+  body: { paddingHorizontal: 11, paddingTop: 9, paddingBottom: 11, gap: 2 },
+  name: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.ink },
+  meta: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, fontVariant: ["tabular-nums"] },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 4 },
+  price: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink, fontVariant: ["tabular-nums"] },
+  before: {
+    fontFamily: fonts.regular,
     fontSize: 11,
-    color: colors.slate400,
+    color: colors.subtle,
     textDecorationLine: "line-through",
+    fontVariant: ["tabular-nums"],
   },
-  stock: {
-    fontSize: 12,
-    color: colors.slate500,
-  },
+  dots: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 },
+  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.line },
 });

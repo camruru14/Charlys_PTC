@@ -1,105 +1,197 @@
-import { useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { colors } from "../../lib/theme";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import { colors, tones } from "../../lib/theme";
+import { fonts, type } from "../../lib/typography";
+import { formatCompactMoney, formatMoney } from "../../lib/format";
 
-const LABEL_HEIGHT = 26;
-const MAX_VISIBLE_COLUMNS = 12;
+// «Últimos seis meses» de Finanzas (MonthlyChart.jsx de la web): dos barras
+// por mes (ingresos chart1, gastos chart2) sobre una escala «redonda».
+//   months   = [{ key, label, title, income, expense, current }] (lib/finance.js)
+//   selected = key del mes resaltado (por defecto, el actual)
+//   onSelect(key)
+// Debajo, un recuadro con los números del mes resaltado.
+const AREA_H = 132;
+const AXIS_W = 40;
+const TOP_PAD = 8;
+const NICE_STEPS = [1, 2, 4, 5, 10];
 
-function barWidth(count) {
-  if (count <= 2) return 40;
-  if (count <= 4) return 32;
-  if (count <= 8) return 24;
-  return 18;
+const SERIES = [
+  { key: "income", label: "Ingresos", color: colors.chart1 },
+  { key: "expense", label: "Gastos", color: colors.chart2 },
+];
+
+// Tope «redondo» de la escala: 17,300 -> 20,000.
+function niceTop(max) {
+  if (!(max > 0)) return 0;
+  const magnitude = 10 ** Math.floor(Math.log10(max));
+  const step = NICE_STEPS.find((s) => s * magnitude >= max);
+  return step * magnitude;
 }
 
-function minColumnWidth(count) {
-  if (count <= 2) return 140;
-  if (count <= 4) return 100;
-  if (count <= 8) return 70;
-  return 60;
+// Barra con las esquinas de arriba redondeadas.
+function barPath(x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h);
+  return `M${x},${y + h} V${y + rr} Q${x},${y} ${x + rr},${y} H${x + w - rr} Q${x + w},${y} ${x + w},${y + rr} V${y + h} Z`;
 }
 
-// Gráfico de barras agrupadas, portado de
-// Web/private/frontend/src/components/ui/BarChart.jsx.
-// data = [{ label, values: [income, expense] }]
-// series = [{ name, color }]
-export default function BarChart({ data = [], series = [], height = 220, formatValue }) {
-  const fmt = formatValue || ((v) => Number(v || 0).toLocaleString("es-SV"));
-  const barsAreaH = Math.max(60, height - LABEL_HEIGHT);
-  const scrollRef = useRef(null);
+export default function BarChart({ months, selected, onSelect }) {
+  const [width, setWidth] = useState(0);
 
-  useEffect(() => {
-    if (data.length > MAX_VISIBLE_COLUMNS && scrollRef.current) {
-      scrollRef.current.scrollToEnd({ animated: false });
-    }
-  }, [data]);
+  const max = Math.max(0, ...months.flatMap((m) => [m.income, m.expense]));
+  const top = niceTop(max);
+  const ticks = top ? [top, top / 2, 0] : [0];
+  const yOf = (v) => TOP_PAD + (top ? AREA_H - (v / top) * AREA_H : AREA_H);
+  const heightOf = (v) => (top && v > 0 ? Math.max((v / top) * AREA_H, 2) : 0);
 
-  const max = Math.max(1, ...data.flatMap((d) => (d.values?.length ? d.values : [0])));
-  const gridLines = [0.25, 0.5, 0.75, 1];
-  const bw = barWidth(data.length);
-  const colWidth = Math.max(minColumnWidth(data.length), bw * (series.length || 1) + 16);
-  const contentWidth = Math.max(data.length * colWidth, 240);
+  const selectedMonth = months.find((m) => m.key === selected) || months[months.length - 1];
+  const plotW = Math.max(width - AXIS_W, 0);
+  const colW = months.length ? plotW / months.length : 0;
+  const barW = Math.min(16, colW * 0.3);
+  const svgH = TOP_PAD + AREA_H;
+  const net = selectedMonth ? selectedMonth.income - selectedMonth.expense : 0;
 
   return (
     <View>
-      <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ width: contentWidth }}>
-          <View style={[styles.barsArea, { height: barsAreaH }]}>
-            {gridLines.map((g) => (
-              <View key={g} style={[styles.gridLine, { bottom: g * barsAreaH }]} />
-            ))}
-            <View style={styles.columns}>
-              {data.map((d, i) => (
-                <View key={i} style={[styles.column, { width: colWidth }]}>
-                  {d.values.map((v, j) => (
-                    <View
-                      key={j}
-                      style={{
-                        width: bw,
-                        marginHorizontal: 3,
-                        height: v > 0 ? Math.max((v / max) * barsAreaH, 3) : 0,
-                        backgroundColor: series[j]?.color || colors.slate400,
-                        borderTopLeftRadius: 4,
-                        borderTopRightRadius: 4,
-                      }}
-                    />
-                  ))}
-                </View>
+      <View style={styles.header}>
+        <Text style={type.cardTitle}>Últimos seis meses</Text>
+        <View style={styles.legend}>
+          {SERIES.map((s) => (
+            <View key={s.key} style={styles.legendItem}>
+              <View style={[styles.swatch, { backgroundColor: s.color }]} />
+              <Text style={styles.legendText}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        {width > 0 ? (
+          <>
+            <Svg width={width} height={svgH}>
+              {months.map((m, i) =>
+                m.key === selectedMonth?.key ? (
+                  <Rect
+                    key="sel"
+                    x={AXIS_W + i * colW + 2}
+                    y={0}
+                    width={colW - 4}
+                    height={svgH}
+                    rx={8}
+                    fill={colors.selectBg}
+                  />
+                ) : null,
+              )}
+              {ticks.map((t) => (
+                <Line
+                  key={`g${t}`}
+                  x1={AXIS_W}
+                  x2={width}
+                  y1={yOf(t)}
+                  y2={yOf(t)}
+                  stroke={colors.chartGrid}
+                  strokeWidth={1}
+                />
+              ))}
+              {ticks.map((t) => (
+                <SvgText
+                  key={`t${t}`}
+                  x={0}
+                  y={yOf(t) + 4}
+                  fontSize={10.5}
+                  fontFamily={fonts.medium}
+                  fill={colors.subtle}
+                >
+                  {formatCompactMoney(t)}
+                </SvgText>
+              ))}
+              {months.map((m, i) => {
+                const cx = AXIS_W + i * colW + colW / 2;
+                return SERIES.map((s, j) => {
+                  const h = heightOf(m[s.key]);
+                  if (!h) return null;
+                  const x = j === 0 ? cx - barW - 1.5 : cx + 1.5;
+                  return <Path key={`${m.key}-${s.key}`} d={barPath(x, yOf(0) - h, barW, h, 3)} fill={s.color} />;
+                });
+              })}
+            </Svg>
+
+            {/* Etiquetas de mes y zonas tocables (toda la columna). */}
+            <View style={[styles.labels, { paddingLeft: AXIS_W }]}>
+              {months.map((m) => {
+                const active = m.key === selectedMonth?.key;
+                return (
+                  <Text
+                    key={m.key}
+                    style={[styles.month, { width: colW }, (m.current || active) && styles.monthStrong]}
+                  >
+                    {m.label}
+                  </Text>
+                );
+              })}
+            </View>
+            <View style={[StyleSheet.absoluteFill, styles.hitRow, { left: AXIS_W }]}>
+              {months.map((m) => (
+                <Pressable
+                  key={m.key}
+                  style={{ width: colW }}
+                  onPress={() => onSelect(m.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={m.title}
+                  accessibilityState={{ selected: m.key === selectedMonth?.key }}
+                />
               ))}
             </View>
-          </View>
+          </>
+        ) : (
+          <View style={{ height: svgH + 26 }} />
+        )}
+      </View>
 
-          <View style={[styles.labelsRow, { height: LABEL_HEIGHT }]}>
-            {data.map((d, i) => (
-              <Text key={i} style={[styles.label, { width: colWidth }]} numberOfLines={1}>
-                {d.label}
-              </Text>
-            ))}
+      {selectedMonth ? (
+        <View style={styles.summary}>
+          <Text style={styles.summaryTitle}>{selectedMonth.title}</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryText}>
+              Ingresos <Text style={styles.summaryValue}>{formatMoney(selectedMonth.income, 0)}</Text>
+            </Text>
+            <Text style={styles.summaryText}>
+              Gastos <Text style={styles.summaryValue}>{formatMoney(selectedMonth.expense, 0)}</Text>
+            </Text>
+            <Text style={[styles.summaryNet, { color: net < 0 ? tones.rose.text : tones.green.text }]}>
+              {net < 0 ? "−" : "+"}
+              {formatMoney(Math.abs(net), 0)}
+            </Text>
           </View>
         </View>
-      </ScrollView>
-
-      <View style={styles.legend}>
-        {series.map((s, i) => (
-          <View key={i} style={styles.legendItem}>
-            <View style={[styles.dot, { backgroundColor: s.color }]} />
-            <Text style={styles.legendText}>{s.name}</Text>
-          </View>
-        ))}
-      </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  barsArea: { position: "relative", justifyContent: "flex-end" },
-  gridLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: colors.slate200 },
-  columns: { position: "absolute", left: 0, right: 0, bottom: 0, top: 0, flexDirection: "row", alignItems: "flex-end" },
-  column: { flexDirection: "row", justifyContent: "center", alignItems: "flex-end" },
-  labelsRow: { flexDirection: "row" },
-  label: { textAlign: "center", fontSize: 11, fontWeight: "600", color: colors.slate400, paddingTop: 6 },
-  legend: { marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 16 },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 13, color: colors.slate700 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 },
+  legend: { flexDirection: "row", gap: 10 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  swatch: { width: 9, height: 9, borderRadius: 2 },
+  legendText: { fontFamily: fonts.semibold, fontSize: 11.5, color: colors.muted },
+  labels: { flexDirection: "row", paddingTop: 6 },
+  month: { textAlign: "center", fontFamily: fonts.semibold, fontSize: 11.5, color: colors.subtle },
+  monthStrong: { fontFamily: fonts.bold, color: colors.ink },
+  hitRow: { flexDirection: "row" },
+  summary: {
+    marginTop: 14,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.lineSoft,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    gap: 4,
+  },
+  summaryTitle: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.ink },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 12, rowGap: 2 },
+  summaryText: { fontFamily: fonts.regular, fontSize: 12.5, color: colors.muted },
+  summaryValue: { fontFamily: fonts.bold, color: colors.ink, fontVariant: ["tabular-nums"] },
+  summaryNet: { fontFamily: fonts.bold, fontSize: 12.5, fontVariant: ["tabular-nums"] },
 });

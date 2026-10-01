@@ -33,7 +33,13 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "La app usa la cámara para tomar fotos de los productos del catálogo."
+        }
+      ]
     ]
   }
 }

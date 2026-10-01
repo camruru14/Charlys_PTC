@@ -5,14 +5,6 @@ export function formatNumber(value) {
   return Number(value || 0).toLocaleString("es-SV");
 }
 
-export function formatCurrency(value) {
-  const amount = Number(value || 0);
-  return `$${amount.toLocaleString("es-SV", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
 export function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -76,6 +68,17 @@ export function formatMoney(value, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })}`;
+}
+
+// Ejes de gráficas: 20000 -> "$20k", 1500000 -> "$1.5M" (fmtCompactMoney de la web).
+export function formatCompactMoney(value) {
+  const n = Number(value) || 0;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const short = (v, unit) => `${sign}$${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`;
+  if (abs >= 1e6) return short(Math.round((abs / 1e6) * 10) / 10, "M");
+  if (abs >= 1e3) return short(Math.round((abs / 1e3) * 10) / 10, "k");
+  return `${sign}$${formatNumber(abs)}`;
 }
 
 // 0.123 -> "+12%"

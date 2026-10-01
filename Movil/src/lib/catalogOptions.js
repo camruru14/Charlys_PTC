@@ -1,7 +1,7 @@
 // Opciones del catálogo de la tienda pública, copiadas tal cual de
 // Web/private/frontend/src/lib/catalogOptions.js (misma fuente de verdad
 // que usa el panel web para que los colores nunca se desincronicen entre
-// plataformas). Si esa lista cambia, actualizá también esta copia.
+// plataformas). Si esa lista cambia, actualiza también esta copia.
 export const PRODUCT_COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
 
 export const PRODUCT_COLOR_HEX = {
@@ -12,3 +12,13 @@ export const PRODUCT_COLOR_HEX = {
   Negro: "#0f172a",
   Amarillo: "#eab308",
 };
+
+// Categorías del formulario de producto (ProductFormModal.jsx de la web).
+export const PRODUCT_CATEGORIES = ["Pelotas", "Pajillas"];
+
+// Estado en la tienda (ProductCatalogCard.jsx): Inactivo si no se muestra;
+// si se muestra, Destacado o Activo.
+export function catalogStatus(product) {
+  if (product.active === false) return "Inactivo";
+  return product.featured ? "Destacado" : "Activo";
+}

@@ -1,121 +1,176 @@
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, RefreshControl, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useCatalog } from "../hooks/useCatalog";
+import ProductActionsSheet from "../components/catalog/ProductActionsSheet";
 import ProductCard from "../components/catalog/ProductCard";
-import KpiTile from "../components/dashboard/KpiTile";
-import SegmentedField from "../components/ui/SegmentedField";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
+import FilterChips from "../components/ui/FilterChips";
+import IconButton from "../components/ui/IconButton";
+import KpiInline from "../components/ui/KpiInline";
 import LoadingState from "../components/ui/LoadingState";
-import FloatingAddButton from "../components/ui/FloatingAddButton";
+import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
+import { formatNumber } from "../lib/format";
+import { pickPhotoSource } from "../lib/pickImages";
+import { statusTone } from "../lib/statusTones";
 
-const CATEGORY_FILTERS = ["Todas", "Pelotas", "Pajillas"];
+const ALL = "__all";
 
+// Catálogo de la tienda en línea (Web/private/frontend/src/pages/Catalogo.jsx):
+// indicadores, chips por categoría (las que existen, con su conteo) y la
+// cuadrícula de productos. Tocar un producto abre sus acciones: editar,
+// subir foto, destacado, visible y eliminar.
 export default function CatalogoScreen({ navigation }) {
-  const { products, loading, refreshing, error, refresh, agregarImagenes } = useCatalog();
-  const [categoryFilter, setCategoryFilter] = useState("Todas");
+  const toast = useToast();
+  // Dos columnas: (ancho - márgenes de 20 - separación de 10) / 2.
+  const cardWidth = (useWindowDimensions().width - 40 - 10) / 2;
+  const { products, loading, refreshing, error, refresh, actualizar, eliminar, agregarImagenes } = useCatalog();
+  const [category, setCategory] = useState(ALL);
+  const [selected, setSelected] = useState(null);
   const [uploadingId, setUploadingId] = useState(null);
 
-  // Recarga la lista cada vez que la pantalla vuelve a tener foco (ej. al
-  // volver de crear/editar/eliminar un producto en el modal).
   useFocusEffect(
     useCallback(() => {
       refresh();
     }, [refresh]),
   );
 
-  // Subida rápida desde la card, sin abrir el formulario de edición —
-  // mismo criterio que handleAddImagesFromCard en la web
-  // (Web/private/frontend/src/pages/Catalogo.jsx). `agregarImagenes` ya
-  // refresca la lista sola (ver useCatalog.js).
-  const handleAddImagesFromCard = async (product, files) => {
-    setUploadingId(product._id);
-    try {
-      await agregarImagenes(product._id, files);
-    } catch (err) {
-      Alert.alert("No se pudieron subir las imágenes", err.message || "Intentá de nuevo");
-    } finally {
-      setUploadingId(null);
-    }
-  };
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <IconButton
+          icon="plus"
+          variant="primary"
+          onPress={() => navigation.navigate("ProductoForm")}
+          accessibilityLabel="Nuevo producto"
+        />
+      ),
+    });
+  }, [navigation]);
 
-  if (loading) return <LoadingState />;
-  if (error && products.length === 0) {
-    return <ErrorState message={error} onRetry={refresh} />;
-  }
+  // Chips: «Todas» y cada categoría que existe, con su conteo (como las
+  // pestañas de la web).
+  const categories = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(), [products]);
+  const chips = [
+    { value: ALL, label: "Todas", count: products.length },
+    ...categories.map((c) => ({ value: c, label: c, count: products.filter((p) => p.category === c).length })),
+  ];
+  const current = category !== ALL && categories.includes(category) ? category : ALL;
+  const filtered = current === ALL ? products : products.filter((p) => p.category === current);
 
-  // Los KPIs se calculan sobre `products` completo, sin el filtro de
-  // categoría de abajo — mismo criterio que la web.
   const kpis = {
     total: products.length,
     active: products.filter((p) => p.active !== false).length,
     featured: products.filter((p) => p.featured).length,
   };
 
-  const filtered =
-    categoryFilter === "Todas" ? products : products.filter((p) => p.category === categoryFilter);
+  const confirmDelete = (product) =>
+    Alert.alert("Eliminar producto", `¿Eliminar "${product.name}"? También se borran sus imágenes en Cloudinary.`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await eliminar(product._id);
+            toast.show("Producto eliminado");
+          } catch (err) {
+            Alert.alert("No se pudo eliminar", err.message);
+          }
+        },
+      },
+    ]);
+
+  // Subida rápida sin abrir el formulario (handleAddImagesFromCard en la web).
+  const uploadPhotos = async (product) => {
+    const files = await pickPhotoSource();
+    if (!files?.length) return;
+    setUploadingId(product._id);
+    try {
+      await agregarImagenes(product._id, files);
+      toast.show(files.length === 1 ? "Imagen agregada" : "Imágenes agregadas");
+    } catch (err) {
+      Alert.alert("No se pudieron subir las imágenes", err.message);
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  // Destacado y visible: los mismos campos del formulario, con el mismo PUT.
+  const toggle = async (product, field) => {
+    const next = field === "featured" ? !product.featured : product.active === false;
+    try {
+      await actualizar(product._id, { [field]: next });
+      if (field === "featured") toast.show(next ? `${product.name} destacado` : `${product.name} ya no es destacado`);
+      else toast.show(next ? `${product.name} visible en la tienda` : `${product.name} oculto de la tienda`);
+    } catch (err) {
+      Alert.alert("No se pudo actualizar", err.message);
+    }
+  };
+
+  const handleAction = (action, product) => {
+    if (action === "edit") navigation.navigate("ProductoForm", { id: product._id });
+    else if (action === "upload") uploadPhotos(product);
+    else if (action === "featured" || action === "active") toggle(product, action);
+    else if (action === "delete") confirmDelete(product);
+  };
+
+  if (loading && !products.length) return <LoadingState />;
+  if (error && !products.length) return <ErrorState message={error} onRetry={refresh} />;
 
   return (
     <View style={styles.screen}>
       <FlatList
-        style={styles.container}
+        style={styles.flex}
         contentContainerStyle={styles.content}
         data={filtered}
-        keyExtractor={(item, index) => item._id || item.slug || String(index)}
+        keyExtractor={(item) => item._id}
+        numColumns={2}
+        columnWrapperStyle={styles.columns}
         ListHeaderComponent={
-          <View>
-            <View style={styles.kpiGrid}>
-              <KpiTile label="Productos" value={kpis.total} hint="en catálogo" />
-              <KpiTile label="Visibles" value={kpis.active} hint="en la tienda" />
-              <KpiTile label="Destacados" value={kpis.featured} hint="en Inicio" />
-            </View>
-            <SegmentedField
-              label="Categoría"
-              value={categoryFilter}
-              options={CATEGORY_FILTERS}
-              onChange={setCategoryFilter}
+          <View style={styles.header}>
+            <KpiInline
+              items={[
+                { label: "Productos", value: formatNumber(kpis.total), tone: "blue" },
+                { label: "Activos", value: formatNumber(kpis.active), tone: statusTone("Activo", "catalogo") },
+                { label: "Destacados", value: formatNumber(kpis.featured), tone: statusTone("Destacado", "catalogo") },
+              ]}
             />
+            <FilterChips options={chips} value={current} onChange={setCategory} />
           </View>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate("ProductoForm", { id: item._id })}
-          >
-            <ProductCard
-              product={item}
-              onAddImages={handleAddImagesFromCard}
-              uploading={uploadingId === item._id}
-            />
-          </TouchableOpacity>
+          <ProductCard
+            product={item}
+            style={{ width: cardWidth }}
+            uploading={uploadingId === item._id}
+            onPress={() => setSelected(item)}
+          />
         )}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-        ListEmptyComponent={<EmptyState message="No hay productos en el catálogo todavía" />}
+        ListEmptyComponent={
+          <EmptyState
+            icon="tag"
+            message={
+              products.length
+                ? "No hay productos en esta categoría."
+                : "No hay productos todavía. Crea el primero con «+»."
+            }
+          />
+        }
       />
-      <FloatingAddButton onPress={() => navigation.navigate("ProductoForm")} />
+
+      <ProductActionsSheet product={selected} onClose={() => setSelected(null)} onAction={handleAction} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 96,
-    flexGrow: 1,
-  },
-  kpiGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 16,
-  },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  flex: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32, flexGrow: 1 },
+  header: { gap: 12, marginBottom: 12 },
+  columns: { gap: 10, marginBottom: 10 },
 });
