@@ -19,7 +19,7 @@ export const MODULES = ["Dashboard", "Fabricación", "Inventario", "Pedidos", "L
 export const PERMISSION_RULES = {
   Administración: {
     positions: [
-      { match: ["administrador", "gerente"], modules: "all", label: "Administrador / Gerente" },
+      { match: ["administrador", "administradora", "gerente"], modules: "all", label: "Administrador / Gerente" },
       { match: ["ventas", "vendedor", "vendedora"], modules: ["Dashboard", "Pedidos", "Catálogo"], label: "Ventas" },
     ],
     modules: ["Dashboard", "Pedidos", "Catálogo", "Empleados"],

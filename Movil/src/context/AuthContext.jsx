@@ -25,6 +25,12 @@ export function AuthProvider({ children }) {
   // antes del Drawer. PostLoginSplashScreen lo apaga solo con
   // clearJustLoggedIn tras mostrarse un momento.
   const [justLoggedIn, setJustLoggedIn] = useState(false);
+  // Contraseña escrita al iniciar sesión, SOLO en memoria (nunca en
+  // SecureStore ni en disco): la usa Mi cuenta para mostrar la contraseña
+  // actual cuando el backend no puede descifrarla (hash viejo, «legacy»),
+  // como sessionPassword de la web. Se borra al cerrar sesión, al expirar la
+  // sesión y al cerrarse la app.
+  const [sessionPassword, setSessionPassword] = useState(null);
 
   // Copia en memoria del token que lee src/lib/api.js en cada request, para
   // no golpear SecureStore (I/O nativo) en cada llamada a la API.
@@ -64,6 +70,7 @@ export function AuthProvider({ children }) {
   const persistSession = useCallback(async (nextToken, nextUser) => {
     if (!nextToken) {
       tokenRef.current = null;
+      setSessionPassword(null);
       await Promise.all([
         SecureStore.deleteItemAsync(TOKEN_KEY),
         SecureStore.deleteItemAsync(USER_KEY),
@@ -100,6 +107,7 @@ export function AuthProvider({ children }) {
       try {
         const payload = await api.post("/auth/login", { email, password });
         await persistSession(payload.token, payload.user);
+        setSessionPassword(password);
         setJustLoggedIn(true);
         return { ok: true, message: payload.message || "Sesión iniciada" };
       } catch (error) {
@@ -131,6 +139,21 @@ export function AuthProvider({ children }) {
     }
   }, [persistSession]);
 
+  // Actualiza datos del usuario en sesión (p. ej. el correo nuevo desde Mi
+  // cuenta), igual que updateUser de la web; el token no cambia.
+  const updateUser = useCallback(
+    async (partial) => {
+      const next = { ...(user || {}), ...partial };
+      setUser(next);
+      try {
+        await SecureStore.setItemAsync(USER_KEY, JSON.stringify(next));
+      } catch {
+        // Si no se puede guardar, igual queda en memoria hasta cerrar la app.
+      }
+    },
+    [user],
+  );
+
   const value = {
     user,
     token,
@@ -140,6 +163,9 @@ export function AuthProvider({ children }) {
     clearJustLoggedIn,
     login,
     logout,
+    updateUser,
+    sessionPassword,
+    setSessionPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

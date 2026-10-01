@@ -204,3 +204,23 @@ button:not(:disabled),
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Tarjeta que cambió de grupo en Logística (useMovedIds): resaltado que se desvanece. */
+@keyframes row-moved {
+  from {
+    background-color: var(--color-tone-blue);
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+.row-moved {
+  animation: row-moved 2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-moved {
+    animation: none;
+  }
+}

@@ -1,86 +1,125 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useInventory } from "../hooks/useInventory";
 import { useOrders } from "../hooks/useOrders";
-import InventoryCard from "../components/inventory/InventoryCard";
-import OrderGroupRow from "../components/batches/OrderGroupRow";
-import PedidoInventarioDetailModal from "../components/orders/PedidoInventarioDetailModal";
-import VerifyStockModal from "../components/orders/VerifyStockModal";
-import KpiTile from "../components/dashboard/KpiTile";
-import SegmentedField from "../components/ui/SegmentedField";
-import SelectField from "../components/ui/SelectField";
-import SwitchField from "../components/ui/SwitchField";
-import ErrorState from "../components/ui/ErrorState";
-import LoadingState from "../components/ui/LoadingState";
+import { useWarehouses } from "../hooks/useWarehouses";
+import NewItemSheet from "../components/inventory/NewItemSheet";
+import PrepOrderCard from "../components/inventory/PrepOrderCard";
+import StockRow from "../components/inventory/StockRow";
+import BottomBar from "../components/ui/BottomBar";
 import EmptyState from "../components/ui/EmptyState";
-import FloatingAddButton from "../components/ui/FloatingAddButton";
-import { colors } from "../lib/theme";
-import { formatCurrency, formatNumber } from "../lib/format";
-import { stockStatus } from "../lib/inventoryStatus";
+import ErrorState from "../components/ui/ErrorState";
+import FilterChips from "../components/ui/FilterChips";
+import Icon from "../components/ui/Icon";
+import IconButton from "../components/ui/IconButton";
+import KpiInline from "../components/ui/KpiInline";
+import ListGroup from "../components/ui/ListGroup";
+import LoadingState from "../components/ui/LoadingState";
+import SearchField from "../components/ui/SearchField";
+import Segmented from "../components/ui/Segmented";
+import SelectField from "../components/ui/SelectField";
+import { useToast } from "../components/ui/Toast";
+import { colors, tones } from "../lib/theme";
+import { fonts } from "../lib/typography";
+import { formatNumber } from "../lib/format";
+import { isBelowMinimum } from "../lib/stockLevel";
+import { MATERIAL_TYPES } from "../lib/inventoryOptions";
+import { useBottomPad } from "../hooks/useBottomPad";
 import {
-  macroStatus,
-  getItemStatusCounts,
-  progressSegments,
-  progressCaption,
-  MACRO_STATUS_LABELS,
-} from "../lib/orderProgress";
+  buildStockMap,
+  finishedItemsOf,
+  fullyVerifiableLines,
+  isDispatched,
+  lastStatusAt,
+  orderLineApi,
+  runAll,
+  unprocessedCount,
+} from "../lib/inventoryOrders";
 
+// Mismas vistas que Web/private/frontend/src/pages/Inventario.jsx.
 const TABS = [
-  { key: "articulos", label: "Artículos en almacén" },
-  { key: "lotes", label: "Lotes Reportados" },
-  { key: "pedidos", label: "Pedidos" },
+  { value: "terminado", label: "Terminado" },
+  { value: "materia", label: "Materia prima" },
+  { value: "pedidos", label: "Pedidos" },
 ];
-const STOCK_STATUSES = ["Suficiente", "Insuficiente"];
-const PEDIDOS_STATUS_FILTERS = ["sinVerificar", "verificado", "enviado", "empacado", "parcial", "entregado"];
 
-// 3 pestañas, igual que Web/private/frontend/src/pages/Inventario.jsx:
-// Artículos en almacén (con sub-secciones Materia Prima / Producto
-// Terminado) + Lotes Reportados (ya existía, ahora con "Eliminar reporte"
-// además de "Enviar") + Pedidos (nueva, progreso de verificación/empacado
-// de los pedidos solicitados a inventario).
+// «Despachados» muestra los de los últimos 30 días, como la web.
+const DISPATCHED_DAYS = 30;
+
+// Chip rosa «Bajo mínimo» junto al buscador: filtra solo esos artículos
+// (LowStockToggle de la web). Activo, se pinta en primary y se quita con
+// otro toque. Sin artículos bajo mínimo (y sin el filtro puesto) no aparece.
+function LowStockChip({ active, count, onToggle }) {
+  if (!active && count === 0) return null;
+  return (
+    <Pressable
+      onPress={onToggle}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={active ? "Quitar filtro de bajo mínimo" : `Solo bajo mínimo, ${count} artículos`}
+      style={[styles.lowChip, active && styles.lowChipActive]}
+    >
+      <Icon name={active ? "close" : "alert"} size={15} color={active ? colors.white : tones.rose.text} />
+      <Text style={[styles.lowChipText, active && styles.lowChipTextActive]}>{count}</Text>
+    </Pressable>
+  );
+}
+
+function StockList({ items, showColor, emptyText, onEdit, onLongPress }) {
+  if (items.length === 0) return <EmptyState message={emptyText} icon="box" />;
+  return (
+    <ListGroup>
+      {items.map((item) => (
+        <StockRow
+          key={item._id}
+          item={item}
+          showColor={showColor}
+          onPress={() => onEdit(item)}
+          onLongPress={() => onLongPress(item)}
+        />
+      ))}
+    </ListGroup>
+  );
+}
+
+// Inventario: Producto terminado, Materia prima y Pedidos por preparar, como
+// la web. «Nuevo artículo» (solo Materia prima) abre una hoja; tocar un
+// artículo abre su edición (InventarioItemFormScreen) y mantenerlo
+// presionado ofrece eliminarlo. Tocar un pedido abre su detalle, donde se
+// verifica, empaca y resuelven faltantes.
 export default function InventarioScreen({ navigation }) {
-  const { items, loading, refreshing, error, refresh, enviarAAlmacen, eliminarReporte } = useInventory();
+  const bottomPad = useBottomPad(32);
+  const toast = useToast();
+  const { items, loading, refreshing, error, refresh, crear, eliminar } = useInventory();
   const {
     orders,
     loading: ordersLoading,
     refreshing: ordersRefreshing,
     error: ordersError,
     refresh: refreshOrders,
-    verifyItem,
-    packItem,
-    sendToManufacturing,
-    cancelInventoryRequest,
   } = useOrders();
+  const { warehouses: warehouseList } = useWarehouses();
+  const warehouses = useMemo(() => warehouseList.map((w) => w.name), [warehouseList]);
 
-  const [activeTab, setActiveTab] = useState("articulos");
-  const [articleSubTab, setArticleSubTab] = useState("raw");
-  const [search, setSearch] = useState("");
-  const [locationFilter, setLocationFilter] = useState("");
-  const [colorFilter, setColorFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [tab, setTab] = useState("terminado");
+  const [lowOnly, setLowOnly] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
-  const [sendingId, setSendingId] = useState(null);
-  const [deletingReportId, setDeletingReportId] = useState(null);
-
-  const [pedidosStatusFilter, setPedidosStatusFilter] = useState("");
-  const [pedidosOnlyPending, setPedidosOnlyPending] = useState(false);
-  const [pedidoInfoOrderId, setPedidoInfoOrderId] = useState(null);
-  const [pedidoBusyIndex, setPedidoBusyIndex] = useState(null);
-  const [verifyTarget, setVerifyTarget] = useState(null);
-  const [verifying, setVerifying] = useState(false);
-  const [sendingToManufacturing, setSendingToManufacturing] = useState(false);
+  // Filtros de Producto terminado
+  const [finishedSearch, setFinishedSearch] = useState("");
+  const [location, setLocation] = useState("");
+  const [color, setColor] = useState("");
+  // Filtros de Materia prima
+  const [rawSearch, setRawSearch] = useState("");
+  const [materialType, setMaterialType] = useState("");
+  // Pedidos
+  const [segment, setSegment] = useState("preparar");
+  const [selecting, setSelecting] = useState(false);
+  const [checked, setChecked] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [dispatchedSince] = useState(() => Date.now() - DISPATCHED_DAYS * 86400000);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,482 +128,395 @@ export default function InventarioScreen({ navigation }) {
     }, [refresh, refreshOrders]),
   );
 
-  const reportedItems = useMemo(
-    () => items.filter((i) => i.batchNumber).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
-    [items],
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      subtitle:
+        tab === "pedidos"
+          ? "Pedidos — llegan solos, se verifican de una vez y se empacan sin confirmación"
+          : "Materia prima y producto terminado",
+      headerRight:
+        tab === "materia"
+          ? () => (
+              <IconButton icon="plus" variant="primary" onPress={() => setNewOpen(true)} accessibilityLabel="Nuevo artículo" />
+            )
+          : undefined,
+    });
+  }, [navigation, tab]);
+
+  // Stock real, dividido por categoría. Los artículos con batchNumber son
+  // reportes de lote, no stock (se excluyen igual que en la web).
+  const finishedItems = useMemo(() => finishedItemsOf(items), [items]);
+  const rawItems = useMemo(() => items.filter((i) => !i.batchNumber && i.category === "Materia Prima"), [items]);
+  const stockMap = useMemo(() => buildStockMap(finishedItems), [finishedItems]);
+
+  const tabItems = tab === "materia" ? rawItems : finishedItems;
+  const lowCount = useMemo(() => tabItems.filter(isBelowMinimum).length, [tabItems]);
+
+  const finishedOptions = useMemo(
+    () => ({
+      locations: [...new Set(finishedItems.map((i) => i.location).filter(Boolean))].sort(),
+      colors: [...new Set(finishedItems.map((i) => i.color).filter(Boolean))].sort(),
+    }),
+    [finishedItems],
   );
-  const warehouseItems = useMemo(() => items.filter((i) => !i.batchNumber), [items]);
-  const rawMaterialItems = useMemo(() => warehouseItems.filter((i) => i.category === "Materia Prima"), [warehouseItems]);
-  const finishedItems = useMemo(() => warehouseItems.filter((i) => i.category === "Producto Terminado"), [warehouseItems]);
 
-  const kpis = useMemo(() => {
-    const low = warehouseItems.filter((i) => stockStatus(i) === "Insuficiente").length;
-    const value = warehouseItems.reduce((s, i) => s + (i.stock || 0) * (i.unitCost || 0), 0);
-    return { raw: rawMaterialItems.length, finished: finishedItems.length, low, value };
-  }, [warehouseItems, rawMaterialItems, finishedItems]);
-
-  const activeArticleItems = articleSubTab === "raw" ? rawMaterialItems : finishedItems;
-
-  const articleOptions = useMemo(() => {
-    const locations = [...new Set(activeArticleItems.map((i) => i.location).filter(Boolean))].sort();
-    const colorsList = [...new Set(activeArticleItems.map((i) => i.color).filter(Boolean))].sort();
-    return { locations, colorsList };
-  }, [activeArticleItems]);
-
-  const filteredArticleItems = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return activeArticleItems.filter((i) => {
-      if (q && !i.name?.toLowerCase().includes(q)) return false;
-      if (locationFilter && i.location !== locationFilter) return false;
-      if (articleSubTab === "finished" && colorFilter && i.color !== colorFilter) return false;
-      if (articleSubTab === "raw" && typeFilter && i.materialType !== typeFilter) return false;
-      if (statusFilter && stockStatus(i) !== statusFilter) return false;
+  const finishedFiltered = useMemo(() => {
+    const q = finishedSearch.trim().toLowerCase();
+    return finishedItems.filter((i) => {
+      if (lowOnly && !isBelowMinimum(i)) return false;
+      if (q && !`${i.name || ""} ${i.color || ""}`.toLowerCase().includes(q)) return false;
+      if (location && i.location !== location) return false;
+      if (color && i.color !== color) return false;
       return true;
     });
-  }, [activeArticleItems, search, locationFilter, colorFilter, typeFilter, statusFilter, articleSubTab]);
+  }, [finishedItems, lowOnly, finishedSearch, location, color]);
 
-  const hasActiveArticleFilters = Boolean(search || locationFilter || colorFilter || typeFilter || statusFilter);
+  const rawFiltered = useMemo(() => {
+    const q = rawSearch.trim().toLowerCase();
+    return rawItems.filter((i) => {
+      if (lowOnly && !isBelowMinimum(i)) return false;
+      if (q && !(i.name || "").toLowerCase().includes(q)) return false;
+      if (materialType && i.materialType !== materialType) return false;
+      return true;
+    });
+  }, [rawItems, lowOnly, rawSearch, materialType]);
 
-  const requestedOrders = useMemo(
-    () =>
-      orders
-        .filter((o) => o.sentToInventoryAt)
-        .sort((a, b) => new Date(b.sentToInventoryAt) - new Date(a.sentToInventoryAt)),
-    [orders],
+  const toPrepare = useMemo(() => orders.filter((o) => !isDispatched(o)), [orders]);
+  const dispatched = useMemo(
+    () => orders.filter((o) => isDispatched(o) && new Date(lastStatusAt(o)).getTime() >= dispatchedSince),
+    [orders, dispatchedSince],
   );
-  const pedidoInfoOrder = useMemo(
-    () => requestedOrders.find((o) => o._id === pedidoInfoOrderId) || null,
-    [requestedOrders, pedidoInfoOrderId],
-  );
-  const filteredRequestedOrders = useMemo(
-    () =>
-      requestedOrders.filter((o) => {
-        if (pedidosStatusFilter && macroStatus(o) !== pedidosStatusFilter) return false;
-        if (pedidosOnlyPending && getItemStatusCounts(o).sinVerificar === 0) return false;
-        return true;
-      }),
-    [requestedOrders, pedidosStatusFilter, pedidosOnlyPending],
-  );
-  const hasActivePedidosFilters = Boolean(pedidosStatusFilter || pedidosOnlyPending);
+  const orderList = segment === "preparar" ? toPrepare : dispatched;
 
-  const verifyMatches = useMemo(() => {
-    if (!verifyTarget) return [];
-    return finishedItems.filter(
-      (i) => i.name === verifyTarget.item.product && (i.color || "") === (verifyTarget.item.color || ""),
-    );
-  }, [finishedItems, verifyTarget]);
+  const checkedOrders = useMemo(() => toPrepare.filter((o) => checked.has(o._id)), [toPrepare, checked]);
+  const bulkSummary = useMemo(() => {
+    let verifiable = 0;
+    let pending = 0;
+    for (const o of checkedOrders) {
+      const v = fullyVerifiableLines(o, stockMap).length;
+      verifiable += v;
+      pending += unprocessedCount(o) - v;
+    }
+    return { verifiable, pending, total: verifiable + pending };
+  }, [checkedOrders, stockMap]);
 
-  const handleSend = (item) => {
-    Alert.alert(
-      "Enviar a almacén",
-      `Vas a enviar ${item.name} (lote ${item.batchNumber}) a Artículos en almacén. Si ya existe un producto terminado con el mismo artículo, color y bodega, sus ${Number(item.stock || 0).toLocaleString("es-SV")} ${item.unit} se sumarán a esa existencia; si no, se creará uno nuevo.`,
-      [
-        { text: "Cancelar" },
-        {
-          text: "Confirmar",
-          onPress: async () => {
-            setSendingId(item._id);
-            try {
-              await enviarAAlmacen(item._id);
-            } catch (error) {
-              Alert.alert("No se pudo enviar", error.message || "Intentá de nuevo");
-            } finally {
-              setSendingId(null);
-            }
-          },
-        },
-      ],
-    );
+  const changeTab = (next) => {
+    setTab(next);
+    setLowOnly(false);
+    setSelecting(false);
+    setChecked(new Set());
   };
 
-  const handleDeleteReport = (item) => {
-    const msg = item.sentToWarehouse
-      ? `¿Eliminar el reporte de ${item.name} (lote ${item.batchNumber})? El lote en Fabricación queda igual; como ya se había enviado a almacén, ese stock se conserva sin cambios.`
-      : `¿Eliminar el reporte de ${item.name} (lote ${item.batchNumber})? El lote en Fabricación queda igual, solo deja de estar reportado.`;
-    Alert.alert("Eliminar lote reportado", msg, [
-      { text: "Cancelar" },
+  const editItem = (item) => navigation.navigate("InventarioItemForm", { id: item._id });
+
+  const openItemMenu = (item) => {
+    const label = `${item.name}${item.color ? ` · ${item.color}` : ""}`;
+    Alert.alert(label, undefined, [
+      { text: "Editar", onPress: () => editItem(item) },
       {
         text: "Eliminar",
         style: "destructive",
-        onPress: async () => {
-          setDeletingReportId(item._id);
-          try {
-            await eliminarReporte(item._id);
-          } catch (error) {
-            Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-          } finally {
-            setDeletingReportId(null);
-          }
-        },
+        onPress: () =>
+          Alert.alert("Eliminar artículo", `¿Eliminar ${label}?`, [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Eliminar",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await eliminar(item._id);
+                  toast.show("Artículo eliminado");
+                } catch (err) {
+                  Alert.alert("No se pudo eliminar", err.message);
+                }
+              },
+            },
+          ]),
       },
+      { text: "Cancelar", style: "cancel" },
     ]);
   };
 
-  const handleVerify = ({ order, item, index }) => {
-    setPedidoInfoOrderId(null);
-    setVerifyTarget({ order, item, index });
+  const handleCreate = async (payload) => {
+    await crear(payload);
+    setNewOpen(false);
+    toast.show("Artículo agregado");
   };
 
-  const confirmVerify = async (warehouseName) => {
-    if (!verifyTarget) return;
-    setVerifying(true);
-    try {
-      await verifyItem(verifyTarget.order._id, verifyTarget.index, warehouseName);
-      setVerifyTarget(null);
-      refresh();
-    } catch (error) {
-      Alert.alert("No se pudo verificar", error.message || "Intentá de nuevo");
-    } finally {
-      setVerifying(false);
+  const toggleChecked = (id) =>
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const stopSelecting = () => {
+    setSelecting(false);
+    setChecked(new Set());
+  };
+
+  // «Verificar seleccionados» de la web: verifica de una vez las líneas con
+  // existencia completa de los pedidos marcados, con «Deshacer».
+  const verifySelected = async () => {
+    const groups = checkedOrders
+      .map((order) => ({ order, lines: fullyVerifiableLines(order, stockMap) }))
+      .filter((g) => g.lines.length > 0);
+    if (!groups.length) {
+      Alert.alert("Nada que verificar", "Ningún producto seleccionado tiene existencia completa");
+      return;
     }
-  };
-
-  const handleSendToManufacturingFromVerify = async () => {
-    if (!verifyTarget) return;
-    setSendingToManufacturing(true);
+    const n = groups.reduce((s, g) => s + g.lines.length, 0);
+    const reload = () => Promise.all([refreshOrders(), refresh()]);
+    setBusy(true);
     try {
-      await sendToManufacturing(verifyTarget.order._id, verifyTarget.index);
-      setVerifyTarget(null);
-    } catch (error) {
-      Alert.alert("No se pudo enviar", error.message || "Intentá de nuevo");
+      await orderLineApi.verifyBulk(
+        groups.map((g) => ({ id: g.order._id, items: g.lines.map((l) => ({ index: l.index, warehouse: l.warehouse })) })),
+      );
+      await reload();
+      stopSelecting();
+      toast.undo(`${n} ${n === 1 ? "producto verificado" : "productos verificados"}`, async () => {
+        try {
+          await runAll(groups.flatMap((g) => g.lines.map((l) => () => orderLineApi.unverify(g.order._id, l.index))));
+          toast.show("Cambio deshecho");
+        } catch (err) {
+          Alert.alert("No se pudo deshacer", err.message);
+        } finally {
+          reload();
+        }
+      });
+    } catch (err) {
+      Alert.alert("No se pudo verificar", err.message);
+      reload();
     } finally {
-      setSendingToManufacturing(false);
+      setBusy(false);
     }
-  };
-
-  const handlePack = async ({ order, item, index }) => {
-    setPedidoBusyIndex(index);
-    try {
-      await packItem(order._id, index);
-    } catch (error) {
-      Alert.alert("No se pudo empacar", error.message || "Intentá de nuevo");
-    } finally {
-      setPedidoBusyIndex(null);
-    }
-  };
-
-  const handleCancelRequest = (order) => {
-    Alert.alert(
-      "Eliminar pedido",
-      `¿Eliminar ${order.orderNumber} de Pedidos? Se borra todo su rastro de verificación aquí.`,
-      [
-        { text: "Cancelar" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await cancelInventoryRequest(order._id);
-              refresh();
-            } catch (error) {
-              Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-            }
-          },
-        },
-      ],
-    );
   };
 
   if (loading) return <LoadingState />;
-  if (error && items.length === 0) {
-    return <ErrorState message={error} onRetry={refresh} />;
-  }
+  if (error && items.length === 0) return <ErrorState message={error} onRetry={refresh} />;
+
+  const kpis =
+    tab === "terminado"
+      ? [
+          { label: "Artículos", value: formatNumber(finishedItems.length), tone: "blue" },
+          {
+            label: "Unidades",
+            value: formatNumber(finishedItems.reduce((s, i) => s + (Number(i.stock) || 0), 0)),
+            tone: "green",
+          },
+          { label: "Bajo mín.", value: formatNumber(lowCount), tone: "rose" },
+        ]
+      : [
+          { label: "Artículos", value: formatNumber(rawItems.length), tone: "blue" },
+          { label: "Bajo mín.", value: formatNumber(lowCount), tone: "rose" },
+        ];
+
+  const inventoryRefresh = <RefreshControl refreshing={refreshing} onRefresh={refresh} />;
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.kpiGrid}>
-          <KpiTile label="Materia prima" value={formatNumber(kpis.raw)} hint="insumos" />
-          <KpiTile label="Productos terminados" value={formatNumber(kpis.finished)} hint="referencias" />
-          <KpiTile label="Stock bajo" value={formatNumber(kpis.low)} hint={kpis.low ? "Reponer" : "OK"} />
-          <KpiTile label="Valor del inventario" value={formatCurrency(kpis.value)} hint="estimado" />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar}>
-          {TABS.map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tabButton, activeTab === t.key && styles.tabButtonActive]}
-              onPress={() => setActiveTab(t.key)}
-            >
-              <Text style={[styles.tabButtonText, activeTab === t.key && styles.tabButtonTextActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={styles.tabs}>
+        <Segmented options={TABS} value={tab} onChange={changeTab} />
       </View>
 
-      {activeTab === "articulos" ? (
-        <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={filteredArticleItems}
-          keyExtractor={(item, index) => item._id || String(index)}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate("InventarioItemForm", { id: item._id, category: item.category })}
-            >
-              <InventoryCard item={item} />
-            </TouchableOpacity>
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-          ListEmptyComponent={
-            <EmptyState
-              message={
-                hasActiveArticleFilters
-                  ? "Ningún artículo coincide con los filtros."
-                  : articleSubTab === "raw"
-                    ? "No hay materia prima en almacén."
-                    : "No hay productos terminados en almacén."
-              }
+      {tab === "terminado" ? (
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+          <KpiInline items={kpis} style={styles.kpis} />
+          <View style={styles.searchRow}>
+            <SearchField
+              value={finishedSearch}
+              onChangeText={setFinishedSearch}
+              placeholder="Buscar artículo o color"
+              style={styles.flex}
             />
-          }
-          ListHeaderComponent={
-            <View>
-              <View style={styles.subTabRow}>
-                <SegmentedField
-                  value={articleSubTab}
-                  options={[
-                    { key: "raw", label: "Materia Prima" },
-                    { key: "finished", label: "Producto Terminado" },
-                  ]}
-                  getLabel={(o) => o.label}
-                  getValue={(o) => o.key}
-                  onChange={setArticleSubTab}
-                />
-              </View>
-
-              <TextInput
-                style={styles.search}
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Buscar artículo…"
-                placeholderTextColor={colors.slate400}
-              />
-              <View style={styles.filterRow}>
-                <View style={styles.filterItem}>
-                  <SelectField
-                    title="Bodega"
-                    value={locationFilter}
-                    onChange={setLocationFilter}
-                    options={[
-                      { label: "Bodega: todos", value: "" },
-                      ...articleOptions.locations.map((l) => ({ label: l, value: l })),
-                    ]}
-                  />
-                </View>
-                {articleSubTab === "finished" ? (
-                  <View style={styles.filterItem}>
-                    <SelectField
-                      title="Color"
-                      value={colorFilter}
-                      onChange={setColorFilter}
-                      options={[
-                        { label: "Color: todos", value: "" },
-                        ...articleOptions.colorsList.map((c) => ({ label: c, value: c })),
-                      ]}
-                    />
-                  </View>
-                ) : (
-                  <View style={styles.filterItem}>
-                    <SelectField
-                      title="Tipo"
-                      value={typeFilter}
-                      onChange={setTypeFilter}
-                      options={[
-                        { label: "Tipo: todos", value: "" },
-                        { label: "Polimero", value: "Polimero" },
-                        { label: "Aditivo", value: "Aditivo" },
-                        { label: "Tinta", value: "Tinta" },
-                        { label: "Insumo", value: "Insumo" },
-                      ]}
-                    />
-                  </View>
-                )}
-                <View style={styles.filterItem}>
-                  <SelectField
-                    title="Stock"
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    options={[
-                      { label: "Stock: todos", value: "" },
-                      ...STOCK_STATUSES.map((s) => ({ label: s, value: s })),
-                    ]}
-                  />
-                </View>
-              </View>
-              {hasActiveArticleFilters ? (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => {
-                    setSearch("");
-                    setLocationFilter("");
-                    setColorFilter("");
-                    setTypeFilter("");
-                    setStatusFilter("");
-                  }}
-                >
-                  <Text style={styles.clearButtonText}>Limpiar filtros</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          }
-        />
-      ) : activeTab === "lotes" ? (
-        <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={reportedItems}
-          keyExtractor={(item, index) => item._id || item.batchNumber || String(index)}
-          renderItem={({ item }) => (
-            <InventoryCard
-              item={item}
-              onSend={() => handleSend(item)}
-              sending={sendingId === item._id}
-              onDeleteReport={() => handleDeleteReport(item)}
-              deletingReport={deletingReportId === item._id}
+            <LowStockChip active={lowOnly} count={lowCount} onToggle={() => setLowOnly((v) => !v)} />
+          </View>
+          <View style={styles.filterRow}>
+            <SelectField
+              style={styles.filterItem}
+              title="Bodega"
+              value={location}
+              onChange={setLocation}
+              options={[{ label: "Bodega: todas", value: "" }, ...finishedOptions.locations.map((l) => ({ label: l, value: l }))]}
             />
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-          ListEmptyComponent={<EmptyState message="Aún no hay lotes reportados desde Fabricación." />}
-          ListHeaderComponent={
-            <View style={styles.sectionLinkRow}>
-              <TouchableOpacity onPress={() => navigation.navigate("Fabricacion")}>
-                <Text style={styles.sectionLink}>Ir a Fabricación</Text>
-              </TouchableOpacity>
-            </View>
-          }
-        />
+            <SelectField
+              style={styles.filterItem}
+              title="Color"
+              value={color}
+              onChange={setColor}
+              options={[{ label: "Color: todos", value: "" }, ...finishedOptions.colors.map((c) => ({ label: c, value: c }))]}
+            />
+          </View>
+          <StockList
+            items={finishedFiltered}
+            showColor
+            emptyText={finishedItems.length === 0 ? "No hay productos terminados en almacén." : "Ningún artículo coincide con los filtros."}
+            onEdit={editItem}
+            onLongPress={openItemMenu}
+          />
+          <Text style={styles.summary}>
+            {formatNumber(finishedFiltered.length)} de {formatNumber(finishedItems.length)} artículos ·{" "}
+            {formatNumber(finishedFiltered.reduce((s, i) => s + (Number(i.stock) || 0), 0))} unidades en total
+          </Text>
+        </ScrollView>
+      ) : tab === "materia" ? (
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+          <KpiInline items={kpis} style={styles.kpis} />
+          <FilterChips
+            style={styles.chips}
+            contentContainerStyle={styles.chipsContent}
+            value={materialType}
+            onChange={setMaterialType}
+            options={[
+              { value: "", label: "Todos", count: rawItems.length },
+              ...MATERIAL_TYPES.map((t) => ({
+                value: t,
+                label: t,
+                count: rawItems.filter((i) => i.materialType === t).length,
+              })),
+            ]}
+          />
+          <View style={styles.searchRow}>
+            <SearchField value={rawSearch} onChangeText={setRawSearch} placeholder="Buscar artículo" style={styles.flex} />
+            <LowStockChip active={lowOnly} count={lowCount} onToggle={() => setLowOnly((v) => !v)} />
+          </View>
+          <StockList
+            items={rawFiltered}
+            emptyText={rawItems.length === 0 ? "No hay materia prima en almacén." : "Ningún artículo coincide con los filtros."}
+            onEdit={editItem}
+            onLongPress={openItemMenu}
+          />
+          <Text style={styles.summary}>
+            {formatNumber(rawFiltered.length)} de {formatNumber(rawItems.length)} artículos
+          </Text>
+        </ScrollView>
       ) : (
         <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={filteredRequestedOrders}
+          style={styles.flex}
+          contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]}
+          data={orderList}
           keyExtractor={(o) => o._id}
           renderItem={({ item: o }) => (
-            <OrderGroupRow
-              orderNumber={o.orderNumber}
-              customerName={o.customer?.name}
-              countLabel={`${(o.items || []).length} producto(s)`}
-              segments={progressSegments(o)}
-              caption={progressCaption(o) || "Sin productos"}
-              onPress={() => setPedidoInfoOrderId(o._id)}
-              onDelete={() => handleCancelRequest(o)}
+            <PrepOrderCard
+              order={o}
+              stockMap={stockMap}
+              selecting={selecting}
+              checked={checked.has(o._id)}
+              onPress={() => (selecting ? toggleChecked(o._id) : navigation.navigate("PedidoDetalle", { id: o._id }))}
             />
           )}
-          refreshControl={<RefreshControl refreshing={ordersRefreshing} onRefresh={refreshOrders} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={ordersRefreshing}
+              onRefresh={() => {
+                refreshOrders();
+                refresh();
+              }}
+            />
+          }
+          ListHeaderComponent={
+            <View style={styles.ordersHeader}>
+              <View style={styles.ordersChipsRow}>
+                <FilterChips
+                  style={styles.flex}
+                  value={segment}
+                  onChange={(key) => {
+                    setSegment(key);
+                    stopSelecting();
+                  }}
+                  options={[
+                    { value: "preparar", label: "Por preparar", count: toPrepare.length },
+                    { value: "despachados", label: "Despachados", count: dispatched.length },
+                  ]}
+                />
+                {segment === "preparar" && toPrepare.length > 0 ? (
+                  <Pressable
+                    onPress={() => (selecting ? stopSelecting() : setSelecting(true))}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.link}>{selecting ? "Listo" : "Seleccionar"}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Text style={styles.hint}>
+                {selecting ? "Marca los pedidos a verificar de una vez" : "Salen de aquí al recogerse todo"}
+              </Text>
+            </View>
+          }
           ListEmptyComponent={
-            ordersError && requestedOrders.length === 0 ? (
+            ordersError && orders.length === 0 ? (
               <ErrorState message={ordersError} onRetry={refreshOrders} />
             ) : (
               <EmptyState
+                icon="orders"
                 message={
                   ordersLoading
-                    ? "Cargando…"
-                    : hasActivePedidosFilters && requestedOrders.length > 0
-                      ? "Ningún pedido coincide con los filtros."
-                      : "Aún no hay pedidos solicitados a inventario."
+                    ? "Cargando pedidos…"
+                    : segment === "preparar"
+                      ? "No hay pedidos por preparar."
+                      : "No hay pedidos despachados en los últimos 30 días."
                 }
               />
             )
           }
-          ListHeaderComponent={
-            <View style={styles.filterRow}>
-              <View style={styles.filterItem}>
-                <SelectField
-                  title="Estado"
-                  value={pedidosStatusFilter}
-                  onChange={setPedidosStatusFilter}
-                  options={[
-                    { label: "Estado: todos", value: "" },
-                    ...PEDIDOS_STATUS_FILTERS.map((key) => ({ label: MACRO_STATUS_LABELS[key], value: key })),
-                  ]}
-                />
-              </View>
-              <SwitchField label="Solo con pendientes" value={pedidosOnlyPending} onValueChange={setPedidosOnlyPending} />
-              {hasActivePedidosFilters ? (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => {
-                    setPedidosStatusFilter("");
-                    setPedidosOnlyPending(false);
-                  }}
-                >
-                  <Text style={styles.clearButtonText}>Limpiar filtros</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          }
         />
       )}
 
-      {activeTab === "articulos" ? (
-        <FloatingAddButton
-          onPress={() =>
-            navigation.navigate("InventarioItemForm", {
-              category: articleSubTab === "raw" ? "Materia Prima" : "Producto Terminado",
-            })
+      {tab === "pedidos" && selecting ? (
+        <BottomBar
+          note={
+            checkedOrders.length
+              ? `${formatNumber(bulkSummary.verifiable)} de ${formatNumber(bulkSummary.total)} productos tienen existencia completa y se verificarán · ${formatNumber(bulkSummary.pending)} quedarán pendientes por revisar`
+              : "Ningún pedido marcado"
           }
+          actions={[
+            { title: "Cancelar", variant: "secondary", disabled: busy, onPress: stopSelecting },
+            {
+              title: `Verificar${checkedOrders.length ? ` · ${checkedOrders.length}` : ""}`,
+              icon: "check",
+              loading: busy,
+              disabled: bulkSummary.verifiable === 0,
+              onPress: verifySelected,
+            },
+          ]}
         />
       ) : null}
 
-      <PedidoInventarioDetailModal
-        visible={Boolean(pedidoInfoOrder)}
-        order={pedidoInfoOrder}
-        busyIndex={pedidoBusyIndex}
-        onClose={() => setPedidoInfoOrderId(null)}
-        onVerify={handleVerify}
-        onPack={handlePack}
-      />
-
-      <VerifyStockModal
-        visible={Boolean(verifyTarget)}
-        target={verifyTarget}
-        matches={verifyMatches}
-        verifying={verifying}
-        sendingToManufacturing={sendingToManufacturing}
-        onClose={() => setVerifyTarget(null)}
-        onConfirm={confirmVerify}
-        onSendToManufacturing={handleSendToManufacturingFromVerify}
-      />
+      <NewItemSheet visible={newOpen} warehouses={warehouses} onClose={() => setNewOpen(false)} onCreate={handleCreate} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 16, backgroundColor: colors.background },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
-  tabBar: { marginBottom: 4 },
-  tabButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.neutralSoftBg, marginRight: 8 },
-  tabButtonActive: {
-    backgroundColor: colors.white,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  tabButtonText: { fontSize: 13, fontWeight: "600", color: colors.slate500 },
-  tabButtonTextActive: { color: colors.brand700, fontWeight: "700" },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingBottom: 96, flexGrow: 1 },
-  subTabRow: { marginBottom: 12 },
-  placeholder: { fontSize: 13, color: colors.slate500, paddingVertical: 12 },
-  sectionLinkRow: { alignItems: "flex-end", marginBottom: 10 },
-  sectionLink: { fontSize: 13, fontWeight: "700", color: colors.brand700 },
-  search: {
-    borderWidth: 1,
-    borderColor: colors.slate200,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  flex: { flex: 1 },
+  tabs: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
+  content: { paddingHorizontal: 20, paddingBottom: 32, flexGrow: 1 },
+  kpis: { marginBottom: 12 },
+  chips: { marginHorizontal: -20, marginBottom: 12 },
+  chipsContent: { paddingHorizontal: 20 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  lowChip: {
+    height: 42,
+    minWidth: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 12,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: colors.white,
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 10,
+    backgroundColor: tones.rose.bg,
   },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 },
-  filterItem: { minWidth: 150, flexGrow: 1 },
-  clearButton: { backgroundColor: colors.neutralSoftBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  clearButtonText: { fontSize: 12, fontWeight: "700", color: colors.slate700 },
+  lowChipActive: { backgroundColor: colors.primary },
+  lowChipText: { fontFamily: fonts.bold, fontSize: 13, color: tones.rose.text, fontVariant: ["tabular-nums"] },
+  lowChipTextActive: { color: colors.white },
+  filterRow: { flexDirection: "row", gap: 10 },
+  filterItem: { flex: 1, marginBottom: 12 },
+  summary: { marginTop: 2, fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  ordersHeader: { marginBottom: 12 },
+  ordersChipsRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
+  hint: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
 });

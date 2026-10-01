@@ -1,394 +1,315 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
-import { useEmployees } from "../hooks/useEmployees";
-import { useVehicles } from "../hooks/useVehicles";
-import DeliveryOrderCard from "../components/logistics/DeliveryOrderCard";
-import DeliveryFormModal from "../components/orders/DeliveryFormModal";
-import KpiTile from "../components/dashboard/KpiTile";
-import SelectField from "../components/ui/SelectField";
-import ErrorState from "../components/ui/ErrorState";
-import LoadingState from "../components/ui/LoadingState";
+import { useRoutes } from "../hooks/useRoutes";
+import DispatchOrderCard from "../components/logistics/DispatchOrderCard";
+import RouteCard from "../components/logistics/RouteCard";
+import { NewRouteSheet } from "../components/logistics/RouteSheets";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
 import EmptyState from "../components/ui/EmptyState";
+import ErrorState from "../components/ui/ErrorState";
+import FilterChips from "../components/ui/FilterChips";
+import IconButton from "../components/ui/IconButton";
+import LoadingState from "../components/ui/LoadingState";
+import Segmented from "../components/ui/Segmented";
+import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
-import { formatNumber } from "../lib/format";
-import { dispatchStatusTone, orderStatusTone } from "../lib/statusTones";
-import {
-  getRequiredPickups,
-  pickupDateFor,
-  hasPackedItems,
-  driverOptionsFor,
-  vehicleOptionsFor,
-  statusOptionsFor,
-  filterOrders,
-} from "../lib/deliveryFilters";
+import { fonts } from "../lib/typography";
+import { formatNumber, formatShortDate } from "../lib/format";
+import { dispatchInfo, dispatchOrders } from "../lib/logistics";
+import { useBottomPad } from "../hooks/useBottomPad";
 
+// Mismas vistas que Web/private/frontend/src/pages/Logistica.jsx.
 const TABS = [
-  { key: "transito", label: "Pedidos en Tránsito" },
-  { key: "despacho", label: "Pedidos para despacho" },
+  { value: "transito", label: "En tránsito" },
+  { value: "despacho", label: "Para despacho" },
 ];
 
-// Asignación de motoristas/vehículos a pedidos, igual que
-// Web/private/frontend/src/pages/Logistica.jsx. El CRUD de Vehículos y
-// Bodegas vive en ConfiguracionScreen.jsx desde la Fase 1 (igual que en la
-// web, donde ese CRUD está en Configuración, no acá) — no se toca en esta
-// fase. `assignDelivery`/`confirmPickup` ya existían en useOrders.js desde
-// la Fase 4 (se construyeron para PedidoDetalleScreen), así que esta fase no
-// agrega ninguna función nueva al hook.
-export default function LogisticaScreen() {
-  const { orders, loading, refreshing, error, refresh, assignDelivery, confirmPickup } = useOrders();
-  const { employees } = useEmployees();
-  const { vehicles } = useVehicles();
+const CHIPS = [
+  { value: "todos", label: "Todos", test: () => true },
+  { value: "sin-ruta", label: "Sin ruta", test: (o) => !o.delivery?.route },
+  { value: "incompletos", label: "Incompletos", test: (o) => !dispatchInfo(o).ready },
+];
 
-  // Igual que la web: sin roles, los motoristas son los empleados del Área
-  // "Logística" (ver EmpleadosScreen).
-  const drivers = useMemo(() => employees.filter((e) => e.department === "Logística"), [employees]);
-  const vehicleOptions = useMemo(() => vehicles.map((v) => v.plate), [vehicles]);
-  // Si el vehículo ya guardado en el pedido no está (o ya no está) en
-  // Configuración > Vehículos, se agrega igual a las opciones para no perder
-  // ni ocultar el valor existente al editar.
-  const vehicleOptionsWith = (value) =>
-    value && !vehicleOptions.includes(value) ? [...vehicleOptions, value] : vehicleOptions;
+// Logística con rutas (/routes), como la web: En tránsito lista las rutas de
+// hoy (tocar una abre su seguimiento, RutaDetalleScreen); Para despacho lista
+// los pedidos empacados que todavía no salen y los agrega a la ruta que se
+// está armando. «+» arma una ruta nueva.
+export default function LogisticaScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
+  const toast = useToast();
+  const {
+    routes,
+    availability,
+    nextNumber,
+    loading,
+    refreshing,
+    error,
+    refresh,
+    crear,
+    addOrder,
+    removeOrder,
+  } = useRoutes();
+  const { orders: allOrders, refreshing: ordersRefreshing, error: ordersError, refresh: refreshOrders } = useOrders();
 
-  const [activeTab, setActiveTab] = useState("transito");
-  const [targetId, setTargetId] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [confirmingPickup, setConfirmingPickup] = useState("");
+  const [tab, setTab] = useState("transito");
+  const [filter, setFilter] = useState("todos");
+  const [buildingId, setBuildingId] = useState(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  // Filtros de "Pedidos para despacho".
-  const [filterDriver, setFilterDriver] = useState("");
-  const [filterVehicle, setFilterVehicle] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  // Filtros de "Pedidos en Tránsito", independientes de los de arriba.
-  const [transitFilterDriver, setTransitFilterDriver] = useState("");
-  const [transitFilterVehicle, setTransitFilterVehicle] = useState("");
-  const [transitFilterStatus, setTransitFilterStatus] = useState("");
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+      refreshOrders();
+    }, [refresh, refreshOrders]),
+  );
 
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      subtitle: tab === "transito" ? `Rutas de hoy · ${formatShortDate(new Date())}` : "Una ruta, varios pedidos",
+      headerRight: () => (
+        <IconButton icon="plus" variant="primary" onPress={() => setNewOpen(true)} accessibilityLabel="Armar ruta" />
+      ),
+    });
+  }, [navigation, tab]);
 
-  const target = useMemo(() => orders.find((o) => o._id === targetId) || null, [orders, targetId]);
+  const orders = useMemo(() => dispatchOrders(allOrders), [allOrders]);
+  const unassigned = useMemo(() => orders.filter((o) => !o.delivery?.route).length, [orders]);
 
-  // Pedidos relevantes para logística: con al menos un producto ya empacado
-  // o ya en ciclo de despacho activo.
-  const shipping = useMemo(
-    () => orders.filter((o) => hasPackedItems(o) || ["En Tránsito", "Entregado"].includes(o.status)),
+  // Ruta que se está armando: la elegida, o la primera que todavía no sale.
+  const pendingRoutes = useMemo(() => routes.filter((r) => !r.departedAt), [routes]);
+  const buildingRoute = pendingRoutes.find((r) => r._id === buildingId) || pendingRoutes[0] || null;
+
+  const counts = useMemo(
+    () => Object.fromEntries(CHIPS.map((c) => [c.value, orders.filter(c.test).length])),
     [orders],
   );
-  const dispatchOrders = useMemo(
-    () => shipping.filter((o) => !["En Tránsito", "Entregado"].includes(o.status)),
-    [shipping],
-  );
-  const transitOrders = useMemo(
-    () => shipping.filter((o) => ["En Tránsito", "Entregado"].includes(o.status)),
-    [shipping],
+  const visibleOrders = useMemo(
+    () => orders.filter((CHIPS.find((c) => c.value === filter) || CHIPS[0]).test),
+    [orders, filter],
   );
 
-  const busyDriverMap = useMemo(() => {
-    const map = new Map();
-    shipping.forEach((o) => {
-      if (o.status === "Entregado" || !o.delivery?.driver) return;
-      const id = typeof o.delivery.driver === "string" ? o.delivery.driver : o.delivery.driver._id;
-      if (id) map.set(id, o._id);
-    });
-    return map;
-  }, [shipping]);
+  const reloadAll = () => Promise.all([refresh(), refreshOrders()]);
+  const openRoute = (id) => navigation.navigate("RutaDetalle", { id });
 
-  const availableDrivers = useMemo(() => drivers.filter((d) => !busyDriverMap.has(d._id)), [drivers, busyDriverMap]);
-
-  const busyVehicleSet = useMemo(() => {
-    const set = new Set();
-    shipping.forEach((o) => {
-      if (o.status === "Entregado" || !o.delivery?.vehicle) return;
-      set.add(o.delivery.vehicle);
-    });
-    return set;
-  }, [shipping]);
-
-  const availableVehicles = useMemo(
-    () => vehicleOptions.filter((plate) => !busyVehicleSet.has(plate)),
-    [vehicleOptions, busyVehicleSet],
-  );
-
-  // Disponibles + el motorista ya asignado al pedido que se está editando
-  // (para poder reasignarlo).
-  const selectableDrivers = useMemo(
-    () =>
-      drivers.filter((d) => {
-        const busyOrderId = busyDriverMap.get(d._id);
-        return !busyOrderId || busyOrderId === target?._id;
-      }),
-    [drivers, busyDriverMap, target],
-  );
-
-  const kpis = useMemo(() => {
-    const inTransit = orders.filter((o) => o.status === "En Tránsito").length;
-    const delayed = orders.filter((o) => o.delivery?.dispatchStatus === "Demorado").length;
-    return { inTransit, delayed };
-  }, [orders]);
-
-  const dispatchFilterOptions = useMemo(
-    () => ({
-      drivers: driverOptionsFor(dispatchOrders),
-      vehicles: vehicleOptionsFor(dispatchOrders),
-      statuses: statusOptionsFor(dispatchOrders),
-    }),
-    [dispatchOrders],
-  );
-  const transitFilterOptions = useMemo(
-    () => ({
-      drivers: driverOptionsFor(transitOrders),
-      vehicles: vehicleOptionsFor(transitOrders),
-      statuses: statusOptionsFor(transitOrders),
-    }),
-    [transitOrders],
-  );
-
-  const filteredDispatchOrders = useMemo(
-    () => filterOrders(dispatchOrders, { driver: filterDriver, vehicle: filterVehicle, status: filterStatus }),
-    [dispatchOrders, filterDriver, filterVehicle, filterStatus],
-  );
-  const filteredTransitOrders = useMemo(
-    () =>
-      filterOrders(transitOrders, {
-        driver: transitFilterDriver,
-        vehicle: transitFilterVehicle,
-        status: transitFilterStatus,
-      }),
-    [transitOrders, transitFilterDriver, transitFilterVehicle, transitFilterStatus],
-  );
-
-  const hasActiveDispatchFilters = Boolean(filterDriver || filterVehicle || filterStatus);
-  const hasActiveTransitFilters = Boolean(transitFilterDriver || transitFilterVehicle || transitFilterStatus);
-
-  const clearDispatchFilters = () => {
-    setFilterDriver("");
-    setFilterVehicle("");
-    setFilterStatus("");
-  };
-  const clearTransitFilters = () => {
-    setTransitFilterDriver("");
-    setTransitFilterVehicle("");
-    setTransitFilterStatus("");
-  };
-
-  const openModal = (order) => {
-    setTargetId(order._id);
-    setModalOpen(true);
-  };
-
-  const handleSave = async (payload) => {
-    if (!payload.driver) {
-      Alert.alert("Falta información", "Selecciona un motorista");
-      return;
-    }
-    setSaving(true);
+  // Acción directa: si hay `undo`, el Toast ofrece «Deshacer».
+  async function act(run, message, undo) {
+    setBusy(true);
     try {
-      await assignDelivery(target._id, payload);
-      setModalOpen(false);
-    } catch (error) {
-      Alert.alert("No se pudo guardar la entrega", error.message || "Intentá de nuevo");
+      await run();
+      refreshOrders();
+      if (undo) {
+        toast.undo(message, async () => {
+          try {
+            await undo();
+            toast.show("Cambio deshecho");
+          } catch (err) {
+            Alert.alert("No se pudo deshacer", err.message);
+          } finally {
+            reloadAll();
+          }
+        });
+      } else {
+        toast.show(message);
+      }
+    } catch (err) {
+      Alert.alert("No se pudo completar", err.message);
+      // La ruta pudo cambiar en otro lado: se vuelve a leer todo.
+      reloadAll();
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
+  }
+
+  const add = (order) => {
+    const route = buildingRoute;
+    act(
+      () => addOrder(route._id, order._id),
+      `${order.orderNumber} agregado a la Ruta ${route.number}`,
+      () => removeOrder(route._id, order._id),
+    );
   };
 
-  const handleConfirmPickup = async (location) => {
-    if (!target) return;
-    setConfirmingPickup(location);
-    try {
-      await confirmPickup(target._id, location);
-    } catch (error) {
-      Alert.alert("No se pudo confirmar", error.message || "Intentá de nuevo");
-    } finally {
-      setConfirmingPickup("");
-    }
+  const createRoute = async (body) => {
+    const route = await crear(body);
+    setNewOpen(false);
+    toast.show(`Ruta ${route.number} creada`);
+    // Como la web: la ruta nueva queda abierta en Para despacho para
+    // agregarle pedidos.
+    setBuildingId(route._id);
+    setTab("despacho");
+    refreshOrders();
   };
 
-  const targetPickups = useMemo(() => {
-    if (!target) return [];
-    return getRequiredPickups(target).map((location) => ({
-      location,
-      count: (target.items || []).filter((i) => i.packedLocation === location).length,
-      done: Boolean(pickupDateFor(target, location)),
-    }));
-  }, [target]);
+  const header = (
+    <View style={styles.header}>
+      <Segmented options={TABS} value={tab} onChange={setTab} />
+    </View>
+  );
 
-  if (loading) return <LoadingState />;
-  if (error && orders.length === 0) return <ErrorState message={error} onRetry={refresh} />;
+  const newRouteSheet = (
+    <NewRouteSheet
+      visible={newOpen}
+      nextNumber={nextNumber}
+      availability={availability}
+      onClose={() => setNewOpen(false)}
+      onCreate={createRoute}
+    />
+  );
 
-  const isDespacho = activeTab === "despacho";
-  const activeOrders = isDespacho ? filteredDispatchOrders : filteredTransitOrders;
-  const activeOptions = isDespacho ? dispatchFilterOptions : transitFilterOptions;
-  const hasActiveFilters = isDespacho ? hasActiveDispatchFilters : hasActiveTransitFilters;
+  if (tab === "transito") {
+    let body;
+    if (loading && !routes.length) body = <LoadingState />;
+    else if (error && !routes.length) body = <ErrorState message={error} onRetry={refresh} />;
+    else
+      body = (
+        <FlatList
+          style={styles.flex}
+          contentContainerStyle={[styles.content, bottomPad]}
+          data={routes}
+          keyExtractor={(r) => r._id}
+          renderItem={({ item }) => <RouteCard route={item} onPress={() => openRoute(item._id)} />}
+          refreshControl={<RefreshControl refreshing={refreshing || ordersRefreshing} onRefresh={reloadAll} />}
+          ListEmptyComponent={
+            <EmptyState icon="truck" title="Todavía no hay rutas hoy." message="Arma una con «+»." />
+          }
+          ListFooterComponent={
+            <Card style={styles.unassigned}>
+              <Text style={styles.unassignedText}>
+                <Text style={styles.strong}>
+                  {formatNumber(unassigned)} {unassigned === 1 ? "pedido" : "pedidos"}
+                </Text>{" "}
+                sin ruta asignada
+              </Text>
+              <Button
+                title="Asignar"
+                variant="soft"
+                size="small"
+                onPress={() => {
+                  setFilter("sin-ruta");
+                  setTab("despacho");
+                }}
+              />
+            </Card>
+          }
+        />
+      );
+    return (
+      <View style={styles.screen}>
+        {header}
+        {body}
+        {newRouteSheet}
+      </View>
+    );
+  }
+
+  const listHeader = (
+    <View style={styles.listHeader}>
+      <FilterChips
+        options={CHIPS.map((c) => ({ value: c.value, label: c.label, count: counts[c.value] }))}
+        value={filter}
+        onChange={setFilter}
+      />
+      {pendingRoutes.length > 1 ? (
+        <View style={styles.routePicker}>
+          <Text style={styles.pickerLabel}>Rutas por salir</Text>
+          <FilterChips
+            options={pendingRoutes.map((r) => ({ value: r._id, label: `Ruta ${r.number} · ${r.zone}` }))}
+            value={buildingRoute?._id}
+            onChange={setBuildingId}
+          />
+        </View>
+      ) : null}
+      {buildingRoute ? (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText} numberOfLines={1}>
+            Armando <Text style={styles.noticeStrong}>Ruta {buildingRoute.number}</Text> ·{" "}
+            {formatNumber(buildingRoute.orders?.length || 0)}{" "}
+            {buildingRoute.orders?.length === 1 ? "pedido" : "pedidos"}
+          </Text>
+          <Pressable onPress={() => openRoute(buildingRoute._id)} hitSlop={8} accessibilityRole="link">
+            <Text style={styles.noticeLink}>Ver ruta</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Ninguna ruta por salir</Text>
+          <Pressable onPress={() => setNewOpen(true)} hitSlop={8} accessibilityRole="link">
+            <Text style={styles.noticeLink}>Armar ruta</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.kpiGrid}>
-          <KpiTile label="Entregas en ruta" value={formatNumber(kpis.inTransit)} hint="En tránsito" />
-          <KpiTile label="Motoristas disponibles" value={formatNumber(availableDrivers.length)} hint="libres" />
-          <KpiTile label="Vehículos disponibles" value={formatNumber(availableVehicles.length)} hint="libres" />
-          <KpiTile
-            label="Entregas demoradas"
-            value={formatNumber(kpis.delayed)}
-            hint={kpis.delayed ? "Atención" : "OK"}
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar}>
-          {TABS.map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tabButton, activeTab === t.key && styles.tabButtonActive]}
-              onPress={() => setActiveTab(t.key)}
-            >
-              <Text style={[styles.tabButtonText, activeTab === t.key && styles.tabButtonTextActive]}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <FlatList
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        data={activeOrders}
-        keyExtractor={(o) => o._id}
-        renderItem={({ item: o }) => {
-          const pickups = isDespacho
-            ? getRequiredPickups(o).map((location) => ({ location, done: Boolean(pickupDateFor(o, location)) }))
-            : null;
-          const hasDriver = Boolean(o.delivery?.driver);
-          const statusLabel = isDespacho
-            ? hasDriver
-              ? "Recolectando"
-              : o.status
-            : o.delivery?.dispatchStatus || o.status;
-          const statusTone = isDespacho
-            ? hasDriver
-              ? "blue"
-              : orderStatusTone(o.status)
-            : o.delivery?.dispatchStatus
-              ? dispatchStatusTone(o.delivery.dispatchStatus)
-              : orderStatusTone(o.status);
-          return (
-            <DeliveryOrderCard
-              order={o}
-              pickups={pickups}
-              statusLabel={statusLabel}
-              statusTone={statusTone}
-              actionLabel={hasDriver ? "Editar" : "Asignar"}
-              onAction={() => openModal(o)}
+      {header}
+      {ordersError && !allOrders.length ? (
+        <ErrorState message={ordersError} onRetry={refreshOrders} />
+      ) : (
+        <FlatList
+          style={styles.flex}
+          contentContainerStyle={[styles.content, bottomPad]}
+          data={visibleOrders}
+          keyExtractor={(o) => o._id}
+          ListHeaderComponent={listHeader}
+          renderItem={({ item }) => (
+            <DispatchOrderCard
+              order={item}
+              buildingRoute={buildingRoute}
+              busy={busy}
+              onAdd={add}
+              onOpenRoute={openRoute}
+              onNewRoute={() => setNewOpen(true)}
+              onPress={() => navigation.navigate("PedidoDetalle", { id: item._id })}
             />
-          );
-        }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-        ListEmptyComponent={
-          <EmptyState
-            message={
-              hasActiveFilters
-                ? "Ningún pedido coincide con los filtros."
-                : isDespacho
-                  ? "No hay pedidos para despachar."
-                  : "No hay pedidos en tránsito."
-            }
-          />
-        }
-        ListHeaderComponent={
-          <View style={styles.filterRow}>
-            <View style={styles.filterItem}>
-              <SelectField
-                title="Motorista"
-                value={isDespacho ? filterDriver : transitFilterDriver}
-                onChange={isDespacho ? setFilterDriver : setTransitFilterDriver}
-                options={[
-                  { label: "Motoristas: todos", value: "" },
-                  ...activeOptions.drivers.map((d) => ({ value: d._id, label: `${d.name} ${d.lastName}` })),
-                ]}
-              />
-            </View>
-            <View style={styles.filterItem}>
-              <SelectField
-                title="Vehículo"
-                value={isDespacho ? filterVehicle : transitFilterVehicle}
-                onChange={isDespacho ? setFilterVehicle : setTransitFilterVehicle}
-                options={[
-                  { label: "Vehículos: todos", value: "" },
-                  ...activeOptions.vehicles.map((v) => ({ value: v, label: v })),
-                ]}
-              />
-            </View>
-            <View style={styles.filterItem}>
-              <SelectField
-                title="Estado"
-                value={isDespacho ? filterStatus : transitFilterStatus}
-                onChange={isDespacho ? setFilterStatus : setTransitFilterStatus}
-                options={[
-                  { label: "Estado: todos", value: "" },
-                  ...activeOptions.statuses.map((s) => ({ value: s, label: s })),
-                ]}
-              />
-            </View>
-            {hasActiveFilters ? (
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={isDespacho ? clearDispatchFilters : clearTransitFilters}
-              >
-                <Text style={styles.clearButtonText}>Limpiar filtros</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        }
-      />
-
-      <DeliveryFormModal
-        visible={modalOpen}
-        order={target}
-        drivers={selectableDrivers}
-        vehicles={vehicleOptionsWith(target?.delivery?.vehicle).map((plate) => ({ plate }))}
-        saving={saving}
-        onClose={() => setModalOpen(false)}
-        onSave={handleSave}
-        pickups={targetPickups}
-        onConfirmPickup={handleConfirmPickup}
-        confirmingPickup={confirmingPickup}
-      />
+          )}
+          refreshControl={<RefreshControl refreshing={refreshing || ordersRefreshing} onRefresh={reloadAll} />}
+          ListEmptyComponent={
+            <EmptyState
+              icon="orders"
+              message={orders.length ? "Ningún pedido coincide con el filtro." : "No hay pedidos empacados por despachar."}
+            />
+          }
+        />
+      )}
+      {newRouteSheet}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 16, backgroundColor: colors.background },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
-  tabBar: { marginBottom: 4 },
-  tabButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.neutralSoftBg, marginRight: 8 },
-  tabButtonActive: {
-    backgroundColor: colors.white,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  flex: { flex: 1 },
+  header: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
+  content: { paddingHorizontal: 20, paddingBottom: 32, flexGrow: 1 },
+  listHeader: { gap: 12, marginBottom: 12 },
+  routePicker: { gap: 6 },
+  pickerLabel: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted },
+  notice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  tabButtonText: { fontSize: 13, fontWeight: "600", color: colors.slate500 },
-  tabButtonTextActive: { color: colors.brand700, fontWeight: "700" },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingBottom: 32, flexGrow: 1 },
-  placeholder: { fontSize: 13, color: colors.slate500, paddingVertical: 12 },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 },
-  filterItem: { minWidth: 150, flexGrow: 1 },
-  clearButton: { backgroundColor: colors.neutralSoftBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  clearButtonText: { fontSize: 12, fontWeight: "700", color: colors.slate700 },
+  noticeText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.primarySoftText },
+  noticeStrong: { fontFamily: fonts.bold },
+  noticeLink: { fontFamily: fonts.bold, fontSize: 13, color: colors.primary },
+  unassigned: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 4,
+  },
+  unassignedText: { flex: 1, fontFamily: fonts.regular, fontSize: 13.5, color: colors.ink2 },
+  strong: { fontFamily: fonts.bold, color: colors.ink },
 });

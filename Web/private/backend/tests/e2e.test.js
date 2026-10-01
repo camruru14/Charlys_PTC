@@ -13,6 +13,9 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import Order from "../src/models/Order.js";
+import { seedProductNames } from "./helpers/productNames.js";
+import { createStoreOrder } from "./helpers/storeOrder.js";
+import Transaction from "../src/models/Transaction.js";
 import Inventory from "../src/models/InventoryItem.js";
 import Batch from "../src/models/ProductionBatch.js";
 import Route from "../src/models/Route.js";
@@ -28,7 +31,7 @@ before(async () => {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(replSet.getUri(), { dbName: "charly_test_e2e" });
   // Las colecciones deben existir antes de usarlas dentro de una transacción.
-  for (const m of [Order, Inventory, Batch, Route, Employee, Vehicle]) await m.createCollection();
+  for (const m of [Order, Transaction, Inventory, Batch, Route, Employee, Vehicle]) await m.createCollection();
   await Route.syncIndexes();
 });
 
@@ -38,7 +41,8 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await Promise.all([Order, Inventory, Batch, Route, Employee, Vehicle].map((m) => m.deleteMany({})));
+  await Promise.all([Order, Transaction, Inventory, Batch, Route, Employee, Vehicle].map((m) => m.deleteMany({})));
+  await seedProductNames();
 });
 
 // Llama un handler de Express con req/res mínimos y exige el status esperado.
@@ -77,20 +81,18 @@ test("pedido de 3 productos: Inventario → Fabricación → Logística → Entr
   });
   await Vehicle.create({ plate: "P123-456" });
 
-  // --- Pedidos: crear el pedido con 3 productos ---------------------------
-  const created = await call(ordersCtl.insertOrder, {
-    body: {
-      customer: { name: "Distribuidora San Miguel", address: "San Miguel" },
-      items: [
-        { product: "Pajilla", color: "Azul", quantity: 30, unitPrice: 1, subtotal: 30 },
-        { product: "Pelota", color: "Roja", quantity: 50, unitPrice: 2, subtotal: 100 },
-        { product: "Vaso", color: "Verde", quantity: 40, unitPrice: 1.5, subtotal: 60 },
-      ],
-      total: 190,
-    },
+  // --- Pedido de la tienda con 3 productos (llega «Procesando», ya pagado) ---
+  const created = await createStoreOrder({
+    customer: { name: "Distribuidora San Miguel", address: "San Miguel" },
+    items: [
+      { product: "Pajilla", color: "Azul", quantity: 30, unitPrice: 1, subtotal: 30 },
+      { product: "Pelota", color: "Roja", quantity: 50, unitPrice: 2, subtotal: 100 },
+      { product: "Vaso", color: "Verde", quantity: 40, unitPrice: 1.5, subtotal: 60 },
+    ],
+    total: 190,
   });
   const id = String(created._id);
-  assert.equal((await load(id)).status, "Pendiente");
+  assert.equal((await load(id)).status, "Procesando");
 
   // --- Inventario --------------------------------------------------------
   // 0) Pajilla: verificar con stock (toma 30 de Bodega A).
@@ -156,7 +158,8 @@ test("pedido de 3 productos: Inventario → Fabricación → Logística → Entr
 
   // El historial tiene todos los pasos, en orden (puede repetir alguno).
   const history = order.statusHistory.map((h) => h.status);
-  const steps = ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
+  // Un pedido de la tienda nace «Procesando» (ya pagado), sin pasar por «Pendiente».
+  const steps = ["Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"];
   let from = 0;
   for (const step of steps) {
     const at = history.indexOf(step, from);

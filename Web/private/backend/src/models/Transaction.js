@@ -18,6 +18,9 @@ const transactionSchema = new Schema(
     },
     date: { type: Date, default: Date.now },
     relatedOrder: { type: Schema.Types.ObjectId, ref: "Order" },
+    // N° del pedido como texto: queda legible aunque el pedido se elimine (al
+    // eliminarlo se quita relatedOrder y esto se conserva).
+    orderNumber: { type: String },
   },
   { timestamps: true },
 );

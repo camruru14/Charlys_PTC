@@ -1,62 +1,128 @@
-import { StyleSheet, Text, View } from "react-native";
-import Card from "../ui/Card";
-import Badge from "../ui/Badge";
-import { colors } from "../../lib/theme";
-import { formatCurrency } from "../../lib/format";
-import { orderStatusToneDetailed, paymentStatusTone } from "../../lib/statusTones";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Pill from "../ui/Pill";
+import { colors, getTone } from "../../lib/theme";
+import { fonts } from "../../lib/typography";
+import { formatAge, formatMoney, formatNumber } from "../../lib/format";
+import { orderJourneySteps } from "../../lib/orderJourney";
+import { statusTone } from "../../lib/statusTones";
 
-// Tarjeta de un pedido en PedidosScreen: N° de pedido, cliente, total y dos
-// badges (estado del pedido con el tono exclusivo de esta pantalla + estado
-// de pago, más chico).
-export default function OrderCard({ order }) {
+// Barra del recorrido: un segmento por tramo de ORDER_STEPS (lib/orderJourney.js).
+// Tramos alcanzados con el color de su estado (dominio "pedido"); omitidos
+// y pendientes en gris claro.
+function JourneyBar({ order }) {
+  const steps = orderJourneySteps(order);
+  const reached = steps.filter((s) => s.state === "done" || s.state === "current").length;
   return (
-    <Card>
-      <View style={styles.header}>
-        <Text style={styles.orderNumber} numberOfLines={1}>
-          {order.orderNumber}
+    <View
+      style={styles.bar}
+      accessible
+      accessibilityLabel={`Recorrido: ${reached} de ${steps.length} tramos`}
+    >
+      {steps.map((s) => (
+        <View
+          key={s.label}
+          style={[
+            styles.segment,
+            {
+              backgroundColor:
+                s.state === "done" || s.state === "current"
+                  ? getTone(statusTone(s.label, "pedido")).dot
+                  : s.state === "skipped"
+                    ? colors.lineSoft
+                    : colors.line,
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+// Tarjeta de un pedido en la lista de Pedidos.
+export default function OrderCard({ order, onPress }) {
+  const products = (order.items || []).length;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+    >
+      <View style={styles.row}>
+        <Text style={styles.number}>{order.orderNumber}</Text>
+        <Pill label={order.status} tone={statusTone(order.status, "pedido")} />
+      </View>
+      <View style={[styles.row, styles.customerRow]}>
+        <Text style={styles.customer} numberOfLines={1}>
+          {order.customer?.name || "—"}
         </Text>
-        <Badge label={order.status} tone={orderStatusToneDetailed(order.status)} />
+        <Text style={styles.total}>{formatMoney(order.total)}</Text>
       </View>
-
-      <Text style={styles.customer} numberOfLines={1}>
-        {order.customer?.name || "Cliente sin nombre"}
-      </Text>
-
-      <View style={styles.footer}>
-        <Text style={styles.total}>{formatCurrency(order.total)}</Text>
-        <Badge label={order.paymentStatus} tone={paymentStatusTone(order.paymentStatus)} />
+      <JourneyBar order={order} />
+      <View style={styles.row}>
+        <Text style={styles.meta}>
+          {formatNumber(products)} {products === 1 ? "producto" : "productos"}
+        </Text>
+        <Text style={styles.meta}>{formatAge(order.createdAt)}</Text>
       </View>
-    </Card>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  card: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 10,
+  },
+  pressed: {
+    backgroundColor: colors.surface2,
+  },
+  row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 10,
   },
-  orderNumber: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.text,
-    flexShrink: 1,
+  customerRow: {
+    marginTop: 4,
+  },
+  number: {
+    fontFamily: fonts.bold,
+    fontSize: 14.5,
+    color: colors.ink,
+    fontVariant: ["tabular-nums"],
   },
   customer: {
-    marginTop: 4,
+    flex: 1,
+    fontFamily: fonts.regular,
     fontSize: 13,
-    color: colors.slate700,
-  },
-  footer: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    color: colors.ink2,
   },
   total: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: colors.brand700,
+    fontFamily: fonts.bold,
+    fontSize: 13.5,
+    color: colors.ink,
+    fontVariant: ["tabular-nums"],
+  },
+  bar: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  segment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  meta: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.muted,
+    fontVariant: ["tabular-nums"],
   },
 });

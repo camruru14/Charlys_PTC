@@ -1,25 +1,35 @@
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import { useRememberedSelection } from "../../hooks/useRememberedSelection";
+import { useMovedIds } from "../../hooks/useMovedIds";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import StatTile from "../../components/ui/StatTile";
 import EmptyState from "../../components/ui/EmptyState";
 import Avatar from "../../components/ui/Avatar";
 import PillSelector from "../../components/ui/PillSelector";
+import FilterChips from "../../components/ui/FilterChips";
+import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { statusTone } from "../../lib/statusDomains";
 import { TONE_DOT } from "../../lib/tones";
 import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/format";
 import { IconTruck } from "../../lib/icons";
-import { routeProgress, progressNote, personName } from "../../lib/logistics";
+import { ROUTE_GROUPS, groupRoutes, routeCounts, routeGroup, routeProgress, progressNote, personName } from "../../lib/logistics";
+
+// Chips de «Rutas de hoy»: «Todas» más uno por grupo; «Con retraso» solo si hay.
+const ROUTE_CHIPS = [
+  { key: "todas", label: "Todas", tone: "gray" },
+  ...ROUTE_GROUPS.map((g) => ({ key: g.key, label: g.chip, tone: g.tone })),
+  { key: "retraso", label: "Con retraso", tone: "rose" },
+];
 
 // Cliente y Dirección se reparten el espacio (con truncate); con min-w-[680px]
 // la tabla entera, botón «Entregado» incluido, cabe en el panel de detalle a
 // 1440px (~734px). El scroll horizontal queda solo para pantallas angostas.
 const STOPS_GRID = "40px 116px minmax(0,1fr) minmax(0,1fr) 64px 112px 108px";
 
-function RouteListRow({ route, selected, onSelect }) {
+function RouteListRow({ route, selected, moved, onSelect }) {
   const { delivered, total } = routeProgress(route);
   const pct = total ? (delivered / total) * 100 : 0;
   return (
@@ -27,7 +37,7 @@ function RouteListRow({ route, selected, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-current={selected || undefined}
-      className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}
+      className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"} ${moved ? "row-moved" : ""}`}
     >
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col gap-2 px-3.5 py-3">
@@ -220,19 +230,33 @@ function RouteDetail({ route, availability, busy, act }) {
   Logística > En tránsito: rutas de hoy (maestro) y el seguimiento de la
   ruta abierta (detalle), parada por parada.
 */
-function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, availability, busy, act }) {
+function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, filter, onFilter, availability, busy, act }) {
   const selected = routes.find((r) => r._id === selectedId) || null;
-  useRememberedSelection("logistica/transito", { selectedId, setSelectedId: onSelect, ids: routes.map((r) => r._id), ready: !loading });
+  // Grupos, orden, chips y conteos se recalculan con cada lectura de datos.
+  const counts = useMemo(() => routeCounts(routes), [routes]);
+  const groups = useMemo(() => groupRoutes(routes, filter), [routes, filter]);
+  const moved = useMovedIds(routes, routeGroup);
+  const ordered = useMemo(() => groupRoutes(routes).flatMap((g) => g.items), [routes]);
+  useRememberedSelection("logistica/transito", { selectedId, setSelectedId: onSelect, ids: ordered.map((r) => r._id), ready: !loading });
   return (
     <MasterDetail listWidth={392}>
       <ListPanel
         header={
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 className="text-[15px] font-bold text-ink">Rutas de hoy</h2>
-            <span className="t-aux tabular-nums">
-              {fmtDate(new Date())} · {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
-            </span>
-          </div>
+          <>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-[15px] font-bold text-ink">Rutas de hoy</h2>
+              <span className="t-aux tabular-nums">
+                {fmtDate(new Date())} · {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
+              </span>
+            </div>
+            <FilterChips
+              compact
+              showEmpty
+              value={filter}
+              onChange={onFilter}
+              options={ROUTE_CHIPS.filter((c) => c.key !== "retraso" || counts.retraso > 0 || filter === "retraso").map((c) => ({ ...c, count: counts[c.key] }))}
+            />
+          </>
         }
         footer={
           <div className="-my-2.5 flex h-10 items-center justify-between gap-3">
@@ -251,8 +275,17 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
           <EmptyState title="No se pudieron cargar las rutas" description={error} />
         ) : routes.length === 0 ? (
           <EmptyState icon={IconTruck} title="Todavía no hay rutas hoy." description="Arma una con «Armar ruta»." />
+        ) : groups.length === 0 ? (
+          <EmptyState title="Ninguna ruta coincide con el filtro." />
         ) : (
-          routes.map((r) => <RouteListRow key={r._id} route={r} selected={r._id === selectedId} onSelect={() => onSelect(r._id)} />)
+          groups.map((g) => (
+            <Fragment key={g.key}>
+              <ListGroupHeader label={g.label} count={g.items.length} />
+              {g.items.map((r) => (
+                <RouteListRow key={r._id} route={r} selected={r._id === selectedId} moved={moved.has(String(r._id))} onSelect={() => onSelect(r._id)} />
+              ))}
+            </Fragment>
+          ))
         )}
       </ListPanel>
 

@@ -1,5 +1,6 @@
 import jsonwebtoken from "jsonwebtoken";
 import { config } from "../../config.js";
+import { isAdministratorId } from "../lib/permissions.js";
 
 /**
  * Middleware que valida la cookie de sesión (authCookie). El sistema ya no
@@ -47,6 +48,26 @@ export const validateAuthCookie = () => {
 
       console.log("error " + error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+};
+
+/**
+ * Para acciones delicadas (eliminar un pedido): va DESPUÉS de
+ * validateAuthCookie y deja pasar solo a un empleado activo que sea
+ * administrador (ver lib/permissions.js). Si no, responde 403.
+ */
+export const requireAdministrator = () => {
+  return async (req, res, next) => {
+    try {
+      if (!(await isAdministratorId(req.user?.id))) {
+        // `code`: los clientes (panel web y app) no lo confunden con una sesión vencida.
+        return res.status(403).json({ message: "Solo un administrador puede hacer esto", code: "ADMIN_ONLY" });
+      }
+      next();
+    } catch (error) {
+      console.log("error " + error);
+      res.status(500).json({ message: "Error interno del servidor." });
     }
   };
 };

@@ -3,6 +3,7 @@ const productionBatchesController = {};
 import batchModel from "../models/ProductionBatch.js";
 import inventoryModel from "../models/InventoryItem.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
+import { assertProductName } from "../lib/productName.js";
 import {
   startBatch,
   stopBatch,
@@ -66,11 +67,14 @@ productionBatchesController.insertBatch = async (req, res) => {
       startDate,
     } = req.body;
 
+    // El producto es el nombre de una subcategoría activa.
+    const productName = await assertProductName(product, { required: true });
+
     const batchNumber = await generateBatchNumber();
 
     const newBatch = new batchModel({
       batchNumber,
-      product,
+      product: productName,
       color,
       productionLine,
       producedQuantity,
@@ -85,8 +89,7 @@ productionBatchesController.insertBatch = async (req, res) => {
 
     res.json({ message: "Batch saved", batchNumber });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -114,8 +117,10 @@ productionBatchesController.updateBatch = async (req, res) => {
     }
 
     const previousStatus = batch.status;
+    // Conserva el producto que ya tenía aunque su subcategoría esté inactiva.
+    const productName = await assertProductName(product, { current: batch.product });
     // Los campos que no llegan no se tocan (así editar no borra, p. ej., la Meta).
-    const changes = { product, color, productionLine, producedQuantity, targetQuantity, status, operator, startDate, endDate };
+    const changes = { product: productName, color, productionLine, producedQuantity, targetQuantity, status, operator, startDate, endDate };
     batch.set(Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)));
 
     if (batch.sentToWarehouseAt && ["product", "color", "producedQuantity", "status"].some((f) => batch.isModified(f))) {

@@ -84,7 +84,8 @@ function MateriaPrima({ items, kpiItems, loading, error, onEdit, onDelete }) {
         </>
       }
       columns={columns}
-      rows={table.pageRows}
+      rows={table.filtered}
+      resetKey={table.resetKey}
       loading={loading}
       error={error}
       emptyText={items.length === 0 ? "No hay materia prima en almacén." : "Ningún artículo coincide con los filtros."}
@@ -92,9 +93,6 @@ function MateriaPrima({ items, kpiItems, loading, error, onEdit, onDelete }) {
       onEdit={onEdit}
       onDelete={onDelete}
       summary={`${fmtNumber(table.filtered.length)} de ${fmtNumber(items.length)} artículos`}
-      page={table.page}
-      pageCount={table.pageCount}
-      onPage={table.setPage}
     />
   );
 }

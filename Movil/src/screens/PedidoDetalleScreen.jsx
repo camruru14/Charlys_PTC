@@ -1,418 +1,581 @@
-import { useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
-import KeyboardScreen from "../components/ui/KeyboardScreen";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
-import { useWarehouses } from "../hooks/useWarehouses";
-import { useEmployees } from "../hooks/useEmployees";
-import { useVehicles } from "../hooks/useVehicles";
+import { useAuth } from "../hooks/useAuth";
+import { useInventory } from "../hooks/useInventory";
+import BottomBar from "../components/ui/BottomBar";
+import BottomSheet from "../components/ui/BottomSheet";
+import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
-import Badge from "../components/ui/Badge";
-import MiniButton from "../components/ui/MiniButton";
-import CustomButton from "../components/ui/CustomButton";
-import SegmentedField from "../components/ui/SegmentedField";
-import DeleteButton from "../components/ui/DeleteButton";
 import ErrorState from "../components/ui/ErrorState";
+import Icon from "../components/ui/Icon";
+import IconButton from "../components/ui/IconButton";
+import LevelMeter from "../components/ui/LevelMeter";
+import ListGroup, { ListRow } from "../components/ui/ListGroup";
 import LoadingState from "../components/ui/LoadingState";
-import OrderItemCard from "../components/orders/OrderItemCard";
-import VerifyItemModal from "../components/orders/VerifyItemModal";
-import DeliveryFormModal from "../components/orders/DeliveryFormModal";
-import { colors } from "../lib/theme";
-import { formatCurrency } from "../lib/format";
-import { orderStatusTone, dispatchStatusTone } from "../lib/statusTones";
+import Pill from "../components/ui/Pill";
+import Stepper from "../components/ui/Stepper";
+import { useToast } from "../components/ui/Toast";
+import { colors, tones } from "../lib/theme";
+import { fonts, type } from "../lib/typography";
+import { formatDateYear, formatMoney, formatNumber, formatShortDate } from "../lib/format";
+import { lastStatusEntry, orderJourneySteps } from "../lib/orderJourney";
+import { normalizeStatus, statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
+import {
+  buildStockMap,
+  finishedItemsOf,
+  fullyVerifiableLines,
+  lineParts,
+  orderLineApi,
+  packableLines,
+  progressLabel,
+  routeLabel,
+  runAll,
+  stockOptionsFor,
+  suggestWarehouse,
+} from "../lib/inventoryOrders";
 
-const PAYMENT_STATUSES = ["Pendiente", "Pagado", "Reembolsado"];
+// Texto de existencia de una parte de la línea (existenceText de
+// PedidosInventario.jsx en la web).
+function existenceText(item, part) {
+  if (part.status === "Por verificar") {
+    return `${part.suggestion.warehouse} · ${formatNumber(part.suggestion.available)} disp.`;
+  }
+  if (part.status === "Existencia parcial") {
+    return `${part.suggestion.warehouse} · solo ${formatNumber(part.suggestion.available)}`;
+  }
+  if (part.status === "Sin existencia") return "Sin existencia";
+  if (part.part === "manufacture") return "A fabricar";
+  if (item.verifiedWarehouse && (part.status === "Verificado" || part.status === "Empacado")) {
+    return `${item.verifiedWarehouse} · tomado`;
+  }
+  if (item.packedLocation === "Fabricación") return "Fabricación";
+  return null;
+}
 
-// Pantalla única de detalle de pedido: consolida lo que en la web está
-// repartido en 4 pestañas (Pedidos, Inventario > Pedidos, Fabricación >
-// Pedidos, Logística) — mismo backend, mismos endpoints, solo mostrando en
-// cada momento los botones que correspondan al estado actual de cada línea.
+// Avance del lote de una línea «En fabricación»: «Lote N · estado» y lo
+// producido respecto a su meta.
+function LotProgress({ batch }) {
+  if (!batch?.batchNumber) return <Text style={styles.lotText}>Lote —</Text>;
+  const target = Number(batch.targetQuantity) || 0;
+  const produced = Number(batch.producedQuantity) || 0;
+  return (
+    <View style={styles.lot}>
+      <Text numberOfLines={1} style={styles.lotText}>
+        Lote {batch.batchNumber}
+        {batch.status ? ` · ${normalizeStatus(batch.status)}` : ""}
+      </Text>
+      <LevelMeter value={produced} max={target} tone="blue" style={styles.lotMeter} />
+      <Text style={styles.lotCaption}>
+        {formatNumber(produced)} de {formatNumber(target)} producidas
+      </Text>
+    </View>
+  );
+}
+
+function ProductLine({ order, item, index, stockMap, busy, actions }) {
+  const parts = lineParts(item, stockMap);
+
+  return (
+    <View style={styles.line}>
+      {parts.map((part, pi) => {
+        const existence = existenceText(item, part);
+        return (
+          <View key={part.part} style={pi > 0 && styles.subPart}>
+            <View style={styles.lineTop}>
+              <Text style={styles.lineName} numberOfLines={2}>
+                {pi === 0 ? [item.product, item.color].filter(Boolean).join(" · ") : "↳ a fabricar"}
+              </Text>
+              <Text style={styles.lineQty}>{formatNumber(part.qty)} u</Text>
+            </View>
+            <View style={styles.lineBottom}>
+              <View style={styles.existence}>
+                {existence ? (
+                  <>
+                    <Icon name="warehouse" size={14} color={colors.faint} />
+                    <Text style={styles.existenceText} numberOfLines={1}>
+                      {existence}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+              <Pill label={part.status} tone={statusTone(part.status, "linea-inventario")} />
+            </View>
+
+            {part.status === "Por verificar" ? (
+              <Button
+                title="Verificar"
+                size="small"
+                variant="soft"
+                icon="check"
+                disabled={busy}
+                onPress={() => actions.openVerify(index)}
+                style={styles.lineAction}
+              />
+            ) : part.status === "Verificado" ? (
+              <Button
+                title="Empacar"
+                size="small"
+                variant="success"
+                icon="box"
+                disabled={busy}
+                onPress={() => actions.pack(order, index)}
+                style={styles.lineAction}
+              />
+            ) : part.status === "Empacado" ? (
+              <Text style={styles.lineNote}>{routeLabel(order) || "Esperando motorista"}</Text>
+            ) : part.status === "Sin existencia" ? (
+              <Button
+                title="Enviar a fabricación"
+                size="small"
+                icon="factory"
+                disabled={busy}
+                onPress={() => actions.sendToManufacturing(order, index)}
+                style={styles.lineAction}
+              />
+            ) : part.status === "En fabricación" ? (
+              <LotProgress batch={item.manufacturingBatch} />
+            ) : null}
+
+            {part.status === "Existencia parcial" ? (
+              <ShortageBox order={order} item={item} index={index} stockMap={stockMap} busy={busy} actions={actions} />
+            ) : null}
+          </View>
+        );
+      })}
+      <Text style={styles.linePrice}>
+        {formatMoney(item.unitPrice)} c/u · {formatMoney(item.subtotal ?? item.quantity * item.unitPrice)}
+      </Text>
+    </View>
+  );
+}
+
+// Aviso ámbar de una línea con existencia parcial: tomar lo que hay y
+// mandar a fabricar el resto, o fabricar todo (el mismo cuadro que abre
+// «Resolver faltante» en la web).
+function ShortageBox({ order, item, index, stockMap, busy, actions }) {
+  const s = suggestWarehouse(item, stockMap);
+  const rest = item.quantity - s.available;
+  return (
+    <View style={styles.shortage}>
+      <Text style={styles.shortageText}>
+        Solo hay {formatNumber(s.available)} en {s.warehouse} y ninguna otra tiene más.
+      </Text>
+      <Button
+        title={`Tomar ${formatNumber(s.available)} y fabricar ${formatNumber(rest)}`}
+        size="small"
+        disabled={busy}
+        onPress={() => actions.split(order, index, s.warehouse, s.available)}
+        style={styles.shortageButton}
+      />
+      <Button
+        title={`Fabricar las ${formatNumber(item.quantity)}`}
+        size="small"
+        variant="secondary"
+        disabled={busy}
+        onPress={() => actions.sendToManufacturing(order, index)}
+        style={styles.shortageButton}
+      />
+    </View>
+  );
+}
+
+// Hoja para elegir la bodega al verificar una línea (RadioCardList de la web):
+// las bodegas que no alcanzan quedan deshabilitadas.
+function VerifySheet({ index, item: current, stockMap, busy, onClose, onVerify }) {
+  // Mientras la hoja se cierra (current ya es null) sigue mostrando la
+  // última línea, para que el contenido no desaparezca durante la animación.
+  const lastItem = useRef(current);
+  if (current) lastItem.current = current;
+  const item = current || lastItem.current;
+  const options = item ? stockOptionsFor(item, stockMap) : [];
+  const [chosen, setChosen] = useState(null);
+  // Al abrir la hoja para otra línea se vuelve a la bodega sugerida.
+  useEffect(() => setChosen(null), [index]);
+  const selected = chosen ?? (item ? suggestWarehouse(item, stockMap).warehouse : null);
+
+  return (
+    <BottomSheet
+      visible={Boolean(current)}
+      onClose={onClose}
+      title={item ? `Verificar ${[item.product, item.color].filter(Boolean).join(" · ")}` : ""}
+      subtitle={item ? `${formatNumber(item.quantity)} u · elige la bodega de donde se toma` : ""}
+      footer={
+        <Button
+          title={`Verificar en ${selected || "—"}`}
+          disabled={busy || !selected}
+          loading={busy}
+          onPress={() => onVerify(selected)}
+        />
+      }
+    >
+      {options.map((o) => {
+        const disabled = o.stock < (item?.quantity || 0);
+        const active = o.warehouse === selected;
+        return (
+          <Pressable
+            key={o.warehouse}
+            disabled={disabled}
+            onPress={() => setChosen(o.warehouse)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: active, disabled }}
+            style={[styles.option, active && styles.optionActive, disabled && styles.optionDisabled]}
+          >
+            <View style={[styles.radio, active && styles.radioActive]}>{active ? <View style={styles.radioDot} /> : null}</View>
+            <View style={styles.optionTexts}>
+              <Text style={styles.optionTitle}>
+                {o.warehouse} · {formatNumber(o.stock)} disponibles
+              </Text>
+              {disabled ? <Text style={styles.optionDetail}>No alcanza para {formatNumber(item.quantity)}</Text> : null}
+            </View>
+          </Pressable>
+        );
+      })}
+    </BottomSheet>
+  );
+}
+
+// Por qué un pedido no se puede eliminar, o null si sí (el backend lo vuelve a
+// validar): solo se eliminan los entregados que no están en una ruta activa.
+function deleteBlocker(order) {
+  if (order.status !== "Entregado") return "Solo se pueden eliminar pedidos entregados";
+  const route = order.delivery?.route;
+  if (route && route.status !== "Completada") return "El pedido está en una ruta activa";
+  return null;
+}
+
+// Detalle de un pedido. Junta lo que en la web está en la ficha de Pedidos
+// (recorrido, cliente, entrega, productos y eliminar los entregados) con la
+// preparación de Inventario > Pedidos (verificar, empacar, resolver
+// faltantes, enviar a fabricación), con los mismos endpoints y el mismo
+// «Deshacer». Fabricar, empacar lo fabricado y asignar la entrega siguen en
+// Fabricación y Logística, igual que en la web.
 export default function PedidoDetalleScreen({ navigation, route }) {
+  const bottomPad = useBottomPad(24);
   const id = route.params?.id;
-  const {
-    orders,
-    loading,
-    error,
-    refresh,
-    eliminar,
-    requestInventory,
-    verifyItem,
-    packItem,
-    sendToManufacturing,
-    manufactureItem,
-    packManufacturedItem,
-    assignDelivery,
-    confirmPickup,
-    updatePaymentStatus,
-  } = useOrders();
-  const { warehouses } = useWarehouses();
-  const { employees } = useEmployees();
-  const { vehicles } = useVehicles();
-  const drivers = employees.filter((e) => e.department === "Logística");
+  const toast = useToast();
+  const { user } = useAuth();
+  const { orders, loading, refreshing, error, refresh, eliminar } = useOrders();
+  const { items: inventory, refresh: refreshInventory } = useInventory();
+  const [busy, setBusy] = useState(false);
+  const [verifyIndex, setVerifyIndex] = useState(null);
 
   const order = orders.find((o) => o._id === id);
+  const stockMap = useMemo(() => buildStockMap(finishedItemsOf(inventory)), [inventory]);
 
-  const [busyKey, setBusyKey] = useState(null);
-  const [verifyIndex, setVerifyIndex] = useState(null);
-  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
-  const [confirmingPickup, setConfirmingPickup] = useState("");
-  const [updatingPayment, setUpdatingPayment] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // Al volver a la pantalla, se vuelve a leer.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
-  useEffect(() => {
-    if (order) navigation.setOptions({ title: order.orderNumber });
-  }, [order, navigation]);
+  const confirmDelete = useCallback(() => {
+    if (!order) return;
+    Alert.alert(
+      "Eliminar pedido",
+      `¿Eliminar el pedido ${order.orderNumber}? Esta acción no se puede deshacer. La venta se conserva en Finanzas y el cliente lo sigue viendo en su historial de la tienda.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await eliminar(order._id);
+              toast.show("Pedido eliminado");
+              navigation.goBack();
+            } catch (err) {
+              // El backend explica por qué no se pudo (no entregado, ruta activa, sin permiso).
+              Alert.alert("No se pudo eliminar", err.message);
+            }
+          },
+        },
+      ],
+    );
+  }, [order, eliminar, navigation, toast]);
+
+  // «Eliminar»: solo administradores. En un pedido que no se puede eliminar,
+  // explica por qué en vez de ocultar la acción.
+  const askDelete = useCallback(() => {
+    const blocker = order ? deleteBlocker(order) : null;
+    if (blocker) Alert.alert("No se puede eliminar", blocker);
+    else confirmDelete();
+  }, [order, confirmDelete]);
+
+  useLayoutEffect(() => {
+    if (!order) return;
+    navigation.setOptions({
+      title: order.orderNumber,
+      headerStatus: { label: order.status, tone: statusTone(order.status, "pedido") },
+      headerSubtitle: [order.customer?.name, formatMoney(order.total)].filter(Boolean).join(" · "),
+      headerRight: user?.isAdmin
+        ? () => <IconButton icon="trash" onPress={askDelete} accessibilityLabel="Eliminar pedido" />
+        : undefined,
+    });
+  }, [navigation, order, askDelete, user?.isAdmin]);
+
+  // Recarga después de una acción; `stock`: la acción movió existencia.
+  const reload = (stock) => Promise.all([refresh(), stock ? refreshInventory() : null]);
+
+  // Acción directa con «Deshacer», como act() de PedidosInventario.jsx.
+  async function act(run, message, undo, { stock = false } = {}) {
+    setBusy(true);
+    try {
+      await run();
+      await reload(stock);
+      setVerifyIndex(null);
+      toast.undo(message, async () => {
+        try {
+          await undo();
+          toast.show("Cambio deshecho");
+        } catch (err) {
+          Alert.alert("No se pudo deshacer", err.message);
+        } finally {
+          reload(stock);
+        }
+      });
+    } catch (err) {
+      Alert.alert("No se pudo completar", err.message);
+      // El pedido pudo cambiar en otra pantalla: se vuelve a leer.
+      reload(stock);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const actions = {
+    openVerify: (index) => setVerifyIndex(index),
+    verify: (o, index, warehouse) =>
+      act(
+        () => orderLineApi.verify(o._id, index, warehouse),
+        `${o.items[index].product} verificado en ${warehouse}`,
+        () => orderLineApi.unverify(o._id, index),
+        { stock: true },
+      ),
+    verifyAll: (o, lines) =>
+      act(
+        () => orderLineApi.verifyBulk([{ id: o._id, items: lines.map((l) => ({ index: l.index, warehouse: l.warehouse })) }]),
+        `${lines.length} ${lines.length === 1 ? "producto verificado" : "productos verificados"}`,
+        () => runAll(lines.map((l) => () => orderLineApi.unverify(o._id, l.index))),
+        { stock: true },
+      ),
+    pack: (o, index) =>
+      act(
+        () => orderLineApi.pack(o._id, index),
+        `${o.items[index].product} empacado`,
+        () => orderLineApi.unpack(o._id, index),
+      ),
+    packVerified: (o, lines) =>
+      act(
+        () => runAll(lines.map((l) => () => orderLineApi.pack(o._id, l.index))),
+        `${lines.length} ${lines.length === 1 ? "producto empacado" : "productos empacados"}`,
+        () => runAll(lines.map((l) => () => orderLineApi.unpack(o._id, l.index))),
+      ),
+    sendToManufacturing: (o, index) =>
+      act(
+        () => orderLineApi.sendToManufacturing(o._id, index),
+        `${o.items[index].product} enviado a fabricación`,
+        () => orderLineApi.cancelManufacturing(o._id, index),
+      ),
+    split: (o, index, warehouse, quantity) =>
+      act(
+        () => orderLineApi.split(o._id, index, warehouse, quantity),
+        `Tomados ${formatNumber(quantity)} de ${warehouse}; ${formatNumber(o.items[index].quantity - quantity)} a fabricación`,
+        () => orderLineApi.unsplit(o._id, index),
+        { stock: true },
+      ),
+  };
 
   if (!order) {
     if (loading) return <LoadingState />;
     if (error) return <ErrorState message={error} onRetry={refresh} />;
-    return <ErrorState message="No se encontró el pedido" />;
+    return <ErrorState message="Este pedido ya no existe." />;
   }
 
-  const requested = Boolean(order.sentToInventoryAt);
+  const items = order.items || [];
+  const verifiable = fullyVerifiableLines(order, stockMap);
+  const packable = packableLines(order);
+  const last = lastStatusEntry(order);
+  const address = order.delivery?.address || order.customer?.address;
+  const routeInfo = order.delivery?.route?.number
+    ? `${order.delivery.route.zone} · Ruta ${order.delivery.route.number}`
+    : "sin asignar";
 
-  const handleRequestInventory = async () => {
-    setBusyKey("request");
-    try {
-      await requestInventory(order._id);
-    } catch (error) {
-      Alert.alert("No se pudo solicitar", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleVerifySave = async (warehouse) => {
-    if (!warehouse) {
-      Alert.alert("Falta información", "Elegí una bodega");
-      return;
-    }
-    setBusyKey(`verify-${verifyIndex}`);
-    try {
-      await verifyItem(order._id, verifyIndex, warehouse);
-      setVerifyIndex(null);
-    } catch (error) {
-      Alert.alert("No se pudo verificar", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleSendToManufacturing = async (index) => {
-    setBusyKey(`send-${index}`);
-    try {
-      await sendToManufacturing(order._id, index);
-    } catch (error) {
-      Alert.alert("No se pudo enviar a fabricación", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handlePack = async (index) => {
-    setBusyKey(`pack-${index}`);
-    try {
-      await packItem(order._id, index);
-    } catch (error) {
-      Alert.alert("No se pudo empacar", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleManufacture = async (index) => {
-    setBusyKey(`manufacture-${index}`);
-    try {
-      await manufactureItem(order._id, index);
-    } catch (error) {
-      Alert.alert("No se pudo fabricar", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handlePackManufactured = async (index) => {
-    setBusyKey(`packm-${index}`);
-    try {
-      await packManufacturedItem(order._id, index);
-    } catch (error) {
-      Alert.alert("No se pudo empacar", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleDeliverySave = async (payload) => {
-    if (!payload.driver) {
-      Alert.alert("Falta información", "Elegí un motorista");
-      return;
-    }
-    setBusyKey("delivery");
-    try {
-      await assignDelivery(order._id, payload);
-      setDeliveryModalOpen(false);
-    } catch (error) {
-      Alert.alert("No se pudo guardar la entrega", error.message || "Intentá de nuevo");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleConfirmPickup = async (location) => {
-    setConfirmingPickup(location);
-    try {
-      await confirmPickup(order._id, location);
-    } catch (error) {
-      Alert.alert("No se pudo confirmar", error.message || "Intentá de nuevo");
-    } finally {
-      setConfirmingPickup("");
-    }
-  };
-
-  const handlePaymentStatusChange = async (paymentStatus) => {
-    if (paymentStatus === order.paymentStatus) return;
-    setUpdatingPayment(true);
-    try {
-      await updatePaymentStatus(order, paymentStatus);
-    } catch (error) {
-      Alert.alert("No se pudo actualizar el pago", error.message || "Intentá de nuevo");
-    } finally {
-      setUpdatingPayment(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await eliminar(order._id);
-      navigation.goBack();
-    } catch (error) {
-      setDeleting(false);
-      Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-    }
-  };
-
-  const requiresWarehousePickup = order.items.some((i) => i.packedLocation === "Almacén");
-  const requiresFactoryPickup = order.items.some((i) => i.packedLocation === "Fabricación");
-  const showWarehousePickup = requiresWarehousePickup && !order.delivery?.pickupWarehouseAt;
-  const showFactoryPickup = requiresFactoryPickup && !order.delivery?.pickupFactoryAt;
+  // Acciones del pedido completo (en la web: «Verificar todo» y «Empacar
+  // verificados»). Si hay las dos, verificar es la principal.
+  const barActions = [
+    packable.length > 0 && {
+      title: `Empacar · ${packable.length}`,
+      icon: "box",
+      variant: verifiable.length > 0 ? "secondary" : "primary",
+      disabled: busy,
+      onPress: () => actions.packVerified(order, packable),
+    },
+    verifiable.length > 0 && {
+      title: `Verificar todo · ${verifiable.length}`,
+      icon: "check",
+      disabled: busy,
+      onPress: () => actions.verifyAll(order, verifiable),
+    },
+  ].filter(Boolean);
 
   return (
-    <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
-      <Card>
-        <Text style={styles.customerName}>{order.customer?.name || "Cliente sin nombre"}</Text>
-        {order.customer?.email ? <Text style={styles.customerDetail}>{order.customer.email}</Text> : null}
-        {order.customer?.phone ? <Text style={styles.customerDetail}>{order.customer.phone}</Text> : null}
-        {order.customer?.address ? <Text style={styles.customerDetail}>{order.customer.address}</Text> : null}
-
-        <View style={styles.orderMetaRow}>
-          <Text style={styles.orderTotal}>{formatCurrency(order.total)}</Text>
-          <Badge label={order.status} tone={orderStatusTone(order.status)} />
-        </View>
-        {order.notes ? <Text style={styles.notes}>Notas: {order.notes}</Text> : null}
-      </Card>
-
-      <View style={styles.actions}>
-        <MiniButton
-          label="Editar pedido"
-          variant="neutral"
-          onPress={() => navigation.navigate("PedidoForm", { id: order._id })}
-        />
-      </View>
-
-      {!requested ? (
-        <View style={styles.section}>
-          <CustomButton
-            title="Solicitar a Inventario"
-            onPress={handleRequestInventory}
-            loading={busyKey === "request"}
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, barActions.length > 0 ? null : bottomPad]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refresh();
+              refreshInventory();
+            }}
           />
-        </View>
-      ) : null}
+        }
+      >
+        <Card>
+          <Text style={[type.overline, styles.cardLabel]}>Recorrido del pedido</Text>
+          <Stepper steps={orderJourneySteps(order)} />
+        </Card>
 
-      <Text style={styles.sectionTitle}>Productos</Text>
-      {order.items.map((item, index) => (
-        <OrderItemCard
-          key={index}
-          item={item}
-          requested={requested}
-          busy={
-            busyKey === `verify-${index}` ||
-            busyKey === `send-${index}` ||
-            busyKey === `pack-${index}` ||
-            busyKey === `manufacture-${index}` ||
-            busyKey === `packm-${index}`
-          }
-          onVerify={() => setVerifyIndex(index)}
-          onSendToManufacturing={() => handleSendToManufacturing(index)}
-          onPack={() => handlePack(index)}
-          onManufacture={() => handleManufacture(index)}
-          onPackManufactured={() => handlePackManufactured(index)}
-        />
-      ))}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Entrega</Text>
-        {order.delivery?.driver ? (
-          <Card>
-            <Text style={styles.deliveryText}>
-              Motorista: {order.delivery.driver.name} {order.delivery.driver.lastName}
-            </Text>
-            {order.delivery.vehicle ? (
-              <Text style={styles.deliveryText}>Vehículo: {order.delivery.vehicle}</Text>
-            ) : null}
-            <View style={styles.deliveryBadgeRow}>
-              <Badge label={order.delivery.dispatchStatus} tone={dispatchStatusTone(order.delivery.dispatchStatus)} />
+        <Card>
+          <View style={styles.cardHeader}>
+            <Text style={type.cardTitle}>Productos</Text>
+            <Text style={styles.cardAux}>{progressLabel(order)}</Text>
+          </View>
+          {verifiable.length > 0 ? (
+            <View style={styles.verifyHint}>
+              <Text style={styles.verifyHintTitle}>
+                {verifiable.length} {verifiable.length === 1 ? "producto tiene" : "productos tienen"} existencia completa
+                en una bodega
+              </Text>
+              <Text style={styles.verifyHintDetail}>
+                {verifiable.map((l) => `${l.item.product} → ${l.warehouse}`).join(" · ")}
+              </Text>
             </View>
-
-            <View style={styles.actions}>
-              <MiniButton
-                label="Editar entrega"
-                variant="neutral"
-                onPress={() => setDeliveryModalOpen(true)}
-              />
+          ) : null}
+          {items.length === 0 ? <Text style={styles.placeholder}>Este pedido no tiene productos.</Text> : null}
+          {items.map((item, index) => (
+            <View key={index} style={index > 0 && styles.lineDivider}>
+              <ProductLine order={order} item={item} index={index} stockMap={stockMap} busy={busy} actions={actions} />
             </View>
+          ))}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total del pedido</Text>
+            <Text style={styles.totalValue}>{formatMoney(order.total)}</Text>
+          </View>
+        </Card>
 
-            {showWarehousePickup || showFactoryPickup ? (
-              <View style={styles.pickupChecklist}>
-                <Text style={styles.subTitle}>Recolección pendiente</Text>
-                <View style={styles.actions}>
-                  {showWarehousePickup ? (
-                    <MiniButton
-                      label="Confirmar recolección en Almacén"
-                      onPress={() => handleConfirmPickup("Almacén")}
-                      loading={confirmingPickup === "Almacén"}
-                    />
-                  ) : null}
-                  {showFactoryPickup ? (
-                    <MiniButton
-                      label="Confirmar recolección en Fabricación"
-                      onPress={() => handleConfirmPickup("Fabricación")}
-                      loading={confirmingPickup === "Fabricación"}
-                    />
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-          </Card>
-        ) : (
-          <MiniButton label="Asignar entrega" onPress={() => setDeliveryModalOpen(true)} loading={busyKey === "delivery"} />
-        )}
-      </View>
+        <ListGroup>
+          <ListRow
+            title="Cliente"
+            subtitleLines={3}
+            subtitle={[order.customer?.name, order.customer?.email, order.customer?.phone].filter(Boolean).join("\n") || "—"}
+          />
+          <ListRow title="Entrega" subtitle={`${address || "—"}\n${routeInfo}`} />
+          <ListRow title="Solicitado" value={formatDateYear(order.createdAt)} />
+          <ListRow
+            title="Última acción"
+            value={last ? `${formatShortDate(last.at)} · ${String(last.status).toLowerCase()}` : "—"}
+          />
+          {order.sentToInventoryAt ? (
+            <ListRow title="Inventario" value={`Pasó solo el ${formatShortDate(order.sentToInventoryAt)}`} />
+          ) : null}
+        </ListGroup>
+      </ScrollView>
 
-      <View style={styles.section}>
-        <SegmentedField
-          label="Estado de pago"
-          value={order.paymentStatus}
-          options={PAYMENT_STATUSES}
-          onChange={handlePaymentStatusChange}
-        />
-        {updatingPayment ? <Text style={styles.savingText}>Actualizando…</Text> : null}
-      </View>
+      {barActions.length > 0 ? <BottomBar actions={barActions} /> : null}
 
-      <DeleteButton
-        label={deleting ? "Eliminando…" : "Eliminar pedido"}
-        confirmMessage={`¿Eliminar el pedido ${order.orderNumber}? Esta acción no se puede deshacer.`}
-        onConfirm={handleDelete}
-        disabled={deleting}
-      />
-
-      <VerifyItemModal
-        visible={verifyIndex !== null}
-        item={verifyIndex !== null ? order.items[verifyIndex] : null}
-        warehouses={warehouses}
-        saving={busyKey === `verify-${verifyIndex}`}
+      <VerifySheet
+        index={verifyIndex}
+        item={verifyIndex !== null ? items[verifyIndex] : null}
+        stockMap={stockMap}
+        busy={busy}
         onClose={() => setVerifyIndex(null)}
-        onSave={handleVerifySave}
+        onVerify={(warehouse) => actions.verify(order, verifyIndex, warehouse)}
       />
-
-      <DeliveryFormModal
-        visible={deliveryModalOpen}
-        order={order}
-        drivers={drivers}
-        vehicles={vehicles}
-        saving={busyKey === "delivery"}
-        onClose={() => setDeliveryModalOpen(false)}
-        onSave={handleDeliverySave}
-      />
-    </KeyboardScreen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  customerName: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: colors.text,
-  },
-  customerDetail: {
-    marginTop: 2,
-    fontSize: 13,
-    color: colors.slate500,
-  },
-  orderMetaRow: {
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24 },
+  cardLabel: { marginBottom: 12 },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },
+  cardAux: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted, textAlign: "right" },
+  placeholder: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, paddingVertical: 8 },
+  verifyHint: { backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginVertical: 6, gap: 2 },
+  verifyHintTitle: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primarySoftText },
+  verifyHintDetail: { fontFamily: fonts.regular, fontSize: 12, color: colors.ink2 },
+  line: { paddingVertical: 12 },
+  lineDivider: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
+  subPart: { marginTop: 12, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: colors.lineSoft },
+  lineTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  lineName: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.ink },
+  lineQty: { fontFamily: fonts.bold, fontSize: 14, color: colors.ink, fontVariant: ["tabular-nums"] },
+  lineBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 6 },
+  existence: { flex: 1, flexDirection: "row", alignItems: "center", gap: 5 },
+  existenceText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  lineAction: { alignSelf: "flex-start", marginTop: 10 },
+  lineNote: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  linePrice: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] },
+  lot: { marginTop: 10, gap: 5 },
+  lotText: { fontFamily: fonts.semibold, fontSize: 12, color: tones.blue.text, fontVariant: ["tabular-nums"] },
+  lotMeter: { maxWidth: 180 },
+  lotCaption: { fontFamily: fonts.regular, fontSize: 11.5, color: colors.muted, fontVariant: ["tabular-nums"] },
+  shortage: {
     marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.amberLine,
+    backgroundColor: tones.amber.bg,
+    gap: 8,
+  },
+  shortageText: { fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 17, color: colors.amberStrong },
+  shortageButton: { alignSelf: "stretch" },
+  totalRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  orderTotal: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: colors.brand700,
-  },
-  notes: {
-    marginTop: 8,
-    fontSize: 12,
-    color: colors.slate500,
-    fontStyle: "italic",
-  },
-  section: {
-    marginTop: 16,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  deliveryText: {
-    fontSize: 13,
-    color: colors.slate700,
-  },
-  deliveryBadgeRow: {
-    marginTop: 8,
-    alignItems: "flex-start",
-  },
-  actions: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  pickupChecklist: {
-    marginTop: 12,
+    marginTop: 4,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.slate200,
+    borderTopColor: colors.lineSoft,
   },
-  subTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.slate700,
-    marginBottom: 4,
+  totalLabel: { fontFamily: fonts.semibold, fontSize: 13, color: colors.ink2 },
+  totalValue: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink, fontVariant: ["tabular-nums"] },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
   },
-  savingText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: colors.slate500,
+  optionActive: { borderColor: colors.selectBar, backgroundColor: colors.selectBg },
+  optionDisabled: { opacity: 0.5 },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.busyLine,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  radioActive: { borderColor: colors.primary },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  optionTexts: { flex: 1, gap: 2 },
+  optionTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.ink, fontVariant: ["tabular-nums"] },
+  optionDetail: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
 });

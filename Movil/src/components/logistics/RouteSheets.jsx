@@ -1,0 +1,151 @@
+import { useEffect, useRef, useState } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import BottomSheet from "../ui/BottomSheet";
+import Button from "../ui/Button";
+import FormField from "../ui/FormField";
+import PillSelector from "../ui/PillSelector";
+import { FieldLabel } from "../ui/fieldStyles";
+import { colors } from "../../lib/theme";
+import { fonts } from "../../lib/typography";
+import { crewOptions } from "../../lib/logistics";
+
+function CrewPicker({ label, options, value, onChange, emptyText, disabled }) {
+  return (
+    <View style={styles.group}>
+      <FieldLabel label={label} />
+      {options.length ? (
+        <PillSelector options={options} value={value} onChange={onChange} disabled={disabled} />
+      ) : (
+        <Text style={styles.aux}>{emptyText}</Text>
+      )}
+    </View>
+  );
+}
+
+const NO_DRIVERS = "No hay empleados activos del área Logística.";
+const NO_VEHICLES = "No hay vehículos en Configuración.";
+
+// «Nueva ruta» (ModalNuevaRuta.jsx de la web): zona obligatoria; motorista y
+// vehículo opcionales al crear (son obligatorios para salir). Tocar de nuevo
+// una píldora seleccionada la quita. `onCreate(body)` hace el POST /routes y
+// devuelve la ruta creada.
+export function NewRouteSheet({ visible, nextNumber, availability, onClose, onCreate }) {
+  const [zone, setZone] = useState("");
+  const [driver, setDriver] = useState("");
+  const [vehicle, setVehicle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    setZone("");
+    setDriver("");
+    setVehicle("");
+  }, [visible]);
+
+  // El número se congela mientras la hoja se cierra (la lista se recarga
+  // con la ruta nueva antes de que termine la animación).
+  const shownNumber = useRef(nextNumber);
+  if (visible && !saving) shownNumber.current = nextNumber;
+  const number = shownNumber.current;
+
+  const { drivers, vehicles } = crewOptions(availability);
+
+  const submit = async () => {
+    if (!zone.trim()) return;
+    setSaving(true);
+    try {
+      await onCreate({ zone: zone.trim(), driver: driver || undefined, vehicle: vehicle || undefined });
+    } catch (err) {
+      Alert.alert("No se pudo crear la ruta", err.message || "Intenta de nuevo");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      dismissable={!saving}
+      title="Nueva ruta"
+      subtitle={`Se creará como Ruta ${number} · número automático`}
+      footer={
+        <View style={styles.footer}>
+          <Button title="Cancelar" variant="secondary" disabled={saving} onPress={onClose} style={styles.flex} />
+          <Button
+            title={`Crear Ruta ${number}`}
+            loading={saving}
+            disabled={!zone.trim()}
+            onPress={submit}
+            style={styles.flex}
+          />
+        </View>
+      }
+    >
+      <FormField label="Zona" value={zone} onChangeText={setZone} placeholder="Ej. Zona Norte" required />
+      <CrewPicker
+        label="Motorista"
+        options={drivers}
+        value={driver}
+        onChange={(v) => setDriver(v === driver ? "" : v)}
+        emptyText={NO_DRIVERS}
+      />
+      <CrewPicker
+        label="Vehículo"
+        options={vehicles}
+        value={vehicle}
+        onChange={(v) => setVehicle(v === vehicle ? "" : v)}
+        emptyText={NO_VEHICLES}
+      />
+      <Text style={styles.note}>Después agregas los pedidos con «+ Ruta {number}» desde la lista.</Text>
+    </BottomSheet>
+  );
+}
+
+// Reasignar motorista o vehículo de una ruta que todavía no sale (las
+// píldoras de RoutePanel/RouteDetail en la web): cada toque se aplica al
+// momento con «Deshacer». `onChange(field, value)` hace el PATCH.
+export function CrewSheet({ route, availability, busy, onClose, onChange }) {
+  // Se conserva la última ruta para que la hoja se vea mientras se cierra.
+  const last = useRef(route);
+  if (route) last.current = route;
+  const current = last.current;
+
+  const { drivers, vehicles } = crewOptions(availability, current?._id);
+  const driverId = String(current?.driver?._id || current?.driver || "");
+
+  return (
+    <BottomSheet
+      visible={Boolean(route)}
+      onClose={onClose}
+      title="Motorista y vehículo"
+      subtitle={current ? `Ruta ${current.number} · ${current.zone}` : undefined}
+      footer={<Button title="Listo" variant="secondary" onPress={onClose} />}
+    >
+      <CrewPicker
+        label="Motorista"
+        options={drivers}
+        value={driverId}
+        onChange={(v) => v !== driverId && onChange("driver", v)}
+        emptyText={NO_DRIVERS}
+        disabled={busy}
+      />
+      <CrewPicker
+        label="Vehículo"
+        options={vehicles}
+        value={current?.vehicle || ""}
+        onChange={(v) => v !== current?.vehicle && onChange("vehicle", v)}
+        emptyText={NO_VEHICLES}
+        disabled={busy}
+      />
+    </BottomSheet>
+  );
+}
+
+const styles = StyleSheet.create({
+  group: { marginBottom: 16 },
+  aux: { fontFamily: fonts.regular, fontSize: 12.5, color: colors.muted },
+  note: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginBottom: 4 },
+  footer: { flexDirection: "row", gap: 10 },
+  flex: { flex: 1 },
+});

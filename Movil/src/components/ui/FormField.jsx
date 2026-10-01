@@ -1,9 +1,11 @@
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { colors } from "../../lib/theme";
+import { FieldLabel, fieldStyles } from "./fieldStyles";
 
-// Campo de texto/numérico genérico para los formularios de la Fase 3: un
-// `useState` por campo (o un objeto de estado + handleChange), sin librería
-// de formularios — mismo criterio simple que el resto del proyecto.
+// Campo de texto/numérico genérico de los formularios: un `useState` por
+// campo (o un objeto de estado + handleChange), sin librería de formularios.
+// `suffix` muestra una unidad a la derecha ("u", "kg"). El resto de props
+// (maxLength, onBlur, returnKeyType...) pasan directo al TextInput.
 export default function FormField({
   label,
   value,
@@ -15,52 +17,46 @@ export default function FormField({
   autoCapitalize = "sentences",
   editable = true,
   required = false,
+  suffix,
+  style,
+  ...inputProps
 }) {
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>
-        {label}
-        {required ? " *" : ""}
-      </Text>
-      <TextInput
-        style={[styles.input, multiline && styles.multiline]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.slate400}
-        keyboardType={keyboardType}
-        multiline={multiline}
-        secureTextEntry={secureTextEntry}
-        autoCapitalize={autoCapitalize}
-        autoCorrect={false}
-        editable={editable}
-      />
+    <View style={[fieldStyles.field, style]}>
+      <FieldLabel label={label} required={required} />
+      <View style={[fieldStyles.box, multiline && styles.multilineBox, !editable && fieldStyles.boxDisabled]}>
+        <TextInput
+          style={[fieldStyles.value, styles.input, multiline && styles.multiline]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.faint}
+          keyboardType={keyboardType}
+          multiline={multiline}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          editable={editable}
+          accessibilityLabel={label || placeholder}
+          {...inputProps}
+        />
+        {suffix ? <Text style={fieldStyles.suffix}>{suffix}</Text> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  field: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.slate700,
-    marginBottom: 6,
-  },
   input: {
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    alignSelf: "stretch",
+    paddingVertical: 0,
+  },
+  multilineBox: {
+    alignItems: "flex-start",
     paddingVertical: 10,
-    fontSize: 15,
-    color: colors.text,
-    backgroundColor: colors.white,
   },
   multiline: {
-    minHeight: 90,
+    minHeight: 72,
     textAlignVertical: "top",
   },
 });

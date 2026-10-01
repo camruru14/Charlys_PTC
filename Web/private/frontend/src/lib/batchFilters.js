@@ -2,7 +2,7 @@
   Utilidades de búsqueda y filtrado para los lotes de fabricación.
   Se usan tanto en la card del Dashboard como en la página Historial de Lotes.
 */
-import { fromDateOnly } from "./format";
+import { fromDateOnly, batchNumberSearchText } from "./format";
 
 export const defaultBatchFilters = {
   q: "", // texto: num de lote, producto, línea, estado
@@ -53,7 +53,7 @@ export function filterBatches(list = [], filters = defaultBatchFilters, range = 
     // Búsqueda de texto libre
     if (filters.q) {
       const q = filters.q.toLowerCase();
-      const haystack = [b.batchNumber, b.product, b.productionLine, b.status]
+      const haystack = [batchNumberSearchText(b.batchNumber), b.product, b.productionLine, b.status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
 import { useDateRange, rangeLabel } from "../context/dateRange";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
+import PagedSection from "../components/ui/PagedSection";
 import TransactionToolbar from "../components/transactions/TransactionToolbar";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { defaultTransactionFilters, filterTransactions } from "../lib/transactionFilters";
@@ -48,14 +48,18 @@ function HistorialTransacciones() {
         <KpiCard label="Neto" value={fmt(stats.net)} valueClassName={stats.net >= 0 ? "!text-tone-green-text" : "!text-tone-rose-text"} />
       </div>
 
-      <SectionCard title="Todas las transacciones">
-        <TransactionToolbar list={all} filters={filters} setFilters={setFilters} />
-        <AsyncState loading={loading} error={error}>
-          <div className="-mx-5 -mb-5 border-t border-line-soft">
-            <TransactionTable transactions={filtered} />
-          </div>
-        </AsyncState>
-      </SectionCard>
+      <PagedSection
+        title="Todas las transacciones"
+        toolbar={<TransactionToolbar list={all} filters={filters} setFilters={setFilters} />}
+        items={filtered}
+        rowHeight={42}
+        resetKey={`${JSON.stringify(filters)}|${rangeLabel(range)}`}
+        noun="transacciones"
+        loading={loading}
+        error={error}
+      >
+        {(rows) => <TransactionTable transactions={rows} />}
+      </PagedSection>
     </div>
   );
 }

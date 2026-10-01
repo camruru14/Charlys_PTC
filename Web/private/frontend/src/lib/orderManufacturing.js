@@ -1,3 +1,5 @@
+import { batchNumberSearchText } from "./format";
+
 /*
   Fabricación > Pedidos a partir de /orders y /productionBatches: cada pedido
   con líneas enviadas a fabricación y sus lotes (categoría «Pedido»).
@@ -113,7 +115,7 @@ export function buildGroups(orders, batches) {
 
 export function groupSearchText(group) {
   const { order, lots } = group;
-  return [order.orderNumber, order.customer?.name, ...lots.map((l) => `${l.batch.batchNumber} ${l.item.product} ${l.item.color || ""}`)]
+  return [order.orderNumber, order.customer?.name, ...lots.map((l) => `${batchNumberSearchText(l.batch.batchNumber)} ${l.item.product} ${l.item.color || ""}`)]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();

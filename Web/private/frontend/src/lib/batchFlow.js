@@ -1,4 +1,4 @@
-import { fromDateOnly } from "./format";
+import { fromDateOnly, batchNumberSearchText } from "./format";
 
 /*
   Lotes de fabricación (Fase 5). Flujo de un lote de stock (no «Pedido»):
@@ -6,7 +6,6 @@ import { fromDateOnly } from "./format";
   enviar» → Enviar a bodega → «En bodega».
 */
 
-export const PRODUCTS = ["Pajilla", "Pelota"];
 export const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
 export const BATCH_STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
 
@@ -81,5 +80,5 @@ export function lineStats(batch, batches, size = 6) {
 }
 
 export function batchSearchText(b) {
-  return [b.batchNumber, b.product, b.color, b.productionLine].filter(Boolean).join(" ").toLowerCase();
+  return [batchNumberSearchText(b.batchNumber), b.product, b.color, b.productionLine].filter(Boolean).join(" ").toLowerCase();
 }

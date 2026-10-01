@@ -1,72 +1,115 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useBatches } from "../hooks/useBatches";
 import { useDailyBatches } from "../hooks/useDailyBatches";
-import { useWarehouses } from "../hooks/useWarehouses";
 import { useOrders } from "../hooks/useOrders";
 import { useDateRange } from "../context/DateRangeContext";
 import BatchCard from "../components/batches/BatchCard";
-import DailyBatchCard from "../components/batches/DailyBatchCard";
-import OrderGroupRow from "../components/batches/OrderGroupRow";
-import ManufacturingDetailModal from "../components/batches/ManufacturingDetailModal";
-import PedidoBatchDetailModal from "../components/batches/PedidoBatchDetailModal";
-import ReportBatchModal from "../components/batches/ReportBatchModal";
-import KpiTile from "../components/dashboard/KpiTile";
-import SelectField from "../components/ui/SelectField";
-import SwitchField from "../components/ui/SwitchField";
-import ErrorState from "../components/ui/ErrorState";
-import LoadingState from "../components/ui/LoadingState";
+import DailyBatchRow from "../components/batches/DailyBatchRow";
+import ManufacturingOrderCard from "../components/batches/ManufacturingOrderCard";
+import BottomSheet from "../components/ui/BottomSheet";
+import DateRangeButton from "../components/ui/DateRangeButton";
 import EmptyState from "../components/ui/EmptyState";
-import FloatingAddButton from "../components/ui/FloatingAddButton";
+import ErrorState from "../components/ui/ErrorState";
+import FilterChips from "../components/ui/FilterChips";
+import Icon from "../components/ui/Icon";
+import IconButton from "../components/ui/IconButton";
+import KpiInline from "../components/ui/KpiInline";
+import ListGroup from "../components/ui/ListGroup";
+import LoadingState from "../components/ui/LoadingState";
+import SearchField from "../components/ui/SearchField";
+import Segmented from "../components/ui/Segmented";
+import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
-import { formatNumber } from "../lib/format";
+import { fonts } from "../lib/typography";
+import { formatNumber, fromDateOnly } from "../lib/format";
 import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
-import {
-  manufacturingMacroStatus,
-  manufacturingProgressSegments,
-  manufacturingProgressCaption,
-  MANUFACTURING_STATUS_LABELS,
-  getManufacturingCounts,
-  pedidoBatchMacroStatus,
-  pedidoBatchProgressSegments,
-  pedidoBatchProgressCaption,
-  PEDIDO_BATCH_STATUS_LABELS,
-  getPedidoBatchCounts,
-} from "../lib/manufacturingProgress";
+import { batchSearchText, batchState } from "../lib/batchFlow";
+import { batchApi } from "../lib/batchActions";
+import { runAll } from "../lib/inventoryOrders";
+import { buildGroups, groupSearchText } from "../lib/orderManufacturing";
+import { statusTone } from "../lib/statusTones";
+import { useBottomPad } from "../hooks/useBottomPad";
 
+// Mismas vistas que Web/private/frontend/src/pages/Fabricacion.jsx.
 const TABS = [
-  { key: "fabricacion", label: "Lotes de fabricación" },
-  { key: "diario", label: "Lotes Diarios" },
-  { key: "pedidos", label: "Por fabricar" },
-  { key: "fabricacionPedidos", label: "Fabricación de pedidos" },
+  { value: "lotes", label: "Lotes" },
+  { value: "diaria", label: "Diaria" },
+  { value: "pedidos", label: "Pedidos" },
 ];
 
-const MANUFACTURING_STATUS_FILTERS = ["enCola", "enFabricacion"];
-const PEDIDO_BATCH_STATUS_FILTERS = ["programado", "enProceso", "completado", "detenido"];
+// Chips de Lotes: filtran por el estado visible del lote (batchState).
+const LOT_CHIPS = [
+  { value: "all", label: "Todos" },
+  { value: "En proceso", label: "En proceso" },
+  { value: "Por enviar", label: "Por enviar" },
+  { value: "Detenido", label: "Detenidos" },
+];
 
-// 4 pestañas, igual que Web/private/frontend/src/pages/Fabricacion.jsx:
-// Lotes de fabricación / Lotes Diarios (ya existían, ahora en pestañas
-// propias en vez de dos secciones de una misma lista) + Por fabricar /
-// Fabricación de pedidos (nuevas, pero la lógica de backend ya vivía en
-// useOrders.js — PedidoDetalleScreen sigue intacto, esto es una vista
-// adicional sobre los mismos endpoints). "Lotes de fabricación" y
-// "Fabricación de pedidos" filtran por el rango de fechas global (Fase 11);
-// "Lotes Diarios" y "Por fabricar" NO — tampoco lo hacen en la web
-// (dailyBatches es un fetch aparte sin filterBatches, y "Por fabricar" sale
-// de `orders`, no de `batches`).
+// Chips de Pedidos (PedidosFabricacion.jsx).
+const ORDER_CHIPS = [
+  { value: "all", label: "Todos", test: () => true },
+  { value: "enProceso", label: "En proceso", test: (g) => g.macro.startsWith("En proceso") },
+  { value: "porEmpacar", label: "Por empacar", test: (g) => g.macro === "Por empacar" },
+  { value: "detenidos", label: "Detenidos", test: (g) => g.stopped.length > 0 },
+];
+
+const MONTHS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Lunes de esta semana a las 00:00.
+function startOfWeek() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+// Chip del filtro de mes de Producción diaria («Fecha: septiembre» en la web).
+function MonthChip({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value) || options[0];
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Mes: ${selected.label}`}
+        style={({ pressed }) => [styles.monthChip, pressed && styles.pressed]}
+      >
+        <Icon name="calendar" size={15} color={colors.faint} />
+        <Text style={styles.monthText} numberOfLines={1}>
+          {selected.label}
+        </Text>
+      </Pressable>
+      <BottomSheet visible={open} onClose={() => setOpen(false)} title="Mes">
+        <FilterChips
+          options={options}
+          value={value}
+          onChange={(v) => {
+            onChange(v);
+            setOpen(false);
+          }}
+        />
+      </BottomSheet>
+    </>
+  );
+}
+
+// Fabricación: Lotes de fabricación (de stock), Producción diaria y Pedidos
+// en producción, como la web. Tocar un lote abre su detalle
+// (LoteDetalleScreen), donde avanza: iniciar, detener, completar, enviar a
+// bodega o empacar.
 export default function FabricacionScreen({ navigation }) {
+  const bottomPad = useBottomPad(32);
+  const toast = useToast();
   const range = useDateRange();
-  const {
-    batches,
-    loading: batchesLoading,
-    refreshing: batchesRefreshing,
-    error: batchesError,
-    refresh: refreshBatches,
-    eliminar: eliminarBatch,
-    reportar,
-    deshacerReporte,
-  } = useBatches();
+  const { batches, loading, refreshing, error, refresh } = useBatches();
   const {
     dailyBatches,
     loading: dailyLoading,
@@ -74,559 +117,398 @@ export default function FabricacionScreen({ navigation }) {
     error: dailyError,
     refresh: refreshDaily,
     programar,
+    eliminar: eliminarDaily,
   } = useDailyBatches();
-  const { warehouses } = useWarehouses();
-  const {
-    orders,
-    loading: ordersLoading,
-    refreshing: ordersRefreshing,
-    error: ordersError,
-    refresh: refreshOrders,
-    manufactureItem,
-    removeFromManufacturing,
-    packManufacturedItem,
-  } = useOrders();
+  const { orders, refreshing: ordersRefreshing, error: ordersError, refresh: refreshOrders } = useOrders();
 
-  const [activeTab, setActiveTab] = useState("fabricacion");
-  const [reportTarget, setReportTarget] = useState(null);
-  const [reporting, setReporting] = useState(false);
-  const [undoingId, setUndoingId] = useState(null);
+  const [tab, setTab] = useState("lotes");
+  const [lotQuery, setLotQuery] = useState("");
+  const [lotChip, setLotChip] = useState("all");
+  const [dailyQuery, setDailyQuery] = useState("");
+  const [month, setMonth] = useState(() => monthKey(new Date()));
   const [schedulingId, setSchedulingId] = useState(null);
-
-  const [manufacturingStatusFilter, setManufacturingStatusFilter] = useState("");
-  const [manufacturingOnlyPending, setManufacturingOnlyPending] = useState(false);
-  const [manufacturingInfoOrderId, setManufacturingInfoOrderId] = useState(null);
-  const [manufacturingBusyIndex, setManufacturingBusyIndex] = useState(null);
-
-  const [pedidoBatchStatusFilter, setPedidoBatchStatusFilter] = useState("");
-  const [pedidoBatchOnlyPending, setPedidoBatchOnlyPending] = useState(false);
-  const [pedidoBatchInfoOrderId, setPedidoBatchInfoOrderId] = useState(null);
-  const [pedidoBatchBusyId, setPedidoBatchBusyId] = useState(null);
+  const [orderQuery, setOrderQuery] = useState("");
+  const [orderChip, setOrderChip] = useState("all");
+  const [busy, setBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      refreshBatches();
+      refresh();
       refreshDaily();
       refreshOrders();
-    }, [refreshBatches, refreshDaily, refreshOrders]),
+    }, [refresh, refreshDaily, refreshOrders]),
   );
 
-  // Lista acotada al rango de fechas seleccionado (createdAt/startDate del
-  // lote) — mismo criterio que rangeList en Fabricacion.jsx web.
-  const rangeList = useMemo(() => filterBatches(batches, defaultBatchFilters, range), [batches, range]);
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      subtitle:
+        tab === "pedidos"
+          ? "Pedidos — del lote programado al empaque"
+          : tab === "diaria"
+            ? "Lotes diarios de producción"
+            : "Control de líneas de producción",
+      headerRight: () => (
+        <>
+          {tab !== "diaria" ? <DateRangeButton /> : null}
+          <IconButton
+            icon="plus"
+            variant="primary"
+            onPress={() => navigation.navigate(tab === "diaria" ? "LoteDiarioForm" : "LoteFabricacionForm")}
+            accessibilityLabel={tab === "diaria" ? "Nuevo lote diario" : "Nuevo lote"}
+          />
+        </>
+      ),
+    });
+  }, [navigation, tab]);
 
-  // "Lotes de fabricación" excluye los lotes category "Pedido" (creados
-  // desde "Fabricar" en Pedidos): esos se muestran aparte, en "Fabricación
-  // de pedidos" — mismo criterio que Fabricacion.jsx del panel web.
-  const diarioBatches = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
-  const pedidoBatchesList = useMemo(() => rangeList.filter((b) => b.category === "Pedido"), [rangeList]);
+  // Lotes del rango de fechas global; «Lotes» solo muestra los de stock (los
+  // de pedido van en la pestaña Pedidos), como la web.
+  const rangeList = useMemo(() => filterBatches(batches, defaultBatchFilters, range), [batches, range]);
+  const stockList = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
+
+  const lotCounts = useMemo(() => {
+    const c = { all: stockList.length };
+    stockList.forEach((b) => {
+      const s = batchState(b);
+      c[s] = (c[s] || 0) + 1;
+    });
+    return c;
+  }, [stockList]);
+
+  const visibleLots = useMemo(() => {
+    const q = lotQuery.trim().toLowerCase();
+    return stockList.filter((b) => (lotChip === "all" || batchState(b) === lotChip) && (!q || batchSearchText(b).includes(q)));
+  }, [stockList, lotChip, lotQuery]);
+
+  // Producción diaria: meses con lotes (más reciente primero) más el actual.
+  const monthOptions = useMemo(() => {
+    const keys = new Map([[monthKey(new Date()), new Date()]]);
+    dailyBatches.forEach((b) => {
+      const d = fromDateOnly(b.date);
+      if (d) keys.set(monthKey(d), d);
+    });
+    const years = new Set([...keys.values()].map((d) => d.getFullYear()));
+    const sameYear = years.size === 1 && years.has(new Date().getFullYear());
+    return [
+      { value: "", label: "Todas" },
+      ...[...keys.entries()]
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([value, d]) => ({
+          value,
+          label: `${capitalize(MONTHS[d.getMonth()])}${sameYear ? "" : ` ${d.getFullYear()}`}`,
+        })),
+    ];
+  }, [dailyBatches]);
+
+  const visibleDaily = useMemo(() => {
+    const q = dailyQuery.trim().toLowerCase();
+    return dailyBatches.filter((b) => {
+      const d = fromDateOnly(b.date);
+      if (month && (!d || monthKey(d) !== month)) return false;
+      if (q && ![b.product, b.color, b.dailyBatchNumber].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [dailyBatches, dailyQuery, month]);
+
+  const groups = useMemo(() => buildGroups(orders, batches), [orders, batches]);
+  const orderCounts = useMemo(
+    () => Object.fromEntries(ORDER_CHIPS.map((c) => [c.value, groups.filter(c.test).length])),
+    [groups],
+  );
+  const visibleGroups = useMemo(() => {
+    const q = orderQuery.trim().toLowerCase();
+    const test = ORDER_CHIPS.find((c) => c.value === orderChip)?.test || (() => true);
+    return groups.filter((g) => test(g) && (!q || groupSearchText(g).includes(q)));
+  }, [groups, orderChip, orderQuery]);
 
   const kpis = useMemo(() => {
-    const produced = rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0);
-    const inProcess = rangeList.filter((b) => b.status === "En Proceso").length;
-    const stopped = rangeList.filter((b) => b.status === "Detenido").length;
-    return { produced, inProcess, stopped };
-  }, [rangeList]);
+    if (tab === "diaria") {
+      const today = new Date().toDateString();
+      const weekStart = startOfWeek();
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const dates = dailyBatches.map((b) => fromDateOnly(b.date)).filter(Boolean);
+      return [
+        { label: "Lotes hoy", value: formatNumber(dates.filter((d) => d.toDateString() === today).length), tone: "blue" },
+        { label: "Esta semana", value: formatNumber(dates.filter((d) => d >= weekStart && d < weekEnd).length), tone: "green" },
+      ];
+    }
+    return [
+      { label: "Producción", value: formatNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
+      {
+        label: "En proceso",
+        value: formatNumber(rangeList.filter((b) => b.status === "En Proceso").length),
+        tone: statusTone("En proceso", "lote"),
+      },
+      {
+        label: "Detenidos",
+        value: formatNumber(rangeList.filter((b) => b.status === "Detenido").length),
+        tone: statusTone("Detenido", "lote"),
+      },
+    ];
+  }, [tab, rangeList, dailyBatches]);
 
-  const manufacturingGroups = useMemo(() => {
-    const groups = [];
-    orders.forEach((o) => {
-      const lines = [];
-      (o.items || []).forEach((item, index) => {
-        if (item.sentToManufacturing) lines.push({ item, index });
-      });
-      if (lines.length) groups.push({ order: o, lines });
-    });
-    const latest = (g) => Math.max(...g.lines.map((l) => new Date(l.item.sentToManufacturingAt).getTime()));
-    return groups.sort((a, b) => latest(b) - latest(a));
-  }, [orders]);
-
-  const manufacturingInfoGroup = useMemo(
-    () => manufacturingGroups.find((g) => g.order._id === manufacturingInfoOrderId) || null,
-    [manufacturingGroups, manufacturingInfoOrderId],
-  );
-
-  const filteredManufacturingGroups = useMemo(
-    () =>
-      manufacturingGroups.filter((g) => {
-        if (manufacturingStatusFilter && manufacturingMacroStatus(g) !== manufacturingStatusFilter) return false;
-        if (manufacturingOnlyPending && getManufacturingCounts(g).enCola === 0) return false;
-        return true;
-      }),
-    [manufacturingGroups, manufacturingStatusFilter, manufacturingOnlyPending],
-  );
-
-  const hasActiveManufacturingFilters = Boolean(manufacturingStatusFilter || manufacturingOnlyPending);
-
-  const pedidoLineByBatchId = useMemo(() => {
-    const map = new Map();
-    orders.forEach((o) => {
-      (o.items || []).forEach((item, index) => {
-        const batchId = item.manufacturingBatch?._id || item.manufacturingBatch;
-        if (batchId) map.set(String(batchId), { order: o, item, index });
-      });
-    });
-    return map;
-  }, [orders]);
-
-  const pedidoGroups = useMemo(() => {
-    const map = new Map();
-    const unlinked = [];
-    pedidoBatchesList.forEach((batch) => {
-      const pedidoLine = pedidoLineByBatchId.get(String(batch._id));
-      if (!pedidoLine) {
-        unlinked.push({ batch, item: null, index: null });
-        return;
-      }
-      const { order, item, index } = pedidoLine;
-      if (!map.has(order._id)) map.set(order._id, { order, batches: [] });
-      map.get(order._id).batches.push({ batch, item, index });
-    });
-    const latest = (g) => Math.max(...g.batches.map(({ batch }) => new Date(batch.startDate || batch.createdAt).getTime()));
-    const groups = Array.from(map.values()).sort((a, b) => latest(b) - latest(a));
-    if (unlinked.length) groups.push({ order: { _id: "__unlinked__", orderNumber: "Sin pedido vinculado" }, batches: unlinked });
-    return groups;
-  }, [pedidoBatchesList, pedidoLineByBatchId]);
-
-  const pedidoBatchInfoGroup = useMemo(
-    () => pedidoGroups.find((g) => g.order._id === pedidoBatchInfoOrderId) || null,
-    [pedidoGroups, pedidoBatchInfoOrderId],
-  );
-
-  const filteredPedidoGroups = useMemo(
-    () =>
-      pedidoGroups.filter((g) => {
-        if (pedidoBatchStatusFilter && pedidoBatchMacroStatus(g) !== pedidoBatchStatusFilter) return false;
-        if (pedidoBatchOnlyPending && getPedidoBatchCounts(g).completado === g.batches.length) return false;
-        return true;
-      }),
-    [pedidoGroups, pedidoBatchStatusFilter, pedidoBatchOnlyPending],
-  );
-
-  const hasActivePedidoBatchFilters = Boolean(pedidoBatchStatusFilter || pedidoBatchOnlyPending);
-
-  const handleSchedule = async (dailyBatch) => {
-    setSchedulingId(dailyBatch._id);
+  // «Programar» es directo y no tiene reversa: el backend crea el lote de
+  // fabricación y borra el lote diario (en la web tampoco hay «Deshacer»).
+  const schedule = async (daily) => {
+    setSchedulingId(daily._id);
     try {
-      await programar(dailyBatch._id);
-      refreshBatches();
-    } catch (error) {
-      Alert.alert("No se pudo programar", error.message || "Intentá de nuevo");
+      const res = await programar(daily._id);
+      refresh();
+      toast.show(
+        res?.batchNumber ? `${daily.dailyBatchNumber} programado · ${res.batchNumber}` : `${daily.dailyBatchNumber} programado`,
+      );
+    } catch (err) {
+      Alert.alert("No se pudo programar", err.message);
     } finally {
       setSchedulingId(null);
     }
   };
 
-  const handleReportPress = (batch) => {
-    if (batch.lastReportedAt) {
-      Alert.alert("¿Deshacer reporte?", `Se revertirá el reporte del lote ${batch.batchNumber}.`, [
-        { text: "Cancelar" },
-        {
-          text: "Deshacer",
-          style: "destructive",
-          onPress: async () => {
-            setUndoingId(batch._id);
-            try {
-              await deshacerReporte(batch._id);
-            } catch (error) {
-              Alert.alert("No se pudo deshacer el reporte", error.message || "Intentá de nuevo");
-            } finally {
-              setUndoingId(null);
-            }
-          },
-        },
-      ]);
-      return;
-    }
-    setReportTarget(batch);
-  };
+  const dailyMenu = (daily) =>
+    Alert.alert(daily.dailyBatchNumber, undefined, [
+      { text: "Editar", onPress: () => navigation.navigate("LoteDiarioForm", { id: daily._id }) },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: () =>
+          Alert.alert("Eliminar lote diario", `¿Eliminar el lote ${daily.dailyBatchNumber}?`, [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Eliminar",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await eliminarDaily(daily._id);
+                  toast.show("Lote diario eliminado");
+                } catch (err) {
+                  Alert.alert("No se pudo eliminar", err.message);
+                }
+              },
+            },
+          ]),
+      },
+      { text: "Cancelar", style: "cancel" },
+    ]);
 
-  const handleReportSave = async (payload) => {
-    if (!payload.warehouse) {
-      Alert.alert("Falta información", "Elegí una bodega");
-      return;
-    }
-    setReporting(true);
+  // Acciones de todo un pedido (PedidosFabricacion.jsx), con «Deshacer».
+  async function orderAct(run, message, undo) {
+    const reload = () => Promise.all([refresh(), refreshOrders()]);
+    setBusy(true);
     try {
-      await reportar(reportTarget._id, payload);
-      setReportTarget(null);
-    } catch (error) {
-      Alert.alert("No se pudo reportar", error.message || "Intentá de nuevo");
+      await run();
+      await reload();
+      toast.undo(message, async () => {
+        try {
+          await undo();
+          toast.show("Cambio deshecho");
+        } catch (err) {
+          Alert.alert("No se pudo deshacer", err.message);
+        } finally {
+          reload();
+        }
+      });
+    } catch (err) {
+      Alert.alert("No se pudo completar", err.message);
+      reload();
     } finally {
-      setReporting(false);
+      setBusy(false);
     }
-  };
-
-  const handleFabricar = ({ order, item, index }) => {
-    Alert.alert(
-      "Fabricar",
-      `¿Fabricar ${item.quantity} ${item.product}${item.color ? ` (${item.color})` : ""} para el pedido ${order.orderNumber}? Se creará un lote en Lotes de fabricación.`,
-      [
-        { text: "Cancelar" },
-        {
-          text: "Fabricar",
-          onPress: async () => {
-            setManufacturingBusyIndex(index);
-            try {
-              await manufactureItem(order._id, index);
-              refreshBatches();
-            } catch (error) {
-              Alert.alert("No se pudo fabricar", error.message || "Intentá de nuevo");
-            } finally {
-              setManufacturingBusyIndex(null);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleEliminarManufacturingLine = ({ order, item, index }) => {
-    const msg = item.manufacturingBatch
-      ? `¿Eliminar ${item.product} de Fabricación > Pedidos? El lote ${item.manufacturingBatch.batchNumber || ""} ya fabricado se conserva en "Fabricación de pedidos", solo se desvincula de este pedido.`
-      : `¿Eliminar ${item.product} de Fabricación > Pedidos? Podrá volver a solicitarse desde Inventario.`;
-    Alert.alert("Eliminar", msg, [
-      { text: "Cancelar" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          setManufacturingBusyIndex(index);
-          try {
-            await removeFromManufacturing(order._id, index);
-          } catch (error) {
-            Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-          } finally {
-            setManufacturingBusyIndex(null);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleEmpacar = (pedidoLine) => {
-    const { order, item, index } = pedidoLine;
-    const batchId = item.manufacturingBatch?._id || item.manufacturingBatch;
-    Alert.alert(
-      "Empacar",
-      `¿Marcar ${item.product} como empacado? Quedará listo para que Logística lo recoja en Fabricación.`,
-      [
-        { text: "Cancelar" },
-        {
-          text: "Empacar",
-          onPress: async () => {
-            setPedidoBatchBusyId(batchId);
-            try {
-              await packManufacturedItem(order._id, index);
-              refreshBatches();
-            } catch (error) {
-              Alert.alert("No se pudo empacar", error.message || "Intentá de nuevo");
-            } finally {
-              setPedidoBatchBusyId(null);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleEditarPedidoBatch = (batch) => {
-    setPedidoBatchInfoOrderId(null);
-    navigation.navigate("LoteFabricacionForm", { id: batch._id });
-  };
-
-  const handleEliminarPedidoBatch = (batch) => {
-    Alert.alert("Eliminar lote", `¿Eliminar el lote ${batch.batchNumber}? Esta acción no se puede deshacer.`, [
-      { text: "Cancelar" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await eliminarBatch(batch._id);
-          } catch (error) {
-            Alert.alert("No se pudo eliminar", error.message || "Intentá de nuevo");
-          }
-        },
-      },
-    ]);
-  };
-
-  if (batchesLoading || dailyLoading) return <LoadingState />;
-  if ((batchesError && batches.length === 0) || (dailyError && dailyBatches.length === 0)) {
-    return (
-      <ErrorState
-        message={batchesError || dailyError}
-        onRetry={() => {
-          refreshBatches();
-          refreshDaily();
-        }}
-      />
-    );
   }
 
-  const refreshing = batchesRefreshing || dailyRefreshing || ordersRefreshing;
+  const resumeLots = (lots) =>
+    orderAct(
+      () => runAll(lots.map((l) => () => batchApi.resume(l.batch._id))),
+      lots.length === 1 ? `Lote ${lots[0].batch.batchNumber} reanudado` : `${formatNumber(lots.length)} lotes reanudados`,
+      () => runAll(lots.map((l) => () => batchApi.stop(l.batch._id, l.batch.stopReason))),
+    );
+
+  const packLots = (group, lots) =>
+    orderAct(
+      () =>
+        lots.length === 1
+          ? batchApi.packManufactured(group.order._id, lots[0].index)
+          : batchApi.packCompleted(lots.map((l) => l.batch._id)),
+      lots.length === 1
+        ? `${[lots[0].item.product, lots[0].item.color].filter(Boolean).join(" · ")} empacado`
+        : `${formatNumber(lots.length)} lotes empacados`,
+      () => runAll(lots.map((l) => () => batchApi.unpackManufactured(group.order._id, l.index))),
+    );
+
+  if (loading || dailyLoading) return <LoadingState />;
+  if (error && batches.length === 0) return <ErrorState message={error} onRetry={refresh} />;
+
   const refreshAll = () => {
-    refreshBatches();
+    refresh();
     refreshDaily();
     refreshOrders();
   };
+  const refreshControl = (
+    <RefreshControl refreshing={refreshing || dailyRefreshing || ordersRefreshing} onRefresh={refreshAll} />
+  );
+
+  const header = (
+    <View style={styles.listHeader}>
+      <KpiInline items={kpis} style={styles.kpis} />
+      {tab === "lotes" ? (
+        <>
+          <SearchField value={lotQuery} onChangeText={setLotQuery} placeholder="Buscar lote, producto o color" />
+          <FilterChips
+            style={styles.chips}
+            contentContainerStyle={styles.chipsContent}
+            value={lotChip}
+            onChange={setLotChip}
+            options={LOT_CHIPS.map((c) => ({ ...c, count: lotCounts[c.value] || 0 }))}
+          />
+        </>
+      ) : tab === "diaria" ? (
+        <View style={styles.searchRow}>
+          <SearchField value={dailyQuery} onChangeText={setDailyQuery} placeholder="Buscar producto" style={styles.flex} />
+          <MonthChip value={month} options={monthOptions} onChange={setMonth} />
+        </View>
+      ) : (
+        <>
+          <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar pedido" />
+          <FilterChips
+            style={styles.chips}
+            contentContainerStyle={styles.chipsContent}
+            value={orderChip}
+            onChange={setOrderChip}
+            options={ORDER_CHIPS.map((c) => ({ value: c.value, label: c.label, count: orderCounts[c.value] }))}
+          />
+        </>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.kpiGrid}>
-          <KpiTile label="Producción total" value={`${formatNumber(kpis.produced)} u.`} hint={`${rangeList.length} lotes`} />
-          <KpiTile label="Lotes en proceso" value={formatNumber(kpis.inProcess)} hint="activos" />
-          <KpiTile label="Lotes detenidos" value={formatNumber(kpis.stopped)} hint={kpis.stopped ? "Alerta" : "OK"} />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar}>
-          {TABS.map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tabButton, activeTab === t.key && styles.tabButtonActive]}
-              onPress={() => setActiveTab(t.key)}
-            >
-              <Text style={[styles.tabButtonText, activeTab === t.key && styles.tabButtonTextActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      <View style={styles.tabs}>
+        <Segmented options={TABS} value={tab} onChange={setTab} />
       </View>
 
-      {activeTab === "fabricacion" ? (
+      {tab === "lotes" ? (
         <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={diarioBatches}
-          keyExtractor={(item, index) => item._id || item.batchNumber || String(index)}
+          style={styles.flex}
+          contentContainerStyle={[styles.content, bottomPad]}
+          data={visibleLots}
+          keyExtractor={(b) => b._id}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate("LoteFabricacionForm", { id: item._id })}
-            >
-              <BatchCard
-                batch={item}
-                onReport={() => handleReportPress(item)}
-                onUndoReport={() => handleReportPress(item)}
-                reporting={undoingId === item._id}
-              />
-            </TouchableOpacity>
+            <BatchCard batch={item} onPress={() => navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes" })} />
           )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
-          ListEmptyComponent={<EmptyState message="No hay lotes de fabricación todavía" />}
-          ListHeaderComponent={
-            <View style={styles.sectionLinkRow}>
-              <TouchableOpacity onPress={() => navigation.navigate("HistorialLotes", { editable: true })}>
-                <Text style={styles.sectionLink}>Ver todo</Text>
-              </TouchableOpacity>
-            </View>
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={header}
+          ListEmptyComponent={
+            <EmptyState
+              icon="factory"
+              message={stockList.length ? "Ningún lote coincide con la búsqueda." : "No hay lotes en el rango seleccionado."}
+            />
+          }
+          ListFooterComponent={
+            <Pressable
+              onPress={() => navigation.navigate("HistorialLotes", { editable: true })}
+              hitSlop={8}
+              accessibilityRole="link"
+              style={styles.footerLink}
+            >
+              <Text style={styles.link}>Ver historial de lotes</Text>
+            </Pressable>
           }
         />
-      ) : activeTab === "diario" ? (
-        <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={dailyBatches}
-          keyExtractor={(item, index) => item._id || item.dailyBatchNumber || String(index)}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate("LoteDiarioForm", { id: item._id })}
-            >
-              <DailyBatchCard
-                dailyBatch={item}
-                onSchedule={() => handleSchedule(item)}
-                scheduling={schedulingId === item._id}
-              />
-            </TouchableOpacity>
+      ) : tab === "diaria" ? (
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.content, bottomPad]}
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+        >
+          {header}
+          {dailyError && dailyBatches.length === 0 ? (
+            <ErrorState message={dailyError} onRetry={refreshDaily} />
+          ) : visibleDaily.length === 0 ? (
+            <EmptyState
+              icon="calendar"
+              message={dailyBatches.length ? "Ningún lote diario coincide con los filtros." : "No hay lotes diarios."}
+            />
+          ) : (
+            <ListGroup>
+              {visibleDaily.map((b) => (
+                <DailyBatchRow
+                  key={b._id}
+                  batch={b}
+                  busy={schedulingId === b._id}
+                  onSchedule={() => schedule(b)}
+                  onPress={() => navigation.navigate("LoteDiarioForm", { id: b._id })}
+                  onLongPress={() => dailyMenu(b)}
+                />
+              ))}
+            </ListGroup>
           )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
-          ListEmptyComponent={<EmptyState message="No hay lotes diarios todavía" />}
-        />
-      ) : activeTab === "pedidos" ? (
+          <Text style={styles.summary}>
+            {formatNumber(visibleDaily.length)} de {formatNumber(dailyBatches.length)} lotes diarios
+          </Text>
+        </ScrollView>
+      ) : (
         <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={filteredManufacturingGroups}
+          style={styles.flex}
+          contentContainerStyle={[styles.content, bottomPad]}
+          data={visibleGroups}
           keyExtractor={(g) => g.order._id}
           renderItem={({ item: g }) => (
-            <OrderGroupRow
-              orderNumber={g.order.orderNumber}
-              customerName={g.order.customer?.name}
-              countLabel={`${g.lines.length} producto(s)`}
-              segments={manufacturingProgressSegments(g)}
-              caption={manufacturingProgressCaption(g) || "Sin productos"}
-              onPress={() => setManufacturingInfoOrderId(g.order._id)}
+            <ManufacturingOrderCard
+              group={g}
+              busy={busy}
+              onOpenLot={(lot) => navigation.navigate("LoteDetalle", { id: lot.batch._id, backLabel: "Pedidos" })}
+              onOpenOrder={() => navigation.navigate("PedidoDetalle", { id: g.order._id })}
+              onResume={resumeLots}
+              onPackCompleted={(lots) => packLots(g, lots)}
             />
           )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={header}
           ListEmptyComponent={
-            ordersError && manufacturingGroups.length === 0 ? (
+            ordersError && orders.length === 0 ? (
               <ErrorState message={ordersError} onRetry={refreshOrders} />
             ) : (
               <EmptyState
-                message={
-                  ordersLoading
-                    ? "Cargando…"
-                    : hasActiveManufacturingFilters && manufacturingGroups.length > 0
-                      ? "Ningún pedido coincide con los filtros."
-                      : "Aún no hay pedidos enviados a fabricación."
-                }
+                icon="orders"
+                message={groups.length ? "Ningún pedido coincide con la búsqueda." : "No hay pedidos en fabricación."}
               />
             )
           }
-          ListHeaderComponent={
-            <View style={styles.filterRow}>
-              <View style={styles.filterItem}>
-                <SelectField
-                  title="Estado"
-                  value={manufacturingStatusFilter}
-                  onChange={setManufacturingStatusFilter}
-                  options={[
-                    { label: "Estado: todos", value: "" },
-                    ...MANUFACTURING_STATUS_FILTERS.map((key) => ({ label: MANUFACTURING_STATUS_LABELS[key], value: key })),
-                  ]}
-                />
-              </View>
-              <SwitchField label="Solo con pendientes" value={manufacturingOnlyPending} onValueChange={setManufacturingOnlyPending} />
-              {hasActiveManufacturingFilters ? (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => {
-                    setManufacturingStatusFilter("");
-                    setManufacturingOnlyPending(false);
-                  }}
-                >
-                  <Text style={styles.clearButtonText}>Limpiar filtros</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          }
-        />
-      ) : (
-        <FlatList
-          style={styles.container}
-          contentContainerStyle={styles.content}
-          data={filteredPedidoGroups}
-          keyExtractor={(g) => g.order._id}
-          renderItem={({ item: g }) => (
-            <OrderGroupRow
-              orderNumber={g.order.orderNumber}
-              customerName={g.order.customer?.name}
-              countLabel={`${g.batches.length} lote(s)`}
-              segments={pedidoBatchProgressSegments(g)}
-              caption={pedidoBatchProgressCaption(g) || "Sin lotes"}
-              onPress={() => setPedidoBatchInfoOrderId(g.order._id)}
-            />
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
-          ListEmptyComponent={
-            <EmptyState
-              message={
-                batchesLoading
-                  ? "Cargando…"
-                  : hasActivePedidoBatchFilters && pedidoGroups.length > 0
-                    ? "Ningún pedido coincide con los filtros."
-                    : "No hay pedidos enviados a fabricar."
-              }
-            />
-          }
-          ListHeaderComponent={
-            <View style={styles.filterRow}>
-              <View style={styles.filterItem}>
-                <SelectField
-                  title="Estado"
-                  value={pedidoBatchStatusFilter}
-                  onChange={setPedidoBatchStatusFilter}
-                  options={[
-                    { label: "Estado: todos", value: "" },
-                    ...PEDIDO_BATCH_STATUS_FILTERS.map((key) => ({ label: PEDIDO_BATCH_STATUS_LABELS[key], value: key })),
-                  ]}
-                />
-              </View>
-              <SwitchField label="Solo con pendientes" value={pedidoBatchOnlyPending} onValueChange={setPedidoBatchOnlyPending} />
-              {hasActivePedidoBatchFilters ? (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => {
-                    setPedidoBatchStatusFilter("");
-                    setPedidoBatchOnlyPending(false);
-                  }}
-                >
-                  <Text style={styles.clearButtonText}>Limpiar filtros</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          }
         />
       )}
-
-      {activeTab === "fabricacion" ? (
-        <FloatingAddButton onPress={() => navigation.navigate("LoteFabricacionForm")} />
-      ) : activeTab === "diario" ? (
-        <FloatingAddButton onPress={() => navigation.navigate("LoteDiarioForm")} />
-      ) : null}
-
-      <ReportBatchModal
-        visible={Boolean(reportTarget)}
-        batch={reportTarget}
-        warehouses={warehouses}
-        saving={reporting}
-        onClose={() => setReportTarget(null)}
-        onSave={handleReportSave}
-      />
-
-      <ManufacturingDetailModal
-        visible={Boolean(manufacturingInfoGroup)}
-        group={manufacturingInfoGroup}
-        busyIndex={manufacturingBusyIndex}
-        onClose={() => setManufacturingInfoOrderId(null)}
-        onFabricar={handleFabricar}
-        onEliminar={handleEliminarManufacturingLine}
-      />
-
-      <PedidoBatchDetailModal
-        visible={Boolean(pedidoBatchInfoGroup)}
-        group={pedidoBatchInfoGroup}
-        busyId={pedidoBatchBusyId}
-        onClose={() => setPedidoBatchInfoOrderId(null)}
-        onEmpacar={handleEmpacar}
-        onEditar={handleEditarPedidoBatch}
-        onEliminar={handleEliminarPedidoBatch}
-      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 16, backgroundColor: colors.background },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
-  tabBar: { marginBottom: 4 },
-  tabButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: colors.neutralSoftBg,
-    marginRight: 8,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  flex: { flex: 1 },
+  tabs: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
+  content: { paddingHorizontal: 20, paddingBottom: 32, flexGrow: 1 },
+  listHeader: { marginBottom: 12 },
+  kpis: { marginBottom: 12 },
+  chips: { marginTop: 10, marginHorizontal: -20 },
+  chipsContent: { paddingHorizontal: 20 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  monthChip: {
+    height: 42,
+    maxWidth: 150,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
   },
-  tabButtonActive: {
-    backgroundColor: colors.white,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  tabButtonText: { fontSize: 13, fontWeight: "600", color: colors.slate500 },
-  tabButtonTextActive: { color: colors.brand700, fontWeight: "700" },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingBottom: 96, flexGrow: 1 },
-  placeholder: { fontSize: 13, color: colors.slate500, paddingVertical: 12 },
-  sectionLinkRow: { alignItems: "flex-end", marginBottom: 10 },
-  sectionLink: { fontSize: 13, fontWeight: "700", color: colors.brand700 },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 },
-  filterItem: { minWidth: 160 },
-  clearButton: { backgroundColor: colors.neutralSoftBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  clearButtonText: { fontSize: 12, fontWeight: "700", color: colors.slate700 },
+  pressed: { backgroundColor: colors.surface2 },
+  monthText: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 12.5, color: colors.ink },
+  summary: { marginTop: 2, fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  footerLink: { alignSelf: "center", marginTop: 8 },
+  link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
 });

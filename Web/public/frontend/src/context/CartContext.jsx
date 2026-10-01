@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { MAX_QUANTITY } from "../lib/quantity";
 
 const CartContext = createContext(null);
 const STORAGE_KEY = "charly-tienda:carrito";
@@ -23,17 +25,23 @@ export function CartProvider({ children }) {
 
   const lineKey = (item) => `${item.productId}::${item.color || ""}::${item.size || ""}`;
 
+  // Devuelve true si la suma superó el máximo y la línea quedó en MAX_QUANTITY
+  // (ya avisó con toast.error); así quien llama no muestra además «agregado».
   const addItem = (product, options = {}) => {
     const { color, size, quantity } = options;
     const qty = quantity || product.minOrderQuantity || 1;
 
+    const key = lineKey({ productId: product._id, color, size });
+    const existingNow = items.find((i) => lineKey(i) === key);
+    const capped = Boolean(existingNow) && existingNow.quantity + qty > MAX_QUANTITY;
+    if (capped) toast.error("La cantidad máxima por producto es 9,999,999");
+
     setItems((prev) => {
-      const key = lineKey({ productId: product._id, color, size });
       const existing = prev.find((i) => lineKey(i) === key);
 
       if (existing) {
         return prev.map((i) =>
-          lineKey(i) === key ? { ...i, quantity: i.quantity + qty } : i,
+          lineKey(i) === key ? { ...i, quantity: Math.min(MAX_QUANTITY, i.quantity + qty) } : i,
         );
       }
 
@@ -52,13 +60,17 @@ export function CartProvider({ children }) {
         },
       ];
     });
+
+    return capped;
   };
 
+  // Seguridad: el resultado siempre queda en [minOrderQuantity, MAX_QUANTITY].
   const updateQuantity = (item, quantity) => {
+    if (!Number.isFinite(quantity)) return;
     setItems((prev) =>
       prev.map((i) =>
         lineKey(i) === lineKey(item)
-          ? { ...i, quantity: Math.max(i.minOrderQuantity || 1, quantity) }
+          ? { ...i, quantity: Math.min(MAX_QUANTITY, Math.max(i.minOrderQuantity || 1, quantity)) }
           : i,
       ),
     );

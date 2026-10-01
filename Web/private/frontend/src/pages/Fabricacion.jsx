@@ -164,19 +164,28 @@ function Fabricacion() {
             : getPageMeta("/fabricacion").subtitle
         }
         actions={
-          <>
-            <DateRangePicker />
-            <Button icon={IconPlus} onClick={newBatch}>
-              Nuevo lote
-            </Button>
-          </>
+          activeTab === "pedidos" ? (
+            // En Pedidos las pestañas suben al encabezado, junto al título: sin
+            // KPIs, selector de fechas ni «Nuevo lote» (los lotes de pedido
+            // llegan solos desde Inventario).
+            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
+          ) : (
+            <>
+              <DateRangePicker />
+              <Button icon={IconPlus} onClick={newBatch}>
+                Nuevo lote
+              </Button>
+            </>
+          )
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <KpiInline items={kpiItems} />
-        <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
-      </div>
+      {activeTab === "pedidos" ? null : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <KpiInline items={kpiItems} />
+          <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
+        </div>
+      )}
 
       {activeTab === "lotes" ? (
         <LotesFabricacion

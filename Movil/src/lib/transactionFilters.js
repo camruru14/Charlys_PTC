@@ -1,23 +1,26 @@
 // Utilidades de búsqueda y filtrado para transacciones, portadas de
-// Web/private/frontend/src/lib/transactionFilters.js.
+// Web/private/frontend/src/lib/transactionFilters.js. Se usan en Finanzas y
+// en el Historial de transacciones.
+import { fromDateOnly } from "./format";
+
 export const defaultTransactionFilters = {
-  q: "",
-  type: "",
-  category: "",
-  status: "",
-  minAmount: "",
-  maxAmount: "",
+  q: "", // texto: concepto, referencia, categoría
+  type: "", // Ingreso | Gasto
+  category: "", // categoría exacta
+  status: "", // estado exacto
+  minAmount: "", // monto mínimo
+  maxAmount: "", // monto máximo
 };
 
+// Fecha efectiva de una transacción.
 export function txDate(t) {
   return t.date || t.createdAt;
 }
 
 // Componentes de fecha (año/mes/día) de una transacción, para agrupar por
-// mes en la gráfica de Finanzas sin correrla un día -y potencialmente de
-// mes- en husos horarios detrás de UTC. "date" se guarda como medianoche
-// UTC (fecha sin hora), así que se lee en UTC; "createdAt" (respaldo) sí es
-// un instante real, por eso ese se lee en hora local.
+// mes sin correrla un día en husos detrás de UTC. "date" se guarda como
+// medianoche UTC (fecha sin hora), así que se lee en UTC; "createdAt"
+// (respaldo) sí es un instante real, por eso ese se lee en hora local.
 export function txDateParts(t) {
   const raw = txDate(t);
   if (!raw) return null;
@@ -29,6 +32,24 @@ export function txDateParts(t) {
   return { y: d.getFullYear(), m: d.getMonth(), day: d.getDate(), time: d.getTime() };
 }
 
+// Fecha de una transacción para compararla con el rango (en hora local):
+// "date" (medianoche UTC) pasa a la medianoche local del mismo día;
+// "createdAt" se usa tal cual. null si no hay fecha válida.
+export function txRangeDate(t) {
+  if (t.date) return fromDateOnly(t.date);
+  const d = new Date(t.createdAt);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ¿La transacción cae dentro del rango? Sin rango («Todo») o sin fecha
+// válida, cuenta.
+export function inRange(t, range) {
+  if (!range?.from || !range?.to) return true;
+  const d = txRangeDate(t);
+  return !d || (d >= range.from && d <= range.to);
+}
+
+// Opciones únicas presentes (para los filtros).
 export function transactionFilterOptions(list = []) {
   const uniq = (key) => [...new Set(list.map((t) => t[key]).filter(Boolean))].sort();
   return {
@@ -38,13 +59,10 @@ export function transactionFilterOptions(list = []) {
   };
 }
 
-// range: { from: Date, to: Date } opcional, mismo criterio que batchFilters.js.
+// Filtra por rango de fechas (opcional) + filtros de texto/campos.
 export function filterTransactions(list = [], filters = defaultTransactionFilters, range = null) {
   return list.filter((t) => {
-    if (range?.from && range?.to) {
-      const d = new Date(txDate(t));
-      if (!Number.isNaN(d.getTime()) && (d < range.from || d > range.to)) return false;
-    }
+    if (!inRange(t, range)) return false;
     if (filters.q) {
       const q = filters.q.toLowerCase();
       const haystack = [t.concept, t.reference, t.category].filter(Boolean).join(" ").toLowerCase();
@@ -59,4 +77,8 @@ export function filterTransactions(list = [], filters = defaultTransactionFilter
   });
 }
 
-export default { defaultTransactionFilters, txDate, txDateParts, transactionFilterOptions, filterTransactions };
+// Transacciones sumadas por tipo.
+export function sumByType(list) {
+  const sum = (type) => list.filter((t) => t.type === type).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  return { income: sum("Ingreso"), expense: sum("Gasto") };
+}

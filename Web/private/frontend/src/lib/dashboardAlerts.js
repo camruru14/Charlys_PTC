@@ -1,4 +1,4 @@
-import { fmtNumber, fmtTime, fmtDate, fmtRelativeDay } from "./format";
+import { fmtNumber, fmtTime, fmtDate, fmtRelativeDay, formatBatchNumber } from "./format";
 import { isBelowMinimum } from "./stockLevel";
 import { dispatchInfo, isOrderDelivered } from "./logistics";
 import { productLabel } from "./batchFlow";
@@ -29,8 +29,8 @@ function stoppedAlerts(batches) {
       tone: "rose",
       title: b.productionLine
         ? `${b.productionLine} detenida${since(b.stoppedAt)}`
-        : `Lote ${b.batchNumber} detenido${since(b.stoppedAt)}`,
-      detail: [b.batchNumber, productLabel(b), b.stopReason].filter(Boolean).join(" · "),
+        : `Lote ${formatBatchNumber(b.batchNumber)} detenido${since(b.stoppedAt)}`,
+      detail: [formatBatchNumber(b.batchNumber), productLabel(b), b.stopReason].filter(Boolean).join(" · "),
       to: `/fabricacion?id=${b._id}`,
     }));
 }

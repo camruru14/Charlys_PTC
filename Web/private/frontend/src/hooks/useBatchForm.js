@@ -4,10 +4,11 @@ import { api } from "../lib/api";
 import { useFetch } from "./useFetch";
 import { useConfirm } from "./useConfirm";
 import { useProductionLines } from "./useProductionLines";
+import { formatBatchNumber } from "../lib/format";
 
 export const emptyBatchForm = {
   batchNumber: "",
-  product: "Pajilla",
+  product: "", // nombre de una subcategoría (ProductSelect); sin valor por defecto
   color: "Rojo",
   productionLine: "",
   producedQuantity: "",
@@ -79,7 +80,7 @@ export function useBatchForm(list, refetch) {
     setEditingId(batch._id);
     setForm({
       batchNumber: batch.batchNumber || "",
-      product: batch.product || "Pajilla",
+      product: batch.product || "",
       color: batch.color || "",
       productionLine: batch.productionLine || "",
       producedQuantity: batch.producedQuantity ?? "",
@@ -95,6 +96,10 @@ export function useBatchForm(list, refetch) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!form.product) {
+      toast.error("Elige la categoría y el producto");
+      return;
+    }
     setSaving(true);
     const { batchNumber, ...rest } = form;
     const payload = {
@@ -111,7 +116,7 @@ export function useBatchForm(list, refetch) {
         toast.success("Lote actualizado");
       } else {
         const res = await api.post("/productionBatches", payload);
-        toast.success(res?.batchNumber ? `Lote ${res.batchNumber} creado` : "Lote creado");
+        toast.success(res?.batchNumber ? `Lote ${formatBatchNumber(res.batchNumber)} creado` : "Lote creado");
       }
       setModalOpen(false);
       refetch();
@@ -124,7 +129,7 @@ export function useBatchForm(list, refetch) {
 
   // Devuelve true si el lote se eliminó.
   async function handleDelete(batch) {
-    if (!(await confirm(`¿Eliminar el lote ${batch.batchNumber}?`, { danger: true }))) return false;
+    if (!(await confirm(`¿Eliminar el lote ${formatBatchNumber(batch.batchNumber)}?`, { danger: true }))) return false;
     try {
       await api.del(`/productionBatches/${batch._id}`);
       toast.success("Lote eliminado");

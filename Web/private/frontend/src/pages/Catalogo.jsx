@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
+import { useSubcategories } from "../hooks/useSubcategories";
 import { api } from "../lib/api";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import ProductFormModal from "../components/catalog/ProductFormModal";
@@ -22,9 +23,11 @@ import { statusTone } from "../lib/statusDomains";
 const PUBLIC_STORE_URL = import.meta.env.VITE_PUBLIC_STORE_URL || "";
 const ALL = "todas";
 
+// Sin nombre (el nombre del producto es el de su subcategoría) y sin categoría
+// elegida: la subcategoría se habilita al elegirla.
 const emptyForm = {
-  name: "",
-  category: "Pelotas",
+  category: "",
+  subcategory: "",
   description: "",
   price: "",
   compareAtPrice: "",
@@ -48,6 +51,7 @@ function Catalogo() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/products/admin/all");
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const { subcategories } = useSubcategories();
 
   // Pestañas: «Todas» y cada categoría que existe, con su conteo (?categoria=).
   const categories = useMemo(() => [...new Set(list.map((p) => p.category).filter(Boolean))].sort(), [list]);
@@ -84,8 +88,8 @@ function Catalogo() {
   function openEdit(product) {
     setEditingId(product._id);
     setForm({
-      name: product.name || "",
       category: product.category,
+      subcategory: product.subcategory || "",
       description: product.description || "",
       price: product.price ?? "",
       compareAtPrice: product.compareAtPrice ?? "",
@@ -101,7 +105,12 @@ function Catalogo() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+    // Las subcategorías dependen de la categoría: al cambiarla se limpia la elegida.
+    setForm((f) => ({
+      ...f,
+      [name]: type === "checkbox" ? checked : value,
+      ...(name === "category" && value !== f.category ? { subcategory: "" } : null),
+    }));
   };
 
   function toggleColor(color) {
@@ -246,6 +255,8 @@ function Catalogo() {
         onClose={() => setModalOpen(false)}
         editingId={editingId}
         form={form}
+        subcategories={subcategories}
+        products={list}
         handleChange={handleChange}
         onToggleColor={toggleColor}
         onSubmit={handleSubmit}

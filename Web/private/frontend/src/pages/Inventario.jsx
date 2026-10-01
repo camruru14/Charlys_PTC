@@ -10,6 +10,7 @@ import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { Field, SelectField } from "../components/ui/Field";
+import ProductSelect from "../components/ui/ProductSelect";
 import ProductoTerminado from "./inventario/ProductoTerminado";
 import MateriaPrima from "./inventario/MateriaPrima";
 import PedidosInventario from "./inventario/PedidosInventario";
@@ -117,6 +118,11 @@ function Inventario() {
   // así no se pisa un valor que ya tuviera.
   async function handleSubmit(e) {
     e.preventDefault();
+    // El nombre de un producto terminado es el de una subcategoría.
+    if (form.category === "Producto Terminado" && !form.name) {
+      toast.error("Elige la categoría y el producto");
+      return;
+    }
     setSaving(true);
     const payload = {
       name: form.name,
@@ -215,7 +221,11 @@ function Inventario() {
         }
       >
         <form id="inv-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Artículo" name="name" value={form.name} onChange={handleChange} required />
+          {isFinished ? (
+            <ProductSelect name="name" value={form.name} onChange={handleChange} />
+          ) : (
+            <Field label="Artículo" name="name" value={form.name} onChange={handleChange} required />
+          )}
           {isFinished ? (
             <Field label="Tipo" name="type" value={form.type} onChange={handleChange} placeholder="Ej. Normal, Jumbo, 60 mm" />
           ) : (

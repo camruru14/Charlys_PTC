@@ -1,88 +1,135 @@
-// Mapeo de estado -> tono de color, compartido entre pantallas que muestran
-// el mismo tipo de estado (ej. el status de un lote aparece tanto en
-// FabricacionScreen como en el "Lotes recientes" del Dashboard).
-export function batchStatusTone(status) {
-  switch (status) {
-    case "En Proceso":
-      return "blue";
-    case "Completado":
-      return "green";
-    case "Detenido":
-      return "red";
-    case "Programado":
-    default:
-      return "gray";
-  }
+// Mapa de estados de negocio -> tono, agrupado por dominio. Copia de
+// Web/private/frontend/src/lib/statusDomains.js: un mismo estado tiene el
+// mismo tono en todos los dominios, con una sola excepción intencional:
+// "Pendiente" es gris en los dominios operativos (pedido, ruta, parada) y
+// ámbar en los financieros (transacción).
+// Criterio: azul = pasando ahora mismo (Procesando, En proceso, En
+// fabricación, Recolectando); ámbar = programado o en espera (Programado,
+// Esperando lote, Por enviar).
+// Tonos: gray, blue, amber, green, rose, purple, teal (ver lib/theme.js).
+export const STATUS_DOMAINS = {
+  pedido: {
+    Pendiente: "gray",
+    Procesando: "blue",
+    "En Fabricación": "blue",
+    Empacado: "purple",
+    "En Tránsito": "teal",
+    Entregado: "green",
+  },
+  "pedido-inventario": {
+    "Sin verificar": "gray",
+    Verificando: "blue",
+    "Listo para empacar": "green",
+    "Esperando lote": "amber",
+    Empacado: "purple",
+  },
+  "linea-inventario": {
+    "Por verificar": "gray",
+    Verificado: "green",
+    Empacado: "purple",
+    "Existencia parcial": "amber",
+    "Sin existencia": "rose",
+    "En fabricación": "blue",
+  },
+  lote: {
+    Programado: "amber",
+    "En proceso": "blue",
+    Detenido: "rose",
+    Completado: "green",
+    "Por enviar": "amber",
+    "Completado · por enviar": "amber",
+    "En bodega": "green",
+    Empacado: "purple",
+  },
+  "pedido-fabricacion": {
+    Programado: "amber",
+    "En proceso": "blue",
+    "En proceso · detenido": "rose",
+    "Por empacar": "green",
+    Empacado: "purple",
+  },
+  ruta: {
+    Pendiente: "gray",
+    Recolectando: "blue",
+    "En tránsito": "teal",
+    Completada: "green",
+    Demorada: "rose",
+  },
+  parada: {
+    Pendiente: "gray",
+    Listo: "green",
+    Incompleto: "amber",
+    "En tránsito": "teal",
+    Entregado: "green",
+  },
+  despacho: {
+    Listo: "green",
+    // "Faltan N de M" (ámbar) es dinámico: lo resuelve statusTone()
+    Esperando: "gray",
+    // Pedido que volvió de una entrega parcial
+    "Entrega parcial": "amber",
+  },
+  stock: {
+    Suficiente: "green",
+    Estable: "blue",
+    "Bajo mínimo": "rose",
+  },
+  transaccion: {
+    Pagado: "green",
+    Pendiente: "amber",
+    Completado: "green",
+  },
+  catalogo: {
+    Destacado: "blue",
+    Activo: "green",
+    Inactivo: "gray",
+  },
+  empleado: {
+    Activo: "green",
+    Inactivo: "gray",
+  },
+  // Líneas de producción (Configuración)
+  linea: {
+    Activa: "green",
+    Inactiva: "gray",
+  },
+  asistencia: {
+    Completo: "green",
+    "Con extra": "blue",
+    Tarde: "amber",
+    Ausente: "rose",
+  },
+  vehiculo: {
+    Disponible: "green",
+    "En ruta": "teal",
+  },
+};
+
+// Unifica variantes de escritura que llegan del backend ("En Proceso").
+const ALIASES = {
+  "En Proceso": "En proceso",
+};
+
+export function normalizeStatus(status) {
+  if (status == null) return "";
+  return ALIASES[status] || status;
 }
+
+export function statusTone(status, domain) {
+  const label = normalizeStatus(status);
+  if (domain === "despacho") {
+    // «Faltan N de M» es ámbar; «Listo · N de M» y «Esperando · N de M» toman
+    // el tono de su prefijo.
+    if (/^Faltan \d+ de \d+$/.test(label)) return "amber";
+    const prefix = label.split(" · ")[0];
+    return STATUS_DOMAINS.despacho[prefix] || "gray";
+  }
+  return STATUS_DOMAINS[domain]?.[label] || "gray";
+}
+
+// ---- Atajos que ya usan las pantallas ----
 
 export function transactionStatusTone(status) {
-  return status === "Completado" ? "green" : "amber";
+  return statusTone(status, "transaccion");
 }
 
-export function inventoryStockTone(item) {
-  const min = Number(item?.minStock || 0);
-  const stock = Number(item?.stock || 0);
-  if (min <= 0) return "gray";
-  if (stock <= 0) return "red";
-  if (stock <= min) return "amber";
-  return "gray";
-}
-
-// Mismo mapeo "global" que StatusPill.jsx del panel web (STATUS_TONE, no la
-// variante ORDER_STATUS_TONE que usa Pedidos.jsx solo para su tabla) — es el
-// criterio que ya seguían batchStatusTone/transactionStatusTone acá arriba.
-export function orderStatusTone(status) {
-  switch (status) {
-    case "Procesando":
-      return "blue";
-    case "Empacado":
-    case "Entregado":
-      return "green";
-    default:
-      // Pendiente, En Fabricación, En Tránsito
-      return "amber";
-  }
-}
-
-export function paymentStatusTone(status) {
-  if (status === "Pagado") return "green";
-  if (status === "Pendiente") return "amber";
-  return "gray"; // Reembolsado
-}
-
-export function dispatchStatusTone(status) {
-  switch (status) {
-    case "A tiempo":
-      return "blue";
-    case "Demorado":
-      return "red";
-    case "Entregado":
-      return "green";
-    default:
-      return "amber"; // Saliendo
-  }
-}
-
-// Mapeo de estado -> tono EXCLUSIVO de la lista de Pedidos (OrderCard y
-// PedidoFormScreen): un color por cada una de las 6 etapas, distinto de
-// orderStatusTone() de arriba — igual que ORDER_STATUS_TONE en
-// Web/private/frontend/src/pages/Pedidos.jsx, que también es exclusivo de
-// esa tabla y no toca el StatusPill global (esas mismas palabras, ej.
-// "Empacado", significan otra cosa en otras pantallas — ver comentario de
-// ORDER_STATUS_TONE en la web).
-export function orderStatusToneDetailed(status) {
-  switch (status) {
-    case "Procesando":
-      return "blue";
-    case "En Fabricación":
-      return "yellow";
-    case "Empacado":
-      return "purple";
-    case "En Tránsito":
-      return "sky";
-    case "Entregado":
-      return "green";
-    default:
-      return "gray"; // Pendiente
-  }
-}

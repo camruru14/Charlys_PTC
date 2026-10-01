@@ -1,22 +1,23 @@
 import express from "express";
 import ordersController from "../controller/ordersController.js";
+import { requireAdministrator } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router
-  .route("/")
-  .get(ordersController.getOrders)
-  .post(ordersController.insertOrder);
+// Los pedidos solo los crea el checkout de la tienda (public/backend): el
+// panel los consulta, los hace avanzar y elimina los ya entregados. No hay
+// POST ni PUT.
+router.route("/").get(ordersController.getOrders);
 
 // Verificar varias líneas de uno o varios pedidos, todo o nada (Inventario >
 // Pedidos: «Verificar todo» y «Verificar seleccionados»).
 router.route("/verify-bulk").post(ordersController.verifyBulk);
 
+// Eliminar un pedido entregado: solo administradores (403 si no).
 router
   .route("/:id")
   .get(ordersController.getOrder)
-  .put(ordersController.updateOrder)
-  .delete(ordersController.deleteOrder);
+  .delete(requireAdministrator(), ordersController.deleteOrder);
 
 // Avanzar el estado del pedido en su ciclo de vida
 router.route("/:id/status").patch(ordersController.updateStatus);

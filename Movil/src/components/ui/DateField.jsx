@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { colors } from "../../lib/theme";
+import Icon from "./Icon";
+import { FieldLabel, fieldStyles } from "./fieldStyles";
 
 const MONTHS_SHORT = [
   "ene", "feb", "mar", "abr", "may", "jun",
   "jul", "ago", "sep", "oct", "nov", "dic",
 ];
 
-// mode="date": value es "yyyy-mm-dd" (igual que antes, Fase 3 original).
-// mode="time" (Fase 3 v2, para Entrada/Salida de "Registrar marcación"):
-// value es "HH:mm" en 24 horas. Ambos casos evitan `new Date(string)` para
-// no correr fecha/hora en husos horarios detrás de UTC.
+// mode="date": value es "yyyy-mm-dd".
+// mode="time" (Entrada/Salida de "Registrar marcación"): value es "HH:mm" en
+// 24 horas. Ambos casos evitan `new Date(string)` para no correr fecha/hora
+// en husos horarios detrás de UTC.
 function parseInputValue(value, mode) {
   const now = new Date();
   if (mode === "time") {
@@ -61,8 +63,10 @@ export default function DateField({
   required = false,
   mode = "date",
   maximumDate,
+  style,
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const placeholder = mode === "time" ? "Seleccionar hora" : "Seleccionar fecha";
 
   const handleChange = (event, selectedDate) => {
     // Android cierra el picker solo al elegir/cancelar; iOS lo deja inline.
@@ -72,21 +76,20 @@ export default function DateField({
   };
 
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>
-        {label}
-        {required ? " *" : ""}
-      </Text>
-      <TouchableOpacity
-        style={styles.input}
+    <View style={[fieldStyles.field, style]}>
+      <FieldLabel label={label} required={required} />
+      <Pressable
+        style={({ pressed }) => [fieldStyles.box, pressed && { backgroundColor: colors.surface2 }]}
         onPress={() => setShowPicker(true)}
-        activeOpacity={0.8}
         hitSlop={4}
+        accessibilityRole="button"
+        accessibilityLabel={`${label || placeholder}: ${value ? displayValue(value, mode) : "sin seleccionar"}`}
       >
-        <Text style={value ? styles.value : styles.placeholder}>
-          {value ? displayValue(value, mode) : mode === "time" ? "Seleccionar hora" : "Seleccionar fecha"}
+        <Text style={value ? fieldStyles.value : fieldStyles.placeholder}>
+          {value ? displayValue(value, mode) : placeholder}
         </Text>
-      </TouchableOpacity>
+        <Icon name="calendar" size={18} color={colors.faint} />
+      </Pressable>
 
       {showPicker ? (
         <DateTimePicker
@@ -100,31 +103,3 @@ export default function DateField({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  field: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.slate700,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: colors.white,
-  },
-  value: {
-    fontSize: 15,
-    color: colors.text,
-  },
-  placeholder: {
-    fontSize: 15,
-    color: colors.slate400,
-  },
-});

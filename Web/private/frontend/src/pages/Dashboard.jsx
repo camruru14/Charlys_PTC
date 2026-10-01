@@ -17,7 +17,7 @@ import { batchState, batchStart } from "../lib/batchFlow";
 import { dashboardAlerts } from "../lib/dashboardAlerts";
 import { IconFactory, IconDollar, IconOrders } from "../lib/icons";
 import { CHART_COLORS } from "../lib/tones";
-import { fmtNumber, fmtMoney, fmtDateYear, fmtPercent } from "../lib/format";
+import { fmtNumber, fmtMoney, fmtDateYear, fmtPercent, formatBatchNumber } from "../lib/format";
 import { getPageMeta } from "../lib/nav";
 
 const filterSelectClass =
@@ -25,7 +25,7 @@ const filterSelectClass =
 const linkClass = "text-[12.5px] font-semibold text-primary hover:text-primary-hover";
 
 const batchColumns = [
-  { key: "batchNumber", label: "Lote", render: (b) => <span className="t-row-name tabular-nums">{b.batchNumber}</span> },
+  { key: "batchNumber", label: "Lote", render: (b) => <span className="t-row-name tabular-nums">{formatBatchNumber(b.batchNumber)}</span> },
   {
     key: "date",
     label: "Fecha",

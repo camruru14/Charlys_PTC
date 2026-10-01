@@ -2,6 +2,8 @@
 // Web/private/frontend/src/lib/batchFilters.js. `operator`/`minProduced` se
 // agregan acá (Fase 5) para la vista completa "Historial de lotes" — la
 // card compacta del Dashboard (Fase 4) simplemente no los usa.
+import { fromDateOnly } from "./format";
+
 export const defaultBatchFilters = {
   q: "",
   product: "",
@@ -32,13 +34,14 @@ export function batchFilterOptions(list = []) {
   };
 }
 
-// range: { from: Date, to: Date } opcional — todavía no hay selector de
-// rango de fechas en la app móvil, se deja listo para cuando se agregue.
+// range: { from: Date, to: Date } opcional (rango de fechas global).
 export function filterBatches(list = [], filters = defaultBatchFilters, range = null) {
   return list.filter((b) => {
     if (range?.from && range?.to) {
-      const c = new Date(b.startDate || b.createdAt);
-      if (Number.isNaN(c.getTime()) || c < range.from || c > range.to) return false;
+      // startDate es fecha sin hora (medianoche UTC): se lee como el mismo día
+      // en hora local, igual que el rango; createdAt es un instante real.
+      const c = b.startDate ? fromDateOnly(b.startDate) : new Date(b.createdAt);
+      if (!c || Number.isNaN(c.getTime()) || c < range.from || c > range.to) return false;
     }
     if (filters.q) {
       const q = filters.q.toLowerCase();

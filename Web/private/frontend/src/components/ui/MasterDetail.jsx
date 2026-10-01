@@ -14,16 +14,19 @@ import { useFillHeight } from "../../hooks/useFillHeight";
     </MasterDetail>
 */
 
-// fill: en pantallas lg, estira ambos paneles hasta el margen inferior de la
-// página (hooks/useFillHeight.js). Sin fill, alto fijo de 100dvh − 190px.
+// Alto: igual que el de Configuración en TODAS las vistas. En pantallas lg el
+// bloque llega hasta el margen inferior de la página (hooks/useFillHeight.js):
+// la lista y el detalle miden lo mismo, se estiran aunque tengan pocos
+// elementos y el contenido hace scroll dentro de cada tarjeta (el encabezado de
+// cada una queda fijo). En pantallas chicas se apilan con su alto natural.
 
-export function MasterDetail({ listWidth = 360, fill = false, className = "", children }) {
+export function MasterDetail({ listWidth = 360, className = "", children }) {
   const ref = useRef(null);
-  const height = useFillHeight(ref, fill);
+  const height = useFillHeight(ref);
   return (
     <div
       ref={ref}
-      className={`grid min-h-[520px] grid-cols-1 gap-4 ${fill ? "" : "lg:h-[calc(100dvh-190px)]"} lg:grid-cols-[var(--md-list)_minmax(0,1fr)] ${className}`}
+      className={`grid min-h-[520px] grid-cols-1 gap-4 lg:grid-cols-[var(--md-list)_minmax(0,1fr)] ${className}`}
       style={{ "--md-list": `${listWidth}px`, height: height ?? undefined }}
     >
       {children}
@@ -42,10 +45,14 @@ export function ListPanel({ header, footer, children }) {
 }
 
 // bodyClassName: clases extra para el cuerpo con scroll (opcional).
-export function DetailPanel({ header, footer, bodyClassName = "", children }) {
+// plainHeader: encabezado blanco y sin relleno propio (el contenido trae sus
+// secciones con su padding y divisores).
+export function DetailPanel({ header, footer, bodyClassName = "", plainHeader = false, children }) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
-      {header ? <div className="border-b border-line-soft bg-surface-2 px-5 py-4">{header}</div> : null}
+      {header ? (
+        <div className={plainHeader ? "border-b border-line-soft bg-surface" : "border-b border-line-soft bg-surface-2 px-5 py-4"}>{header}</div>
+      ) : null}
       <div className={`min-h-0 flex-1 overflow-y-auto p-5 ${bodyClassName}`}>{children}</div>
       {footer ? <div className="border-t border-line-soft bg-surface-2 px-5 py-3">{footer}</div> : null}
     </section>

@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useRememberedSelection } from "../../hooks/useRememberedSelection";
+import { useMovedIds } from "../../hooks/useMovedIds";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
@@ -10,12 +11,20 @@ import FilterChips from "../../components/ui/FilterChips";
 import PillSelector from "../../components/ui/PillSelector";
 import ActionsMenu from "../../components/ui/ActionsMenu";
 import ConfirmModal from "../../components/ui/ConfirmModal";
+import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
+import { TONE_SOFT } from "../../lib/tones";
 import { fmtNumber, fmtDate, fmtTime } from "../../lib/format";
 import { IconCheck, IconFactory, IconWarehouse, IconOrders, IconPlus } from "../../lib/icons";
 import {
+  DISPATCH_GROUPS,
+  dispatchCounts,
+  dispatchGroup,
   dispatchInfo,
+  groupDispatchOrders,
+  missingBreakdown,
+  pickupNote,
   incompleteText,
   lotNote,
   isPartialReturn,
@@ -29,16 +38,8 @@ import {
   shortName,
 } from "../../lib/logistics";
 
-const CHIPS = [
-  { key: "todos", label: "Todos", tone: "gray" },
-  { key: "sin-ruta", label: "Sin ruta", tone: "blue" },
-  { key: "incompletos", label: "Incompletos", tone: "amber" },
-];
-const FILTER_TEST = {
-  todos: () => true,
-  "sin-ruta": (o) => !o.delivery?.route,
-  incompletos: (o) => !dispatchInfo(o).ready,
-};
+// Chips: «Todos» más uno por grupo de la jerarquía (lib/logistics.js).
+const CHIPS = [{ key: "todos", label: "Todos", tone: "gray" }, ...DISPATCH_GROUPS.map((g) => ({ key: g.key, label: g.chip, tone: g.tone }))];
 const LOCATION_ICON = { "Almacén": IconWarehouse, "Fabricación": IconFactory };
 const routeIdOf = (order) => String(order.delivery?.route?._id || order.delivery?.route || "");
 
@@ -52,10 +53,12 @@ function PickupChip({ location }) {
   );
 }
 
-function OrderRow({ order, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
+function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
   const info = dispatchInfo(order);
   const assigned = order.delivery?.route;
   const note = lotNote(order);
+  const missing = group === "incompletos" ? missingBreakdown(order) : [];
+  const pickup = group === "recoleccion" ? pickupNote(order, route) : null;
 
   let action;
   if (assigned?.number) {
@@ -83,7 +86,7 @@ function OrderRow({ order, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5 border-b border-line-soft px-3.5 py-3">
+    <div className={`flex flex-col gap-1.5 border-b border-line-soft px-3.5 py-3 ${moved ? "row-moved" : ""}`}>
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
@@ -97,6 +100,22 @@ function OrderRow({ order, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
         <span className="truncate text-[12.5px] text-ink-2">{order.customer?.name || "—"}</span>
         <span className="shrink-0 text-[11px] text-subtle">{assigned?.zone || "—"}</span>
       </div>
+      {missing.length ? (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[11px] text-muted">Falta:</span>
+          {missing.map((m) => (
+            <span key={m.label} className={`inline-flex h-5 items-center rounded-[6px] px-1.5 text-[11px] font-semibold ${TONE_SOFT[m.tone]}`}>
+              {m.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {pickup ? (
+        <p className="t-aux">
+          {assigned?.number ? `Ruta ${assigned.number} · ${assigned.zone} · ` : ""}
+          {pickup}
+        </p>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <span className="flex flex-wrap gap-1">
           {orderPickups(order).map((l) => (
@@ -332,8 +351,11 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
   // Aquí «la lista» del detalle son las rutas por salir (el selector de arriba).
   useRememberedSelection("logistica/despacho", { selectedId: openRouteId, setSelectedId: onOpenRoute, ids: pendingRoutes.map((r) => r._id) });
 
-  const counts = useMemo(() => Object.fromEntries(CHIPS.map((c) => [c.key, orders.filter(FILTER_TEST[c.key]).length])), [orders]);
-  const visible = orders.filter(FILTER_TEST[filter] || FILTER_TEST.todos);
+  // Todo se recalcula con cada lectura de datos: grupos, orden, chips y conteos.
+  const counts = useMemo(() => dispatchCounts(orders), [orders]);
+  const groups = useMemo(() => groupDispatchOrders(orders, filter), [orders, filter]);
+  const moved = useMovedIds(orders, dispatchGroup);
+  const routesById = useMemo(() => new Map(routes.map((r) => [String(r._id), r])), [routes]);
 
   function add(order) {
     const url = `/routes/${buildingRoute._id}/orders`;
@@ -355,7 +377,7 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
                 {fmtDate(new Date())} · {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
               </span>
             </div>
-            <FilterChips value={filter} onChange={onFilter} options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
+            <FilterChips compact value={filter} onChange={onFilter} showEmpty options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
           </>
         }
       >
@@ -363,11 +385,27 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
           <EmptyState title="Cargando pedidos…" />
         ) : ordersError ? (
           <EmptyState title="No se pudieron cargar los pedidos" description={ordersError} />
-        ) : visible.length === 0 ? (
+        ) : groups.length === 0 ? (
           <EmptyState title={orders.length ? "Ningún pedido coincide con el filtro." : "No hay pedidos empacados por despachar."} />
         ) : (
-          visible.map((o) => (
-            <OrderRow key={o._id} order={o} openRoute={buildingRoute} busy={busy} onAdd={add} onOpenRoute={onOpenRoute} onNewRoute={onNewRoute} />
+          groups.map((g) => (
+            <Fragment key={g.key}>
+              <ListGroupHeader label={g.label} count={g.items.length} />
+              {g.items.map((o) => (
+                <OrderRow
+                  key={o._id}
+                  order={o}
+                  group={g.key}
+                  route={routesById.get(routeIdOf(o))}
+                  moved={moved.has(String(o._id))}
+                  openRoute={buildingRoute}
+                  busy={busy}
+                  onAdd={add}
+                  onOpenRoute={onOpenRoute}
+                  onNewRoute={onNewRoute}
+                />
+              ))}
+            </Fragment>
           ))
         )}
       </ListPanel>

@@ -1,22 +1,23 @@
 import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../hooks/useAuth";
-import CustomButton from "../components/ui/CustomButton";
-import { colors } from "../lib/theme";
+import BrandMark from "../components/ui/BrandMark";
+import Button from "../components/ui/Button";
+import FormField from "../components/ui/FormField";
+import Icon from "../components/ui/Icon";
+import PasswordField from "../components/ui/PasswordField";
+import { colors, tones } from "../lib/theme";
+import { fonts, type } from "../lib/typography";
 
 // Pantalla de inicio de sesión del panel administrativo, versión móvil de
-// Web/private/frontend/src/pages/Login.jsx. Autentica contra
-// POST /auth/login (src/lib/api.js) vía AuthContext.
+// Web/private/frontend/src/pages/Login.jsx (logo IC, «Industrias Charly»,
+// «Panel administrativo» y la tarjeta con correo y contraseña). Autentica
+// contra POST /auth/login (src/lib/api.js) vía AuthContext. La línea «Demo»
+// de la web no se muestra: la app apunta a la base de producción.
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,68 +25,62 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (!email || !password || submitting) return;
     setError("");
     setSubmitting(true);
     const result = await login({ email, password });
     setSubmitting(false);
-
-    if (!result.ok) {
-      setError(result.message);
-    }
     // Si result.ok, AuthContext actualiza isAuthenticated y RootNavigator
     // cambia solo al DrawerNavigator.
+    if (!result.ok) setError(result.message);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StatusBar style="dark" />
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoText}>IC</Text>
-          </View>
+          <BrandMark size={48} />
           <Text style={styles.title}>Industrias Charly</Text>
-          <Text style={styles.subtitle}>Panel administrativo</Text>
+          <Text style={type.subtitle}>Panel administrativo</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Correo</Text>
-          <TextInput
-            style={styles.input}
+          <FormField
+            label="Correo"
             value={email}
             onChangeText={setEmail}
             placeholder="admin@industriascharly.com"
-            placeholderTextColor={colors.slate400}
-            autoCapitalize="none"
-            autoCorrect={false}
             keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            textContentType="username"
             editable={!submitting}
+            returnKeyType="next"
           />
-
-          <Text style={styles.label}>Contraseña</Text>
-          <TextInput
-            style={styles.input}
+          <PasswordField
+            label="Contraseña"
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            placeholderTextColor={colors.slate400}
-            secureTextEntry
+            autoComplete="password"
+            textContentType="password"
             editable={!submitting}
+            returnKeyType="go"
+            onSubmitEditing={handleSubmit}
           />
 
           {error ? (
-            <View style={styles.errorBox}>
+            <View style={styles.errorBox} accessibilityLiveRegion="polite">
+              <Icon name="alert" size={16} color={tones.rose.text} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
 
-          <CustomButton
+          <Button
             title={submitting ? "Ingresando…" : "Iniciar sesión"}
             onPress={handleSubmit}
             loading={submitting}
@@ -98,76 +93,26 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    padding: 24,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 24,
-    gap: 6,
-  },
-  logoBadge: {
-    height: 48,
-    width: 48,
-    borderRadius: 16,
-    backgroundColor: colors.brand600,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  logoText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.brand700,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: colors.slate500,
-  },
+  flex: { flex: 1, backgroundColor: colors.canvas },
+  scrollContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: 20 },
+  header: { alignItems: "center", gap: 6, marginBottom: 24 },
+  title: { marginTop: 6, fontFamily: fonts.extrabold, fontSize: 21, letterSpacing: -0.3, color: colors.ink },
   form: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.slate200,
     padding: 20,
-    gap: 4,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.slate700,
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: colors.text,
   },
   errorBox: {
-    backgroundColor: colors.dangerSoftBg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: tones.rose.bg,
     borderRadius: 12,
-    padding: 10,
-    marginTop: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
   },
-  errorText: {
-    color: colors.danger,
-    fontSize: 13,
-    textAlign: "center",
-  },
+  errorText: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: tones.rose.text },
 });

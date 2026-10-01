@@ -11,7 +11,7 @@ import { Field, SelectField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { IconWarehouse } from "../../lib/icons";
 import { withCurrentLine } from "../../hooks/useProductionLines";
-import { fmtNumber, fmtDate, fmtDay2, fmtTime, fmtDateTime, fmtRelativeDay } from "../../lib/format";
+import { fmtNumber, fmtDate, fmtDay2, fmtTime, fmtDateTime, fmtRelativeDay, formatBatchNumber } from "../../lib/format";
 import {
   batchState,
   batchHeaderState,
@@ -35,7 +35,7 @@ function SectionLabel({ children, aside }) {
   );
 }
 
-// Texto bajo el número del lote: «Pajilla Verde · Línea 3 · terminó hoy 14:10».
+// Texto bajo el número del lote: «Pajilla jumbo Verde · Línea 3 · terminó hoy 14:10».
 function headerCaption(b) {
   const parts = [productLabel(b) || "—", b.productionLine || "Sin línea"];
   const start = batchStart(b);
@@ -99,7 +99,7 @@ function Tiles({ batch, previous, average, historyCount }) {
     const diffPct = Math.round((diff / previous.producedQuantity) * 100);
     vs = {
       value: diffPct === 0 ? "0 %" : `${diffPct < 0 ? MINUS : "+"}${Math.abs(diffPct)} %`,
-      note: `${signed(diff)} u. vs. ${previous.batchNumber}`,
+      note: `${signed(diff)} u. vs. ${formatBatchNumber(previous.batchNumber)}`,
       tone: diff < 0 ? "text-tone-amber-text" : diff > 0 ? "text-tone-green-text" : "text-ink",
     };
   }
@@ -153,7 +153,7 @@ function LineChart({ batch, history }) {
               <div
                 className={`w-full max-w-[44px] rounded-[4px_4px_0_0] ${current ? "bg-chart-1" : "bg-chart-history"}`}
                 style={{ height: `${(value / scale) * BAR_AREA}px` }}
-                title={b.batchNumber}
+                title={formatBatchNumber(b.batchNumber)}
               />
             </div>
           );
@@ -378,7 +378,7 @@ function BatchDetail({ batch, batches, operators, lines, busy, openBox, setOpenB
       header={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-ink">{batch.batchNumber}</h2>
+            <h2 className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-ink">{formatBatchNumber(batch.batchNumber)}</h2>
             <StatusPill status={batchHeaderState(batch)} domain="lote" size="lg" />
             <span className="text-[12.5px] tabular-nums text-muted">{headerCaption(batch)}</span>
           </div>

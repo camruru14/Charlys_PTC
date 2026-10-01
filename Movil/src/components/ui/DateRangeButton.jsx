@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import BottomSheet from "./BottomSheet";
+import Button from "./Button";
 import DateField from "./DateField";
+import FilterChips from "./FilterChips";
+import Icon from "./Icon";
 import { useDateRange, rangeLabel } from "../../context/DateRangeContext";
 import { colors } from "../../lib/theme";
+import { fonts, type } from "../../lib/typography";
 
 // Date -> "yyyy-mm-dd" para precargar los DateField del rango personalizado.
 function toInputValue(date) {
@@ -13,13 +18,14 @@ function toInputValue(date) {
   return `${y}-${m}-${d}`;
 }
 
-// Botón compacto de header (Dashboard/Fabricación/Finanzas/Historiales) que
-// abre el selector de rango de fechas global.
+// Chip del encabezado (Dashboard/Fabricación/Finanzas/Historiales) que abre
+// el selector de rango de fechas global.
 export default function DateRangeButton() {
   const range = useDateRange();
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(toInputValue(range.from));
   const [to, setTo] = useState(toInputValue(range.to));
+  const label = rangeLabel(range);
 
   useEffect(() => {
     setFrom(toInputValue(range.from));
@@ -35,95 +41,101 @@ export default function DateRangeButton() {
     setOpen(false);
   };
 
+  const presetOptions = Object.entries(range.presets).map(([key, p]) => ({
+    value: key,
+    label: p.label.replace("Últimos ", ""),
+  }));
+
   return (
     <>
-      <TouchableOpacity style={styles.button} onPress={() => setOpen(true)} hitSlop={8}>
-        <Text style={styles.buttonText} numberOfLines={1}>
-          {rangeLabel(range)}
+      <Pressable
+        style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+        onPress={() => setOpen(true)}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={`Rango de fechas: ${label}`}
+      >
+        <Icon name="calendar" size={15} color={colors.faint} />
+        <Text style={styles.chipText} numberOfLines={1}>
+          {label}
         </Text>
-      </TouchableOpacity>
+      </Pressable>
 
-      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setOpen(false)}>
-          <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Rango de fechas</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.groupLabel}>Rangos rápidos</Text>
-              <View style={styles.presetRow}>
-                {Object.entries(range.presets).map(([key, p]) => (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.presetPill, range.preset === key && styles.presetPillActive]}
-                    onPress={() => {
-                      range.setPreset(key);
-                      setOpen(false);
-                    }}
-                  >
-                    <Text style={[styles.presetText, range.preset === key && styles.presetTextActive]}>
-                      {p.label.replace("Últimos ", "")}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.divider} />
-
-              <Text style={styles.groupLabel}>Rango personalizado</Text>
-              <DateField label="Desde" value={from} onChange={setFrom} />
-              <DateField label="Hasta" value={to} onChange={setTo} />
-
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  onPress={() => {
-                    range.reset();
-                    setOpen(false);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.resetText}>Restablecer</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.applyButton} onPress={applyCustom} activeOpacity={0.85}>
-                  <Text style={styles.applyButtonText}>Aplicar</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+      <BottomSheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Rango de fechas"
+        subtitle={label}
+        footer={
+          <View style={styles.actions}>
+            <Button
+              title="Restablecer"
+              variant="secondary"
+              style={styles.action}
+              onPress={() => {
+                range.reset();
+                setOpen(false);
+              }}
+            />
+            <Button title="Aplicar" style={styles.action} onPress={applyCustom} disabled={!from || !to} />
           </View>
-        </TouchableOpacity>
-      </Modal>
+        }
+      >
+        <Text style={[type.overline, styles.groupLabel]}>Rangos rápidos</Text>
+        <FilterChips
+          options={presetOptions}
+          value={range.preset}
+          onChange={(key) => {
+            range.setPreset(key);
+            setOpen(false);
+          }}
+        />
+
+        <View style={styles.divider} />
+
+        <Text style={[type.overline, styles.groupLabel]}>Rango personalizado</Text>
+        <DateField label="Desde" value={from} onChange={setFrom} />
+        <DateField label="Hasta" value={to} onChange={setTo} />
+      </BottomSheet>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    marginRight: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: colors.neutralSoftBg,
-    maxWidth: 130,
+  chip: {
+    height: 36,
+    maxWidth: 170,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
   },
-  buttonText: { fontSize: 12, fontWeight: "700", color: colors.brand700 },
-  backdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "80%",
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+  chipPressed: {
+    backgroundColor: colors.surface2,
   },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.text, marginBottom: 14 },
-  groupLabel: { fontSize: 12, fontWeight: "700", color: colors.slate500, marginBottom: 8, textTransform: "uppercase" },
-  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
-  presetPill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: colors.neutralSoftBg },
-  presetPillActive: { backgroundColor: colors.brand600 },
-  presetText: { fontSize: 13, fontWeight: "600", color: colors.slate700 },
-  presetTextActive: { color: colors.white },
-  divider: { height: 1, backgroundColor: colors.slate100, marginVertical: 16 },
-  actionsRow: { marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  resetText: { fontSize: 13, fontWeight: "700", color: colors.slate500 },
-  applyButton: { backgroundColor: colors.brand600, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10 },
-  applyButtonText: { fontSize: 13, fontWeight: "700", color: colors.white },
+  chipText: {
+    flexShrink: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 12.5,
+    color: colors.ink,
+  },
+  groupLabel: {
+    marginBottom: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.lineSoft,
+    marginVertical: 16,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  action: {
+    flex: 1,
+  },
 });

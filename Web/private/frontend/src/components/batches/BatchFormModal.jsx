@@ -2,8 +2,10 @@ import Modal from "../ui/Modal";
 import { Field, SelectField, ReadonlyField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { buttonClass } from "../../lib/buttonStyles";
-import { PRODUCTS, COLORS, BATCH_STATUSES } from "../../lib/batchFlow";
+import ProductSelect from "../ui/ProductSelect";
+import { COLORS, BATCH_STATUSES } from "../../lib/batchFlow";
 import { useProductionLines, withCurrentLine } from "../../hooks/useProductionLines";
+import { formatBatchNumber } from "../../lib/format";
 
 /*
   Modal de creación/edición de un lote de fabricación de stock (Lotes de
@@ -29,9 +31,9 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
     >
       <form id="batch-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <ReadonlyField label="Número de lote" value={form.batchNumber} />
+          <ReadonlyField label="Número de lote" value={formatBatchNumber(form.batchNumber)} />
         </div>
-        <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
+        <ProductSelect value={form.product} onChange={handleChange} />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={withCurrentLine(lineOptions, form.productionLine)} placeholder="Sin línea" />
         <Field label="Meta (unidades)" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} />

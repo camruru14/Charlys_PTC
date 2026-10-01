@@ -2,16 +2,15 @@ const ordersController = {};
 
 import orderModel from "../models/Order.js";
 import transactionModel from "../models/Transaction.js";
-import { generateReference } from "./transactionsController.js";
+import routeModel from "../models/Route.js";
+import customerOrderModel from "../models/CustomerOrder.js";
 import { setOrderStatus, computeOrderStatus } from "../lib/orderStatus.js";
 import { HttpError, sendError, withTransaction, returnStock } from "../lib/stock.js";
 import {
   packedLocations,
   hasStockTaken,
-  hasCommitment,
   takenQty,
   resetLine,
-  releaseLine,
   verifyLine,
   unverifyLine,
   packLine,
@@ -34,19 +33,6 @@ const ROUTE_FIELDS = "number zone status date";
 // maneja la ruta; ver lib/routes.js), aunque su status cambie a mano.
 const keepsDelivery = (order, status) => status === "En Tránsito" || status === "Entregado" || Boolean(order.delivery?.route);
 
-// Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...)
-async function generateOrderNumber() {
-  const prefix = `ORD-${new Date().getFullYear()}-`;
-  const last = await orderModel
-    .findOne({ orderNumber: { $regex: `^${prefix}` } })
-    .sort({ orderNumber: -1 });
-
-  const lastNumber = last ? parseInt(last.orderNumber.slice(prefix.length), 10) : 0;
-  const next = (Number.isNaN(lastNumber) ? 0 : lastNumber) + 1;
-
-  return `${prefix}${String(next).padStart(4, "0")}`;
-}
-
 // El motorista ya pasó por todas las paradas de recolección que este pedido
 // requiere (o no requiere ninguna). Se le pasa `delivery` aparte del `order`
 // porque a veces se evalúa contra el delivery ya guardado en DB y a veces
@@ -56,33 +42,6 @@ function isFullyCollected(order, delivery) {
   if (required.includes("Almacén") && !delivery?.pickupWarehouseAt) return false;
   if (required.includes("Fabricación") && !delivery?.pickupFactoryAt) return false;
   return true;
-}
-
-// Crea la transacción de Finanzas que corresponde a un pedido que acaba de
-// cambiar de paymentStatus (Pagado -> Ingreso "Ventas"; Reembolsado -> Gasto
-// "Ventas"), para no capturarla a mano en Finanzas cada vez. Resguardo
-// anti-duplicado por relatedOrder + category + type: así un mismo pedido
-// puede generar como máximo una transacción de cada tipo (una vez pagado, y
-// aparte una vez reembolsado si llega a pasar), pero nunca dos iguales aunque
-// el pedido se vuelva a guardar sin que el pago realmente cambie de nuevo.
-async function createOrderPaymentTransaction(order, type, concept) {
-  const alreadyExists = await transactionModel.findOne({
-    relatedOrder: order._id,
-    category: "Ventas",
-    type,
-  });
-  if (alreadyExists) return;
-
-  const reference = await generateReference();
-  await transactionModel.create({
-    reference,
-    concept,
-    type,
-    category: "Ventas",
-    amount: order.total,
-    status: "Completado",
-    relatedOrder: order._id,
-  });
 }
 
 // Carga un pedido y una de sus líneas dentro de una transacción, aplica
@@ -136,129 +95,6 @@ ordersController.getOrder = async (req, res) => {
   try {
     const order = await populateOrder(orderModel.findById(req.params.id));
     res.json(order);
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-// INSERT
-ordersController.insertOrder = async (req, res) => {
-  try {
-    const { customer, items, total, status, paymentStatus, notes } = req.body;
-
-    const orderNumber = await generateOrderNumber();
-
-    // El pedido pasa solo a Inventario al crearse (sentToInventoryAt) y su
-    // status inicial queda como primer registro de statusHistory.
-    const createdAt = new Date();
-    const newOrder = new orderModel({
-      orderNumber,
-      customer,
-      items: (items || []).map(({ sourceIndex: _sourceIndex, ...item }) => item),
-      total,
-      paymentStatus,
-      notes,
-      sentToInventoryAt: createdAt,
-    });
-    setOrderStatus(newOrder, status || "Pendiente", createdAt);
-
-    await newOrder.save();
-
-    res.json({ message: "Order saved", orderNumber, _id: newOrder._id });
-  } catch (error) {
-    sendError(res, error);
-  }
-};
-
-// Al editar las líneas de un pedido, libera lo que tenían comprometido las
-// líneas que se quitan o cambian (producto, color o cantidad): devuelve el
-// stock tomado a su bodega y borra el lote si sigue Programado. Si alguna ya
-// está empacada (o su lote ya empezó), rechaza todo el guardado.
-//
-// Para saber qué línea nueva corresponde a cuál vieja, el panel manda
-// `sourceIndex` en cada línea que venía del pedido original. Si no llega en
-// ninguna (ej. Movil, que reenvía las mismas líneas al cambiar el pago), se
-// emparejan por posición.
-async function reconcileEditedItems(existing, newItems, session) {
-  const oldItems = existing.items || [];
-  const hasSource = newItems.some((n) => n.sourceIndex != null);
-
-  for (let i = 0; i < oldItems.length; i += 1) {
-    const old = oldItems[i];
-    if (!hasCommitment(old)) continue;
-
-    const newIdx = hasSource ? newItems.findIndex((n) => n.sourceIndex === i) : i < newItems.length ? i : -1;
-    const next = newIdx >= 0 ? newItems[newIdx] : null;
-    const changed =
-      !next ||
-      Number(next.quantity) !== old.quantity ||
-      next.product !== old.product ||
-      (next.color || "") !== (old.color || "");
-    if (!changed) continue;
-
-    await releaseLine(old, session);
-    if (next) resetLine(next);
-  }
-
-  return newItems.map(({ sourceIndex: _sourceIndex, ...item }) => item);
-}
-
-// ACTUALIZAR (datos generales del pedido)
-ordersController.updateOrder = async (req, res) => {
-  try {
-    const { customer, items, total, status, paymentStatus, notes } = req.body;
-
-    const result = await withTransaction(async (session) => {
-      const existing = await orderModel.findById(req.params.id).session(session);
-      if (!existing) throw new HttpError(404, "Pedido no encontrado");
-      const previousPaymentStatus = existing.paymentStatus;
-
-      const nextItems = Array.isArray(items) ? await reconcileEditedItems(existing, items, session) : undefined;
-
-      // Solo se pisan los campos que llegan en el body (igual que el $set
-      // anterior, que ignoraba los undefined).
-      const fields = { customer, items: nextItems, total, paymentStatus, notes };
-      for (const [key, value] of Object.entries(fields)) {
-        if (value !== undefined) existing.set(key, value);
-      }
-      setOrderStatus(existing, status);
-
-      // Misma regla que updateStatus: si el pedido se edita hacia un estado fuera del
-      // despacho activo ("En Tránsito" / "Entregado"), se limpia la asignación de logística
-      // previa para que no reaparezca un motorista viejo si vuelve a "En Tránsito".
-      // Un pedido que está en una ruta la conserva.
-      if (!keepsDelivery(existing, status)) {
-        existing.delivery = undefined;
-      }
-
-      await existing.save({ session });
-      return { existing, previousPaymentStatus };
-    });
-
-    const { existing, previousPaymentStatus } = result;
-
-    // Si paymentStatus acaba de cambiar a "Pagado"/"Reembolsado" (y antes no lo
-    // era), genera la transacción de Finanzas correspondiente automáticamente.
-    // Se compara contra el paymentStatus de antes de este guardado para que
-    // solo dispare en la transición real, no en cada guardado posterior.
-    if (paymentStatus && paymentStatus !== previousPaymentStatus) {
-      const orderTotal = total ?? existing.total;
-      if (paymentStatus === "Pagado") {
-        await createOrderPaymentTransaction(
-          { _id: existing._id, total: orderTotal },
-          "Ingreso",
-          `Venta pedido ${existing.orderNumber}`,
-        );
-      } else if (paymentStatus === "Reembolsado") {
-        await createOrderPaymentTransaction(
-          { _id: existing._id, total: orderTotal },
-          "Gasto",
-          `Reembolso pedido ${existing.orderNumber}`,
-        );
-      }
-    }
-
-    res.json({ message: "Order updated" });
   } catch (error) {
     sendError(res, error);
   }
@@ -343,20 +179,50 @@ ordersController.assignDelivery = async (req, res) => {
   }
 };
 
-// Eliminar: antes de borrar, libera lo que cada línea tenía comprometido,
-// en la misma transacción: devuelve el stock tomado de bodega (verificada o
-// la parte fromStockQty de una línea dividida) y borra los lotes que siguen
-// Programados. Si alguna línea ya está empacada o su lote ya empezó
-// (En Proceso, Completado…), rechaza y no se mueve nada. Borrar un pedido
-// que no existe responde 200 (idempotente, igual que antes).
+// ELIMINAR (solo administradores, ver routes/orders.js). Es la única
+// modificación que el panel hace sobre un pedido: los pedidos llegan de la
+// tienda en línea, y este borrado evita que los ya entregados se acumulen.
+// Solo se elimina un pedido «Entregado» que no esté en una ruta activa (su
+// ruta está Completada o no tiene ruta). Todo en una transacción:
+//  - Rutas: se quita el pedido de `orders` y `deliveries`; la ruta se conserva.
+//  - Finanzas: el Ingreso NO se borra (la venta ocurrió): pierde relatedOrder y
+//    conserva el N° de pedido en `orderNumber`.
+//  - Lotes de fabricación: se conservan (el vínculo vivía en la línea del pedido).
+//  - Tienda: el CustomerOrder se conserva con un resumen del pedido, para que el
+//    cliente lo siga viendo en «Mis pedidos».
+//  - Inventario: no se devuelve existencia (ya se entregó).
 ordersController.deleteOrder = async (req, res) => {
   try {
     await withTransaction(async (session) => {
       const order = await orderModel.findById(req.params.id).session(session);
-      if (!order) return;
-      for (const item of order.items) {
-        if (hasCommitment(item)) await releaseLine(item, session, "delete");
+      if (!order) throw new HttpError(404, "Pedido no encontrado");
+      if (order.status !== "Entregado") throw new HttpError(409, "Solo se pueden eliminar pedidos entregados");
+
+      // Rutas donde aparece (como parada o como entrega, incluidas las parciales).
+      const routes = await routeModel
+        .find({ $or: [{ orders: order._id }, { "deliveries.order": order._id }] })
+        .session(session);
+      if (routes.some((r) => r.status !== "Completada")) throw new HttpError(409, "El pedido está en una ruta activa");
+
+      const at = new Date();
+      for (const route of routes) {
+        route.orders = route.orders.filter((id) => String(id) !== String(order._id));
+        route.deliveries = route.deliveries.filter((d) => String(d.order) !== String(order._id));
+        await route.save({ session });
       }
+
+      await transactionModel.updateMany(
+        { relatedOrder: order._id },
+        { $unset: { relatedOrder: 1 }, $set: { orderNumber: order.orderNumber } },
+        { session },
+      );
+
+      await customerOrderModel.updateMany(
+        { order: order._id },
+        { $set: { deletedAt: at, snapshot: orderSnapshot(order) } },
+        { session },
+      );
+
       await orderModel.deleteOne({ _id: order._id }, { session });
     });
     res.json({ message: "Order deleted" });
@@ -364,6 +230,29 @@ ordersController.deleteOrder = async (req, res) => {
     sendError(res, error);
   }
 };
+
+// Resumen del pedido que se le deja a la tienda al eliminarlo (lo que
+// «Mis pedidos» y la confirmación muestran): sin datos internos de bodegas,
+// lotes ni rutas.
+function orderSnapshot(order) {
+  return {
+    orderNumber: order.orderNumber,
+    customer: order.customer?.toObject ? order.customer.toObject() : order.customer,
+    items: (order.items || []).map((i) => ({
+      product: i.product,
+      color: i.color,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      subtotal: i.subtotal,
+    })),
+    total: order.total,
+    status: order.status,
+    source: order.source,
+    notes: order.notes,
+    statusHistory: (order.statusHistory || []).map((h) => ({ status: h.status, at: h.at })),
+    createdAt: order.createdAt,
+  };
+}
 
 // Reenvía el aviso a Inventario: pone sentToInventoryAt solo si falta
 // (idempotente; todo pedido ya lo recibe al crearse). No reserva ni

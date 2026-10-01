@@ -1,8 +1,10 @@
 import { useEffect } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useAuth } from "../hooks/useAuth";
+import BrandMark from "../components/ui/BrandMark";
 import { colors } from "../lib/theme";
+import { fonts } from "../lib/typography";
 
 // Tiempo que se mantiene visible antes de pasar sola al Drawer.
 const VISIBLE_MS = 1500;
@@ -10,10 +12,7 @@ const VISIBLE_MS = 1500;
 // Se intercala entre LoginScreen y el Drawer justo después de un login
 // exitoso (ver justLoggedIn en AuthContext / RootNavigator) — no aparece al
 // reabrir la app con una sesión ya guardada, eso lo cubre el splash nativo
-// de App.js. Reusa la misma imagen y fondo que ese splash nativo
-// (assets/splash-icon.png, backgroundColor #ffffff, ver el plugin
-// expo-splash-screen en app.json) para que se sienta como una continuación
-// de él, con el nombre del empleado que acaba de iniciar sesión debajo.
+// de App.js. Logo IC, «Bienvenido,» y el nombre del empleado, sobre canvas.
 export default function PostLoginSplashScreen() {
   const { user, clearJustLoggedIn } = useAuth();
 
@@ -25,11 +24,15 @@ export default function PostLoginSplashScreen() {
   const name = [user?.name, user?.lastName].filter(Boolean).join(" ");
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityLiveRegion="polite">
       <StatusBar style="dark" />
-      <Image source={require("../../assets/splash-icon.png")} style={styles.image} resizeMode="contain" />
+      <BrandMark size={64} style={styles.logo} />
       <Text style={styles.welcome}>Bienvenido{name ? "," : ""}</Text>
-      {name ? <Text style={styles.name}>{name}</Text> : null}
+      {name ? (
+        <Text style={styles.name} numberOfLines={2}>
+          {name}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -39,21 +42,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
+    backgroundColor: colors.canvas,
+    paddingHorizontal: 32,
     gap: 4,
   },
-  image: {
-    width: 200,
-    height: 200,
-    marginBottom: 24,
-  },
-  welcome: {
-    fontSize: 16,
-    color: colors.slate500,
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.brand700,
-  },
+  logo: { marginBottom: 20 },
+  welcome: { fontFamily: fonts.regular, fontSize: 15, color: colors.muted },
+  name: { fontFamily: fonts.extrabold, fontSize: 22, letterSpacing: -0.3, color: colors.ink, textAlign: "center" },
 });

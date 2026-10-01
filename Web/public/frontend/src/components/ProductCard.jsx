@@ -1,11 +1,11 @@
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
-import toast from "react-hot-toast";
-import { useCart } from "../context/CartContext";
 import { PRODUCT_COLOR_HEX } from "../lib/catalogOptions";
+import QuickAddModal from "./QuickAddModal";
 
 // Disponibilidad según product.stock, con los colores de estado que ya usa el
 // sitio: verde de éxito (Entregado en Mis pedidos, Pago confirmado), ámbar de
-// advertencia (En Fabricación, Pago pendiente) y el rojo de error de Field.
+// advertencia (En Fabricación) y el rojo de error de Field.
 const LOW_STOCK_MAX = 10;
 function availability(stock = 0) {
   if (stock <= 0) return { label: "Agotado", tone: "text-red-600" };
@@ -44,26 +44,16 @@ const SizesIcon = () => (
   Tarjeta del catálogo. El <Link> cubre toda la tarjeta; la insignia y el
   botón «Agregar» van en una capa aparte encima de la imagen (hermana del
   Link, no dentro): así el botón no queda anidado en el enlace y su clic no
-  navega al detalle.
+  navega al detalle. «Agregar» abre QuickAddModal (color y cantidad).
 */
 export default function ProductCard({ product }) {
-  const { addItem } = useCart();
+  const [addOpen, setAddOpen] = useState(false);
+  const closeAdd = useCallback(() => setAddOpen(false), []);
   const image = product.images?.[0]?.url;
   const colorsCount = product.colors?.length || 0;
   const sizesCount = product.sizes?.length || 0;
   const stock = availability(product.stock);
   const soldOut = (product.stock ?? 0) <= 0;
-
-  // Misma selección inicial que ProductoDetallePage: primer color, primer
-  // tamaño y la cantidad mínima.
-  const handleQuickAdd = () => {
-    addItem(product, {
-      color: product.colors?.[0] || "",
-      size: product.sizes?.[0] || "",
-      quantity: product.minOrderQuantity || 1,
-    });
-    toast.success(`${product.name} agregado al carrito`);
-  };
 
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-border bg-card transition hover:shadow-xl hover:shadow-primary/10">
@@ -148,14 +138,16 @@ export default function ProductCard({ product }) {
             cursor por la tarjeta o al enfocar el botón con el teclado. */}
         <button
           type="button"
-          onClick={handleQuickAdd}
+          onClick={() => setAddOpen(true)}
           disabled={soldOut}
-          title={soldOut ? "Producto agotado" : `Agregar ${product.minOrderQuantity || 1}u al carrito`}
+          title={soldOut ? "Producto agotado" : "Elegir color y cantidad"}
           className="pointer-events-auto absolute bottom-3 right-3 inline-flex items-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover:disabled:opacity-60"
         >
           {soldOut ? "Agotado" : "Agregar"}
         </button>
       </div>
+
+      {addOpen && <QuickAddModal product={product} onClose={closeAdd} />}
     </div>
   );
 }

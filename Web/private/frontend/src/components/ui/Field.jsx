@@ -7,7 +7,8 @@
     "position: fixed" (calculado en píxeles contra el botón, ver useDropdown)
     evita que un ancestro con overflow-y-auto (como el contenido de
     Modal.jsx) lo recorte. `size="sm"` da la variante compacta (ver
-    Producto/Color en el modal de pedidos).
+    Producto/Color en el modal de pedidos). `disabled` bloquea el campo, y una
+    opción { value, label, disabled: true } se ve pero no se puede elegir.
   - FilterSelect: la misma mecánica que SelectField pero sin label, para las
     barras de filtros (Logística, Inventario, Fabricación, y los toolbars de
     Lotes/Transacciones) — el tamaño del botón lo define cada caller vía
@@ -150,13 +151,18 @@ function DropdownOptions({ rect, options, value, onSelect }) {
         options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const text = typeof opt === "string" ? opt : opt.label;
+          // Una opción { value, label, disabled: true } se ve pero no se puede elegir.
+          const disabled = typeof opt !== "string" && Boolean(opt.disabled);
           return (
             <button
               key={val}
               type="button"
+              disabled={disabled}
               onClick={() => onSelect(opt)}
-              className={`block w-full px-3.5 py-2 text-left text-[13px] hover:bg-surface-2 ${
-                val === value ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"
+              className={`block w-full px-3.5 py-2 text-left text-[13px] ${
+                disabled
+                  ? "cursor-not-allowed text-faint"
+                  : `hover:bg-surface-2 ${val === value ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"}`
               }`}
             >
               {text}
@@ -171,7 +177,7 @@ function DropdownOptions({ rect, options, value, onSelect }) {
 // onChange se llama con un evento sintético ({ target: { name, value } })
 // para que los handlers existentes (los mismos que ya usaban <select>)
 // funcionen sin cambios.
-export function SelectField({ label, name, value, onChange, options = [], required, placeholder, size = "md" }) {
+export function SelectField({ label, name, value, onChange, options = [], required, placeholder, size = "md", disabled = false }) {
   const { open, setOpen, rect, rootRef, triggerRef, toggleOpen } = useDropdown();
   const compact = size === "sm";
 
@@ -193,14 +199,15 @@ export function SelectField({ label, name, value, onChange, options = [], requir
         type="button"
         ref={triggerRef}
         onClick={toggleOpen}
-        className={`${compact ? compactControlClass : controlClass} flex items-center justify-between gap-2 text-left`}
+        disabled={disabled}
+        className={`${compact ? compactControlClass : controlClass} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:bg-surface-2 disabled:opacity-70`}
       >
         <span className={selectedLabel ? "text-ink" : "text-faint"}>
           {selectedLabel || placeholder || "Selecciona…"}
         </span>
         <IconChevronDown width={16} height={16} className={`shrink-0 text-subtle transition ${open ? "rotate-180" : ""}`} />
       </button>
-      {open ? <DropdownOptions rect={rect} options={options} value={value} onSelect={selectOption} /> : null}
+      {open && !disabled ? <DropdownOptions rect={rect} options={options} value={value} onSelect={selectOption} /> : null}
     </div>
   );
 }

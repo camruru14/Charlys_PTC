@@ -1,12 +1,16 @@
-import {
-  DrawerContentScrollView,
-  DrawerItem,
-  createDrawerNavigator,
-} from "@react-navigation/drawer";
-import { StyleSheet, Text, View } from "react-native";
+import { createDrawerNavigator } from "@react-navigation/drawer";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../hooks/useAuth";
+import Avatar from "../components/ui/Avatar";
 import DateRangeButton from "../components/ui/DateRangeButton";
+import Icon from "../components/ui/Icon";
+import BrandMark from "../components/ui/BrandMark";
+import IconButton from "../components/ui/IconButton";
+import ScreenHeader from "../components/ui/ScreenHeader";
 import { colors } from "../lib/theme";
+import { fonts, type } from "../lib/typography";
+import { NAV_ITEMS, NAV_SECTIONS, todayLabel } from "./navItems";
 
 import DashboardScreen from "../screens/DashboardScreen";
 import FabricacionScreen from "../screens/FabricacionScreen";
@@ -21,136 +25,97 @@ import ConfiguracionScreen from "../screens/ConfiguracionScreen";
 
 const Drawer = createDrawerNavigator();
 
-// Un ítem de Drawer por sección, en el mismo orden y con las mismas
-// etiquetas que Web/private/frontend/src/lib/nav.jsx (NAV_ITEMS). El título
-// de cada pantalla (mostrado en el header) usa el mismo `title` de nav.jsx.
-const SECTIONS = [
-  { name: "Dashboard", label: "Dashboard", title: "Dashboard", component: DashboardScreen, showDateRange: true },
-  { name: "Fabricacion", label: "Fabricación", title: "Fabricación", component: FabricacionScreen, showDateRange: true },
-  { name: "Finanzas", label: "Finanzas", title: "Finanzas", component: FinanzasScreen, showDateRange: true },
-  { name: "Pedidos", label: "Pedidos", title: "Pedidos", component: PedidosScreen },
-  {
-    name: "Logistica",
-    label: "Logística",
-    title: "Logística — Gestión de Flotas",
-    component: LogisticaScreen,
-  },
-  {
-    name: "Inventario",
-    label: "Inventario",
-    title: "Inventario / Almacén",
-    component: InventarioScreen,
-  },
-  {
-    name: "Catalogo",
-    label: "Catálogo",
-    title: "Catálogo — Tienda pública",
-    component: CatalogoScreen,
-  },
-  {
-    name: "Empleados",
-    label: "Empleados",
-    title: "Empleados — RRHH",
-    component: EmpleadosScreen,
-  },
-  // Exclusiva del celular: no existe en nav.jsx de la web (ver
-  // AsistenciaScreen.jsx) porque ahí RRHH captura la asistencia a
-  // posteriori, en vez de que cada empleado marque su propia entrada/salida.
-  {
-    name: "Asistencia",
-    label: "Asistencia",
-    title: "Marcar Asistencia",
-    component: AsistenciaScreen,
-  },
+// Pantallas del drawer, en el orden del menú (ver navItems.js). Las que
+// filtran por el rango de fechas global llevan el DateRangeButton como
+// acción del encabezado.
+const SCREENS = [
+  { name: "Dashboard", component: DashboardScreen, showDateRange: true },
+  { name: "Fabricacion", component: FabricacionScreen, showDateRange: true },
+  { name: "Inventario", component: InventarioScreen },
+  { name: "Pedidos", component: PedidosScreen },
+  { name: "Logistica", component: LogisticaScreen },
+  { name: "Finanzas", component: FinanzasScreen, showDateRange: true },
+  { name: "Catalogo", component: CatalogoScreen },
+  { name: "Empleados", component: EmpleadosScreen },
+  { name: "Asistencia", component: AsistenciaScreen },
+  { name: "Configuracion", component: ConfiguracionScreen },
 ];
 
-// BOTTOM_ITEMS de nav.jsx: Configuración va aparte, al fondo del Drawer.
-const BOTTOM_SECTION = {
-  name: "Configuracion",
-  label: "Configuración",
-  title: "Configuración",
-  component: ConfiguracionScreen,
-};
+function DrawerLink({ label, icon, active, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [styles.item, active ? styles.itemActive : pressed && styles.itemPressed]}
+    >
+      {active ? <View style={styles.activeBar} /> : null}
+      <Icon name={icon} size={20} color={active ? colors.primarySoftText : colors.faint} />
+      <Text style={[styles.itemText, active && styles.itemTextActive]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
-// Contenido custom del Drawer: réplica del Sidebar.jsx web — menú principal
-// arriba, y abajo (separado por un borde) Configuración, Cerrar Sesión y el
-// perfil del usuario autenticado.
-function CustomDrawerContent(props) {
+// Contenido del menú lateral: copia del Rail blanco de la web
+// (Web/private/frontend/src/components/Rail.jsx) — logo arriba, secciones
+// con título y, al fondo, el usuario con el botón de cerrar sesión.
+function CustomDrawerContent({ state, navigation }) {
+  const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const displayName = user
-    ? `${user.name || ""} ${user.lastName || ""}`.trim() || user.email
-    : "";
-  const displayRole = user?.position || "";
+  const displayName = user ? `${user.name || ""} ${user.lastName || ""}`.trim() || user.email : "Usuario";
+  const displayRole = user?.position || user?.department || "";
+  const activeRoute = state.routes[state.index]?.name;
 
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.header}>
-        <View style={styles.logoBadge}>
-          <Text style={styles.logoText}>IC</Text>
-        </View>
-        <Text style={styles.headerTitle}>Industrias Charly</Text>
+    <View style={[styles.drawer, { paddingTop: insets.top + 12 }]}>
+      <View style={styles.brand}>
+        <BrandMark size={32} />
+        <Text style={styles.brandName}>Ind. Charly</Text>
+        <Pressable
+          onPress={() => navigation.closeDrawer()}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar menú"
+          style={styles.close}
+        >
+          <Icon name="close" size={20} color={colors.faint} />
+        </Pressable>
       </View>
 
-      <View style={styles.section}>
-        {props.state.routes
-          .filter((route) => route.name !== BOTTOM_SECTION.name)
-          .map((route, index) => {
-            const section = SECTIONS.find((s) => s.name === route.name);
-            if (!section) return null;
-            const isFocused = props.state.index === index;
-            return (
-              <DrawerItem
-                key={route.key}
-                label={section.label}
-                focused={isFocused}
-                activeTintColor={colors.brand700}
-                activeBackgroundColor={colors.brand50}
-                inactiveTintColor={colors.slate700}
-                labelStyle={styles.itemLabel}
-                onPress={() => props.navigation.navigate(route.name)}
+      <ScrollView style={styles.sections} contentContainerStyle={styles.sectionsContent}>
+        {NAV_SECTIONS.map((section) => (
+          <View key={section.title}>
+            <Text style={[type.overline, styles.sectionTitle]}>{section.title}</Text>
+            {section.routes.map((name) => (
+              <DrawerLink
+                key={name}
+                label={NAV_ITEMS[name].label}
+                icon={NAV_ITEMS[name].icon}
+                active={activeRoute === name}
+                onPress={() => navigation.navigate(name)}
               />
-            );
-          })}
-      </View>
-
-      <View style={styles.bottomSection}>
-        <DrawerItem
-          label={BOTTOM_SECTION.label}
-          activeTintColor={colors.brand700}
-          activeBackgroundColor={colors.brand50}
-          inactiveTintColor={colors.slate700}
-          labelStyle={styles.itemLabel}
-          focused={props.state.routes[props.state.index]?.name === BOTTOM_SECTION.name}
-          onPress={() => props.navigation.navigate(BOTTOM_SECTION.name)}
-        />
-
-        <DrawerItem
-          label="Cerrar sesión"
-          labelStyle={[styles.itemLabel, styles.logoutLabel]}
-          onPress={logout}
-        />
-
-        {user ? (
-          <View style={styles.profile}>
-            <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>
-                {displayName.charAt(0).toUpperCase() || "?"}
-              </Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName} numberOfLines={1}>
-                {displayName}
-              </Text>
-              {displayRole ? (
-                <Text style={styles.profileRole} numberOfLines={1}>
-                  {displayRole}
-                </Text>
-              ) : null}
-            </View>
+            ))}
           </View>
-        ) : null}
+        ))}
+      </ScrollView>
+
+      <View style={[styles.profile, { paddingBottom: insets.bottom + 14 }]}>
+        <Avatar name={displayName} tone="blue" size={38} />
+        <View style={styles.profileInfo}>
+          <Text style={styles.profileName} numberOfLines={1}>
+            {displayName}
+          </Text>
+          {displayRole ? (
+            <Text style={styles.profileRole} numberOfLines={1}>
+              {displayRole}
+            </Text>
+          ) : null}
+        </View>
+        <IconButton icon="logout" onPress={logout} accessibilityLabel="Cerrar sesión" />
       </View>
-    </DrawerContentScrollView>
+    </View>
   );
 }
 
@@ -159,110 +124,126 @@ export default function DrawerNavigator() {
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
-        headerTintColor: colors.brand700,
-        headerTitleStyle: { fontWeight: "700" },
+        header: (props) => <ScreenHeader {...props} />,
+        drawerStyle: styles.drawerContainer,
+        overlayColor: colors.drawerOverlay,
+        sceneStyle: { backgroundColor: colors.canvas },
       }}
     >
-      {SECTIONS.map((section) => (
-        <Drawer.Screen
-          key={section.name}
-          name={section.name}
-          component={section.component}
-          options={{
-            title: section.title,
-            drawerLabel: section.label,
-            headerRight: section.showDateRange ? () => <DateRangeButton /> : undefined,
-          }}
-        />
-      ))}
-      <Drawer.Screen
-        name={BOTTOM_SECTION.name}
-        component={BOTTOM_SECTION.component}
-        options={{ title: BOTTOM_SECTION.title, drawerLabel: BOTTOM_SECTION.label }}
-      />
+      {SCREENS.map((screen) => {
+        const meta = NAV_ITEMS[screen.name];
+        return (
+          <Drawer.Screen
+            key={screen.name}
+            name={screen.name}
+            component={screen.component}
+            // Función para que el subtítulo de Mi asistencia (la fecha de hoy)
+            // se recalcule cada vez que el navegador se vuelve a renderizar.
+            options={() => ({
+              title: meta.label,
+              drawerLabel: meta.label,
+              subtitle: screen.name === "Asistencia" ? todayLabel() : meta.subtitle,
+              headerRight: screen.showDateRange ? () => <DateRangeButton /> : undefined,
+            })}
+          />
+        );
+      })}
     </Drawer.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingTop: 0,
+  drawerContainer: {
+    width: 300,
+    backgroundColor: colors.surface,
   },
-  header: {
+  drawer: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  brand: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
   },
-  logoBadge: {
-    height: 36,
-    width: 36,
-    borderRadius: 10,
-    backgroundColor: colors.brand600,
+  brandName: {
+    flex: 1,
+    fontFamily: fonts.extrabold,
+    fontSize: 16,
+    color: colors.ink,
+  },
+  close: {
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  logoText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: "900",
+  sections: {
+    flex: 1,
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: colors.brand700,
+  sectionsContent: {
+    paddingBottom: 12,
   },
-  section: {
-    paddingHorizontal: 4,
+  sectionTitle: {
+    paddingHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
   },
-  itemLabel: {
-    fontSize: 14,
-    fontWeight: "500",
+  item: {
+    height: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
   },
-  bottomSection: {
-    marginTop: 12,
-    paddingTop: 12,
-    paddingHorizontal: 4,
-    borderTopWidth: 1,
-    borderTopColor: colors.slate200,
+  itemPressed: {
+    backgroundColor: colors.surface2,
   },
-  logoutLabel: {
-    color: colors.danger,
+  itemActive: {
+    backgroundColor: colors.selectBg,
+  },
+  activeBar: {
+    position: "absolute",
+    left: 0,
+    top: 6,
+    bottom: 6,
+    width: 3,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  itemText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    color: colors.ink2,
+  },
+  itemTextActive: {
+    fontFamily: fonts.bold,
+    color: colors.ink,
   },
   profile: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginTop: 8,
-    marginHorizontal: 12,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-  },
-  profileAvatar: {
-    height: 34,
-    width: 34,
-    borderRadius: 17,
-    backgroundColor: colors.brand600,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileAvatarText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: "700",
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.navDivider,
   },
   profileInfo: {
-    flexShrink: 1,
+    flex: 1,
   },
   profileName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.text,
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.ink,
   },
   profileRole: {
+    fontFamily: fonts.regular,
     fontSize: 12,
-    color: colors.slate500,
+    color: colors.muted,
   },
 });

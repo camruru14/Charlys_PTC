@@ -7,10 +7,16 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import Order from "../src/models/Order.js";
+import Transaction from "../src/models/Transaction.js";
+import Route from "../src/models/Route.js";
+import CustomerOrder from "../src/models/CustomerOrder.js";
+import { seedProductNames } from "./helpers/productNames.js";
+import { createStoreOrder } from "./helpers/storeOrder.js";
 import Inventory from "../src/models/InventoryItem.js";
 import Batch from "../src/models/ProductionBatch.js";
 import ctl from "../src/controller/ordersController.js";
 import batchCtl from "../src/controller/productionBatchesController.js";
+import routesCtl from "../src/controller/routesController.js";
 
 let replSet;
 
@@ -18,7 +24,7 @@ before(async () => {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(replSet.getUri(), { dbName: "charly_test" });
   // Las colecciones deben existir antes de usarlas dentro de una transacción.
-  for (const m of [Order, Inventory, Batch]) await m.createCollection();
+  for (const m of [Order, Transaction, Route, CustomerOrder, Inventory, Batch]) await m.createCollection();
 });
 
 after(async () => {
@@ -27,7 +33,8 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await Promise.all([Order.deleteMany({}), Inventory.deleteMany({}), Batch.deleteMany({})]);
+  await Promise.all([Order, Transaction, Route, CustomerOrder, Inventory, Batch].map((m) => m.deleteMany({})));
+  await seedProductNames();
   await Inventory.create([
     { name: "Silla", color: "Verde", category: "Producto Terminado", location: "Bodega A", stock: 400, unit: "unidad" },
     { name: "Silla", color: "Verde", category: "Producto Terminado", location: "Bodega B", stock: 25, unit: "unidad" },
@@ -58,19 +65,17 @@ const load = (id) => Order.findById(id);
 
 // Pedido de prueba: 0) Silla 60, 1) Silla 100, 2) Silla 10, 3) Mesa 5.
 async function createOrder() {
-  const { payload } = await call(ctl.insertOrder, {
-    body: {
-      customer: { name: "Distribuidora San Miguel" },
-      items: [
-        { product: "Silla", color: "Verde", quantity: 60, unitPrice: 1, subtotal: 60 },
-        { product: "Silla", color: "Verde", quantity: 100, unitPrice: 1, subtotal: 100 },
-        { product: "Silla", color: "Verde", quantity: 10, unitPrice: 1, subtotal: 10 },
-        { product: "Mesa", color: "Roja", quantity: 5, unitPrice: 2, subtotal: 10 },
-      ],
-      total: 180,
-    },
+  const order = await createStoreOrder({
+    customer: { name: "Distribuidora San Miguel" },
+    items: [
+      { product: "Silla", color: "Verde", quantity: 60, unitPrice: 1, subtotal: 60 },
+      { product: "Silla", color: "Verde", quantity: 100, unitPrice: 1, subtotal: 100 },
+      { product: "Silla", color: "Verde", quantity: 10, unitPrice: 1, subtotal: 10 },
+      { product: "Mesa", color: "Roja", quantity: 5, unitPrice: 2, subtotal: 10 },
+    ],
+    total: 180,
   });
-  return String(payload._id);
+  return String(order._id);
 }
 const line = (id, index) => ({ id, index: String(index) });
 
@@ -248,112 +253,137 @@ test("empacar y desempacar; no se desverifica una línea empacada", async () => 
   assert.equal((await load(id)).items[1].packed, false);
 });
 
-// --- Editar pedido ----------------------------------------------------------
+// --- Eliminar pedido (solo los entregados) --------------------------------------
 
-test("editar: quitar una línea empacada se rechaza y reducir una verificada devuelve el stock", async () => {
+const objectId = () => new mongoose.Types.ObjectId();
+
+// Pedido de la tienda ya entregado, con su vínculo de cliente. `routeStatus`:
+// estado de la ruta donde viajó; null = el pedido no tiene ruta.
+async function deliveredOrder({ routeStatus = "Completada" } = {}) {
   const id = await createOrder();
-  await call(ctl.verifyOrderItem, { params: line(id, 1), body: { warehouse: "Bodega A" } });
-  await call(ctl.packOrderItem, { params: line(id, 1) });
-  let o = await load(id);
-  const base = o.toObject().items.map((it, i) => ({ ...it, sourceIndex: i }));
+  const customerId = objectId();
+  await CustomerOrder.create({ customer: customerId, order: id });
+  const order = await load(id);
+  let route = null;
+  if (routeStatus) {
+    route = await Route.create({
+      number: 1,
+      date: new Date("2026-05-04T00:00:00.000Z"),
+      zone: "Zona de prueba",
+      status: routeStatus,
+      departedAt: new Date(),
+      orders: [objectId(), order._id],
+      deliveries: [{ order: order._id, at: new Date(), partial: false, position: 1 }],
+    });
+  }
+  order.status = "Entregado";
+  if (route) order.delivery = { route: route._id, dispatchStatus: "Entregado" };
+  await order.save();
+  return { id, customerId, routeId: route?._id };
+}
 
-  let r = await call(ctl.updateOrder, {
-    params: { id },
-    body: { items: base.filter((_, i) => i !== 1), total: 80, status: o.status, paymentStatus: "Pendiente" },
-  });
-  assert.equal(r.status, 409);
-  assert.match(r.payload.message, /deshaz el empaque desde Inventario/);
-  assert.equal((await load(id)).items.length, 4);
-
-  await call(ctl.unpackOrderItem, { params: line(id, 1) });
-  const edited = base.map((it) => (it.sourceIndex === 1 ? { ...it, quantity: 50, subtotal: 50 } : it));
-  r = await call(ctl.updateOrder, { params: { id }, body: { items: edited, total: 130, status: o.status, paymentStatus: "Pendiente" } });
-  assert.equal(r.status, 200);
-  o = await load(id);
-  assert.equal(await stock("Bodega A"), 400);
-  assert.equal(o.items[1].verified, false);
-  assert.equal(o.items[1].quantity, 50);
-});
-
-test("editar sin sourceIndex (Movil) no mueve stock", async () => {
-  const id = await createOrder();
-  await call(ctl.verifyOrderItem, { params: line(id, 2), body: { warehouse: "Bodega B" } });
-  const o = await load(id);
-  const r = await call(ctl.updateOrder, {
-    params: { id },
-    body: { items: o.toObject().items, total: o.total, status: o.status, paymentStatus: "Pagado" },
-  });
-  assert.equal(r.status, 200);
-  assert.equal(await stock("Bodega B"), 15);
-  assert.equal((await load(id)).items[2].verified, true);
-});
-
-// --- Eliminar pedido --------------------------------------------------------
-
-test("eliminar un pedido sin nada procesado", async () => {
-  const id = await createOrder();
-  const r = await call(ctl.deleteOrder, { params: { id } });
-  assert.equal(r.status, 200);
-  assert.equal(await load(id), null);
-  assert.equal(await stock("Bodega A"), 400);
-  assert.equal(await stock("Bodega B"), 25);
-});
-
-test("eliminar un pedido con una línea verificada devuelve su stock", async () => {
-  const id = await createOrder();
-  await call(ctl.verifyOrderItem, { params: line(id, 1), body: { warehouse: "Bodega A" } });
-  await call(ctl.splitPartialItem, { params: line(id, 0), body: { warehouse: "Bodega B", quantity: 25 } });
-  assert.equal(await stock("Bodega A"), 300);
-  assert.equal(await stock("Bodega B"), 0);
+test("eliminar un pedido entregado de una ruta completada: la ruta, el Ingreso, el vínculo de la tienda y los lotes se conservan", async () => {
+  const { id, customerId, routeId } = await deliveredOrder();
+  const before = await load(id);
+  const orderNumber = before.orderNumber;
+  const otherStop = (await Route.findById(routeId)).orders[0];
 
   const r = await call(ctl.deleteOrder, { params: { id } });
   assert.equal(r.status, 200);
   assert.equal(await load(id), null);
-  assert.equal(await stock("Bodega A"), 400, "vuelve lo verificado");
-  assert.equal(await stock("Bodega B"), 25, "vuelve lo tomado de la línea dividida");
+
+  // Ruta: se conserva sin el pedido (ni como parada ni como entrega).
+  const route = await Route.findById(routeId);
+  assert.ok(route, "la ruta se conserva");
+  assert.deepEqual(route.orders.map(String), [String(otherStop)]);
+  assert.equal(route.deliveries.length, 0);
+
+  // Finanzas: el Ingreso sigue, sin relatedOrder y con el N° de pedido.
+  const sales = await Transaction.find({ category: "Ventas" });
+  assert.equal(sales.length, 1);
+  assert.equal(sales[0].relatedOrder, undefined);
+  assert.equal(sales[0].orderNumber, orderNumber);
+  assert.equal(sales[0].amount, 180);
+
+  // Tienda: el vínculo sigue y trae el resumen del pedido.
+  const link = await CustomerOrder.findOne({ customer: customerId });
+  assert.ok(link, "el CustomerOrder se conserva");
+  assert.equal(String(link.order), id, "conserva el id (no choca con el índice único)");
+  assert.ok(link.deletedAt);
+  assert.equal(link.snapshot.orderNumber, orderNumber);
+  assert.equal(link.snapshot.total, 180);
+  assert.equal(link.snapshot.status, "Entregado");
+  assert.equal(link.snapshot.items.length, 4);
+  assert.deepEqual(Object.keys(link.snapshot.items[0]).sort(), ["color", "product", "quantity", "subtotal", "unitPrice"]);
 });
 
-test("no se elimina un pedido con una línea empacada", async () => {
+test("eliminar un pedido entregado no devuelve existencia ni toca los lotes", async () => {
   const id = await createOrder();
   await call(ctl.verifyOrderItem, { params: line(id, 1), body: { warehouse: "Bodega A" } });
-  await call(ctl.verifyOrderItem, { params: line(id, 2), body: { warehouse: "Bodega A" } });
-  await call(ctl.packOrderItem, { params: line(id, 1) });
-
-  const r = await call(ctl.deleteOrder, { params: { id } });
-  assert.equal(r.status, 409);
-  assert.match(r.payload.message, /deshaz el empaque desde Inventario para poder eliminar el pedido/);
-  assert.ok(await load(id), "el pedido sigue existiendo");
-  assert.equal(await stock("Bodega A"), 290, "no se devolvió nada (la transacción no se aplicó)");
-});
-
-test("no se elimina un pedido con un lote En Proceso", async () => {
-  const id = await createOrder();
-  await call(ctl.verifyOrderItem, { params: line(id, 1), body: { warehouse: "Bodega A" } });
-  await call(ctl.sendItemToManufacturing, { params: line(id, 3) });
-  const o = await load(id);
-  await Batch.updateOne({ _id: o.items[3].manufacturingBatch }, { status: "En Proceso" });
-
-  const r = await call(ctl.deleteOrder, { params: { id } });
-  assert.equal(r.status, 409);
-  assert.match(r.payload.message, /Resuélvelo desde Fabricación antes de eliminar el pedido/i);
-  assert.ok(await load(id));
-  assert.equal(await stock("Bodega A"), 300, "el stock verificado no se devolvió");
-  assert.ok(await Batch.findById(o.items[3].manufacturingBatch));
-});
-
-test("eliminar un pedido con un lote Programado borra el lote", async () => {
-  const id = await createOrder();
   await call(ctl.sendItemToManufacturing, { params: line(id, 3) });
   const batchId = (await load(id)).items[3].manufacturingBatch;
-  assert.ok(await Batch.findById(batchId));
+  await Batch.updateOne({ _id: batchId }, { status: "Completado" });
+  assert.equal(await stock("Bodega A"), 300);
+  await Order.updateOne({ _id: id }, { status: "Entregado" });
 
   const r = await call(ctl.deleteOrder, { params: { id } });
   assert.equal(r.status, 200);
-  assert.equal(await load(id), null);
-  assert.equal(await Batch.findById(batchId), null);
+  assert.equal(await stock("Bodega A"), 300, "no se devuelve lo entregado");
+  assert.ok(await Batch.findById(batchId), "el lote completado se conserva");
 });
 
-test("eliminar un pedido que no existe responde 200", async () => {
-  const r = await call(ctl.deleteOrder, { params: { id: new mongoose.Types.ObjectId().toString() } });
-  assert.equal(r.status, 200);
+test("eliminar un pedido entregado sin ruta funciona", async () => {
+  const { id } = await deliveredOrder({ routeStatus: null });
+  assert.equal((await call(ctl.deleteOrder, { params: { id } })).status, 200);
+  assert.equal(await load(id), null);
+});
+
+test("un pedido que no está entregado no se elimina (409)", async () => {
+  for (const status of ["Procesando", "En Fabricación", "Empacado", "En Tránsito"]) {
+    const id = String((await createStoreOrder({ items: [{ product: "Silla", quantity: 1, unitPrice: 1, subtotal: 1 }], status }))._id);
+    const r = await call(ctl.deleteOrder, { params: { id } });
+    assert.equal(r.status, 409, status);
+    assert.equal(r.payload.message, "Solo se pueden eliminar pedidos entregados");
+    assert.ok(await load(id), "el pedido sigue existiendo");
+  }
+  assert.equal(await Transaction.countDocuments({ relatedOrder: { $exists: true } }), 4, "los Ingresos no se tocan");
+});
+
+test("un pedido entregado en una ruta activa no se elimina (409)", async () => {
+  const { id, routeId } = await deliveredOrder({ routeStatus: "En tránsito" });
+  const r = await call(ctl.deleteOrder, { params: { id } });
+  assert.equal(r.status, 409);
+  assert.equal(r.payload.message, "El pedido está en una ruta activa");
+  assert.ok(await load(id));
+  assert.equal((await Route.findById(routeId)).deliveries.length, 1, "la ruta no se modificó");
+  assert.equal((await CustomerOrder.findOne({ order: id })).snapshot, undefined);
+});
+
+test("eliminar un pedido que no existe responde 404", async () => {
+  const r = await call(ctl.deleteOrder, { params: { id: objectId().toString() } });
+  assert.equal(r.status, 404);
+});
+
+test("la ruta completada que se queda sin pedidos se puede eliminar", async () => {
+  const id = await createOrder();
+  const order = await load(id);
+  const route = await Route.create({
+    number: 1,
+    date: new Date("2026-05-04T00:00:00.000Z"),
+    zone: "Zona de prueba",
+    status: "Completada",
+    departedAt: new Date(),
+    orders: [order._id],
+    deliveries: [{ order: order._id, at: new Date(), partial: false, position: 0 }],
+  });
+  order.status = "Entregado";
+  order.delivery = { route: route._id, dispatchStatus: "Entregado" };
+  await order.save();
+
+  assert.equal((await call(routesCtl.deleteRoute, { params: { id: String(route._id) } })).status, 409, "con el pedido, una ruta que salió no se elimina");
+  assert.equal((await call(ctl.deleteOrder, { params: { id } })).status, 200);
+  const emptied = await Route.findById(route._id);
+  assert.equal(emptied.orders.length + emptied.deliveries.length, 0);
+  assert.equal((await call(routesCtl.deleteRoute, { params: { id: String(route._id) } })).status, 200);
+  assert.equal(await Route.findById(route._id), null);
 });

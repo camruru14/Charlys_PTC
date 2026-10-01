@@ -1,19 +1,26 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import Modal from "../ui/Modal";
 import { Field, SelectField, TextareaField } from "../ui/Field";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { PRODUCT_COLORS, PRODUCT_COLOR_HEX } from "../../lib/catalogOptions";
 import { IconClose } from "../../lib/icons";
 import { buttonClass } from "../../lib/buttonStyles";
+import { subcategoryOptions } from "../../hooks/useSubcategories";
 
 const CATEGORIES = ["Pelotas", "Pajillas"];
 
 /*
-  Modal de creación/edición de un producto del catálogo público. El nombre se
-  escribe a mano (no todos los productos futuros calzan en una lista fija) y
-  la categoría se elige de un dropdown. Los colores sí salen de
-  catalogOptions.js (misma fuente que usa public/frontend), así ambos lados
-  nunca se desincronizan ahí.
+  Modal de creación/edición de un producto del catálogo público. No tiene
+  campo «Nombre»: el nombre del producto es siempre el de su subcategoría (el
+  backend lo toma de ahí). Primero se elige la categoría y después la
+  subcategoría (obligatoria, sale de Configuración > Subcategorías): solo las
+  activas de esa categoría, y el campo queda deshabilitado mientras no haya
+  categoría. Una subcategoría = un producto, así que las que ya usa OTRO
+  producto del catálogo salen deshabilitadas (`products` es la lista que ya
+  carga Catálogo). Los colores sí salen de catalogOptions.js (misma fuente que
+  usa public/frontend), así ambos lados nunca se desincronizan ahí.
 
   Las imágenes existentes (solo en edición) se pueden quitar una por una;
   agregar imágenes nuevas —al crear o después— se sube junto con el resto del
@@ -21,7 +28,7 @@ const CATEGORIES = ["Pelotas", "Pajillas"];
   agregarle una imagen a un producto ya existente SIN abrir este modal, está
   el botón "Agregar imagen" de cada card (ProductCatalogCard.jsx).
 */
-function ProductFormModal({ open, onClose, editingId, form, handleChange, onToggleColor, onSubmit, saving, onRemoveImage, removingImage }) {
+function ProductFormModal({ open, onClose, editingId, form, subcategories = [], products = [], handleChange, onToggleColor, onSubmit, saving, onRemoveImage, removingImage }) {
   const fileInputRef = useRef(null);
   const [pendingFiles, setPendingFiles] = useState([]);
 
@@ -34,8 +41,27 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
     onClose();
   }
 
+  // Solo las activas de la categoría elegida (más la actual si ya está inactiva);
+  // las que ya usa otro producto salen deshabilitadas (el propio no cuenta).
+  const usedByOther = new Set(
+    products.filter((p) => p._id !== editingId && p.subcategory).map((p) => p.subcategory.trim().toLocaleLowerCase("es")),
+  );
+  const subOptions = (form.category ? subcategoryOptions(subcategories, form.category, form.subcategory) : []).map((name) => {
+    const taken = usedByOther.has(name.trim().toLocaleLowerCase("es"));
+    return { value: name, label: taken ? `${name} · ya tiene producto` : name, disabled: taken };
+  });
+  const available = subOptions.filter((o) => !o.disabled).length;
+
   function handleSubmit(e) {
     e.preventDefault();
+    if (!form.category) {
+      toast.error("Elige la categoría");
+      return;
+    }
+    if (!form.subcategory) {
+      toast.error("Elige una subcategoría");
+      return;
+    }
     onSubmit(pendingFiles).then(() => setPendingFiles([]));
   }
 
@@ -53,8 +79,30 @@ function ProductFormModal({ open, onClose, editingId, form, handleChange, onTogg
       }
     >
       <form id="product-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Nombre" name="name" value={form.name} onChange={handleChange} placeholder="Ej. Pelota plástica 40 mm" required />
-        <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} required />
+        <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} placeholder="Selecciona…" required />
+        <div>
+          <SelectField
+            label="Subcategoría"
+            name="subcategory"
+            value={form.subcategory}
+            onChange={handleChange}
+            options={subOptions}
+            disabled={!form.category}
+            placeholder={!form.category ? "Elige primero la categoría" : subOptions.length ? "Selecciona…" : "Sin subcategorías"}
+            required
+          />
+          {form.category && available === 0 ? (
+            <p className="t-aux mt-1.5">
+              {subOptions.length === 0
+                ? `No hay subcategorías activas de ${form.category}.`
+                : `Todas las subcategorías de ${form.category} ya tienen producto.`}{" "}
+              <Link to="/configuracion?tab=subcategorias" className="font-semibold text-primary underline">
+                Crea una en Configuración
+              </Link>
+              .
+            </p>
+          ) : null}
+        </div>
 
         <div className="sm:col-span-2">
           <TextareaField label="Descripción" name="description" value={form.description} onChange={handleChange} rows={3} />

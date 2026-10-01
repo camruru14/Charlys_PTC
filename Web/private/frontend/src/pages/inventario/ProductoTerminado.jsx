@@ -7,7 +7,7 @@ import ColorSwatch from "../../components/ui/ColorSwatch";
 import { FilterSelect } from "../../components/ui/Field";
 import { useInventoryTable } from "../../hooks/useInventoryTable";
 import { stockLevel, stockFillPercent, isRecentInbound, STOCK_LEVEL_TONE } from "../../lib/stockLevel";
-import { fmtNumber, fmtRelativeDay } from "../../lib/format";
+import { fmtNumber, fmtRelativeDay, formatBatchNumber } from "../../lib/format";
 import { IconArrowUp } from "../../lib/icons";
 
 const initialFilters = { search: "", location: "", color: "" };
@@ -24,7 +24,7 @@ function matches(item, { search, location, color }) {
 // (lastInbound), solo si llegó hoy o ayer.
 function InboundLine({ inbound }) {
   const parts = [`+${fmtNumber(inbound.quantity)} de Fabricación`];
-  if (inbound.batchNumber) parts.push(inbound.batchNumber);
+  if (inbound.batchNumber) parts.push(formatBatchNumber(inbound.batchNumber));
   parts.push(fmtRelativeDay(inbound.at));
   return (
     <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold tabular-nums text-tone-green-text">
@@ -126,7 +126,8 @@ function ProductoTerminado({ items, kpiItems, loading, error, onEdit, onDelete }
         </>
       }
       columns={columns}
-      rows={table.pageRows}
+      rows={table.filtered}
+      resetKey={table.resetKey}
       loading={loading}
       error={error}
       emptyText={items.length === 0 ? "No hay productos terminados en almacén." : "Ningún artículo coincide con los filtros."}
@@ -134,9 +135,6 @@ function ProductoTerminado({ items, kpiItems, loading, error, onEdit, onDelete }
       onEdit={onEdit}
       onDelete={onDelete}
       summary={`${fmtNumber(table.filtered.length)} de ${fmtNumber(items.length)} artículos · ${fmtNumber(units)} unidades en total`}
-      page={table.page}
-      pageCount={table.pageCount}
-      onPage={table.setPage}
     />
   );
 }

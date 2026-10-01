@@ -18,6 +18,7 @@
     fmtRange(a, b, { months: true }) -> "Abr – sep 2026"
     fmtCompactMoney(20000) -> "$20k" (ejes de gráficas)
     fmtPercent(0.123)      -> "+12%"
+    formatBatchNumber(n)   -> "L-2026-0098" (el lote se guarda como «LOTE-2026-0098»)
 */
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -159,4 +160,15 @@ export function fmtRelativeDay(value) {
   if (diff === 0) return "hoy";
   if (diff === 1) return "ayer";
   return fmtDate(d);
+}
+
+// Número de lote para mostrar: «LOTE-2026-0098» -> «L-2026-0098». Es solo de
+// visualización: el batchNumber guardado y las búsquedas no cambian.
+export function formatBatchNumber(value) {
+  return typeof value === "string" ? value.replace(/^LOTE-/i, "L-") : (value ?? "");
+}
+
+// Texto para buscadores: el número guardado y el corto («LOTE-…» y «L-…»).
+export function batchNumberSearchText(value) {
+  return value ? `${value} ${formatBatchNumber(value)}` : "";
 }

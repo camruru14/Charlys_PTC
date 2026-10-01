@@ -1,16 +1,18 @@
 import { StyleSheet, Text, View } from "react-native";
 import { colors } from "../../lib/theme";
+import { fonts } from "../../lib/typography";
+import Icon from "./Icon";
 
 // Estado vacío genérico ("No hay X todavía"), usado como ListEmptyComponent
-// de los FlatList/SectionList de cada pantalla — mismo ícono simple (un
-// cuadro vacío) en todas, para que ninguna sección se sienta distinta de
-// las demás al no tener datos todavía.
-export default function EmptyState({ message }) {
+// de los FlatList/SectionList de cada pantalla. `title` e `icon` son
+// opcionales; por defecto, una caja.
+export default function EmptyState({ message, title, icon = "box" }) {
   return (
     <View style={styles.container}>
       <View style={styles.icon}>
-        <View style={styles.iconBox} />
+        <Icon name={icon} size={22} color={colors.faint} />
       </View>
+      {title ? <Text style={styles.title}>{title}</Text> : null}
       <Text style={styles.text}>{message}</Text>
     </View>
   );
@@ -21,26 +23,29 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     paddingHorizontal: 24,
     alignItems: "center",
-    gap: 10,
+    gap: 6,
   },
   icon: {
     height: 48,
     width: 48,
-    borderRadius: 24,
-    backgroundColor: colors.neutralSoftBg,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 6,
   },
-  iconBox: {
-    height: 16,
-    width: 16,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: colors.slate400,
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: colors.ink,
+    textAlign: "center",
   },
   text: {
+    fontFamily: fonts.regular,
     fontSize: 13,
-    color: colors.slate500,
+    color: colors.muted,
     textAlign: "center",
   },
 });

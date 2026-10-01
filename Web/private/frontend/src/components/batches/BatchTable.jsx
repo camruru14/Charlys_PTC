@@ -3,7 +3,7 @@ import DataTable from "../ui/DataTable";
 import ColorSwatch from "../ui/ColorSwatch";
 import Button from "../ui/Button";
 import { batchState, batchStart } from "../../lib/batchFlow";
-import { fmtDateYear, fmtNumber } from "../../lib/format";
+import { fmtDateYear, fmtNumber, formatBatchNumber } from "../../lib/format";
 
 /*
   Tabla del historial de lotes (páginas de historial). Si se pasan
@@ -11,7 +11,7 @@ import { fmtDateYear, fmtNumber } from "../../lib/format";
 */
 function BatchTable({ batches = [], showOperator = false, onEdit, onDelete }) {
   const columns = [
-    { key: "batchNumber", label: "Lote", render: (b) => <span className="t-row-name whitespace-nowrap tabular-nums">{b.batchNumber}</span> },
+    { key: "batchNumber", label: "Lote", render: (b) => <span className="t-row-name whitespace-nowrap tabular-nums">{formatBatchNumber(b.batchNumber)}</span> },
     {
       key: "date",
       label: "Fecha",

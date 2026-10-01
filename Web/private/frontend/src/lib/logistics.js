@@ -1,4 +1,5 @@
-import { fmtNumber } from "./format";
+import { fmtNumber, formatBatchNumber } from "./format";
+import { statusTone } from "./statusDomains";
 
 /*
   Logística a partir de /routes y /orders (rutas de la Fase 7).
@@ -103,7 +104,7 @@ export function lotNote(order) {
   if (!item) return null;
   const batch = item.manufacturingBatch;
   if (!batch?.batchNumber) return "lote en fabricación";
-  return `lote ${batch.batchNumber} ${String(batch.status || "en fabricación").toLowerCase()}`;
+  return `lote ${formatBatchNumber(batch.batchNumber)} ${String(batch.status || "en fabricación").toLowerCase()}`;
 }
 
 // Volvió de una ruta con entrega parcial y todavía no tiene otra.
@@ -114,6 +115,92 @@ export function dispatchOrders(orders) {
   return orders.filter(
     (o) => o.status !== "En Tránsito" && o.status !== "Entregado" && (o.items || []).some(isCarriable),
   );
+}
+
+// Lo que falta de un pedido incompleto, con el tono de cada estado:
+// [{ label: "1 lote detenido", tone: "rose" }, …] en el orden de MISSING_ORDER.
+const LOT_STATES = new Set(["completado sin empacar", "detenido", "programado"]);
+export function missingBreakdown(order) {
+  const counts = new Map();
+  (order.items || [])
+    .filter((i) => !i.deliveredAt && !i.packed)
+    .map(missingPart)
+    .forEach(([state]) => counts.set(state, (counts.get(state) || 0) + 1));
+  return MISSING_ORDER.filter((s) => counts.has(s)).map((s) => ({
+    label: `${counts.get(s)} ${LOT_STATES.has(s) ? "lote " : ""}${s}`,
+    tone: statusTone(s, "falta"),
+  }));
+}
+
+// --- Jerarquía de «Para despacho» ---------------------------------------------
+// Toda la clasificación sale de estas funciones puras (la lista, los chips y
+// los conteos las comparten); se recalcula con cada dato nuevo.
+
+export const DISPATCH_GROUPS = [
+  { key: "listos", label: "Listos para ruta", chip: "Listos", tone: "green" },
+  { key: "incompletos", label: "Incompletos", chip: "Incompletos", tone: "amber" },
+  { key: "recoleccion", label: "En recolección", chip: "En recolección", tone: "blue" },
+];
+
+/*
+  Grupo de un pedido de dispatchOrders():
+    recoleccion  ya tiene ruta (la ruta todavía no sale: si saliera, el pedido
+                 pasaría a «En Tránsito» y dejaría de estar en esta lista)
+    listos       sin ruta y todas sus líneas por entregar empacadas
+    incompletos  sin ruta, con algo empacado y otro lote o producto pendiente
+  «Nada empacado todavía» no existe aquí: dispatchOrders exige al menos una
+  línea empacada.
+*/
+export function dispatchGroup(order) {
+  if (order.delivery?.route) return "recoleccion";
+  return dispatchInfo(order).ready ? "listos" : "incompletos";
+}
+
+const timeOf = (value) => {
+  const t = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(t) ? null : t;
+};
+
+// Desde cuándo espera el pedido: listos, desde que se empacó lo último;
+// incompletos, desde que se empacó lo primero. Sin fechas, desde que se creó.
+export function waitingSince(order) {
+  const times = (order.items || [])
+    .filter((i) => !i.deliveredAt)
+    .flatMap((i) => [i.packedAt, i.stockPackedAt, i.manufacturePackedAt])
+    .map(timeOf)
+    .filter((t) => t != null);
+  if (times.length) return dispatchInfo(order).ready ? Math.max(...times) : Math.min(...times);
+  return timeOf(order.createdAt) ?? 0;
+}
+
+// Más antiguo primero (en recolección: por ruta y, dentro de la ruta, igual).
+function compareDispatch(a, b) {
+  const routeA = a.delivery?.route?.number ?? 0;
+  const routeB = b.delivery?.route?.number ?? 0;
+  return routeA - routeB || waitingSince(a) - waitingSince(b) || String(a.orderNumber).localeCompare(String(b.orderNumber));
+}
+
+// Pedidos agrupados y ordenados: [{ ...grupo, items }] sin grupos vacíos.
+// filter: "todos" o la clave de un grupo.
+export function groupDispatchOrders(orders, filter = "todos") {
+  return DISPATCH_GROUPS.filter((g) => filter === "todos" || filter === g.key)
+    .map((g) => ({ ...g, items: orders.filter((o) => dispatchGroup(o) === g.key).sort(compareDispatch) }))
+    .filter((g) => g.items.length);
+}
+
+export function dispatchCounts(orders) {
+  const counts = { todos: orders.length };
+  DISPATCH_GROUPS.forEach((g) => (counts[g.key] = 0));
+  orders.forEach((o) => (counts[dispatchGroup(o)] += 1));
+  return counts;
+}
+
+// «Falta recoger en Almacén y Fabricación» de un pedido con ruta.
+export function pickupNote(order, route) {
+  const places = orderPickups(order);
+  if (!route || !places.length) return null;
+  const missing = places.filter((l) => !isConfirmed(route, l));
+  return missing.length ? `Falta recoger en ${joinList(missing)}` : "Recogida completa";
 }
 
 // --- Rutas -----------------------------------------------------------------
@@ -183,4 +270,57 @@ export function departBlocker(route, orders) {
   const missing = requiredPickups(orders).filter((l) => !isConfirmed(route, l)).length;
   if (missing) return missing === 1 ? "falta 1 recogida" : `faltan ${missing} recogidas`;
   return null;
+}
+
+// --- Jerarquía de «En tránsito» (rutas) ---------------------------------------
+
+export const ROUTE_GROUPS = [
+  { key: "porSalir", label: "Por salir", chip: "Por salir", tone: "blue" },
+  { key: "transito", label: "En tránsito", chip: "En tránsito", tone: "teal" },
+  { key: "completadas", label: "Completadas", chip: "Completadas", tone: "green" },
+];
+
+// Una ruta con retraso (route.delayed) que todavía no se completa.
+export const isRouteDelayed = (route) => Boolean(route.delayed) && route.status !== "Completada";
+
+/*
+  Grupo de una ruta:
+    completadas  status Completada
+    transito     ya salió (En tránsito, o con departedAt) y no se completó
+    porSalir     Pendiente o Recolectando, sin salir
+*/
+export function routeGroup(route) {
+  if (route.status === "Completada") return "completadas";
+  if (route.status === "En tránsito" || route.departedAt) return "transito";
+  return "porSalir";
+}
+
+const stamp = (...values) => values.map(timeOf).find((t) => t != null) ?? 0;
+
+// Orden dentro de cada grupo: por salir, la más reciente primero; en tránsito,
+// las demoradas arriba y después la que salió primero; completadas, la que se
+// completó más recientemente primero.
+const ROUTE_COMPARE = {
+  porSalir: (a, b) => stamp(b.createdAt, b.date) - stamp(a.createdAt, a.date) || (b.number || 0) - (a.number || 0),
+  transito: (a, b) =>
+    Number(isRouteDelayed(b)) - Number(isRouteDelayed(a)) ||
+    stamp(a.departedAt, a.createdAt) - stamp(b.departedAt, b.createdAt) ||
+    (a.number || 0) - (b.number || 0),
+  completadas: (a, b) =>
+    stamp(b.completedAt, b.departedAt, b.updatedAt) - stamp(a.completedAt, a.departedAt, a.updatedAt) || (b.number || 0) - (a.number || 0),
+};
+
+// filter: "todas", la clave de un grupo o "retraso" (solo las demoradas).
+export function groupRoutes(routes, filter = "todas") {
+  const list = filter === "retraso" ? routes.filter(isRouteDelayed) : routes;
+  return ROUTE_GROUPS.filter((g) => filter === "todas" || filter === "retraso" || filter === g.key)
+    .map((g) => ({ ...g, items: list.filter((r) => routeGroup(r) === g.key).sort(ROUTE_COMPARE[g.key]) }))
+    .filter((g) => g.items.length);
+}
+
+export function routeCounts(routes) {
+  const counts = { todas: routes.length, retraso: routes.filter(isRouteDelayed).length };
+  ROUTE_GROUPS.forEach((g) => (counts[g.key] = 0));
+  routes.forEach((r) => (counts[routeGroup(r)] += 1));
+  return counts;
 }

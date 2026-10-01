@@ -16,12 +16,10 @@ async function generateReference() {
   return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
-// Registra en Finanzas el ingreso "Ventas" de un pedido pagado, igual que
-// createOrderPaymentTransaction del panel privado (private/backend/src/
-// controller/ordersController.js) cuando un pedido pasa a "Pagado". Un pedido
-// del checkout nace ya pagado, así que nunca pasa por esa transición: se
-// llama aquí justo al crearlo. Idempotente: si ya existe un Ingreso "Ventas"
-// para ese pedido, no crea otro.
+// Registra en Finanzas el ingreso "Ventas" de un pedido de la tienda. Todo
+// pedido nace pagado (solo se crea si Wompi aprobó el cobro), así que se llama
+// justo al crearlo, siempre. Idempotente: si ya existe un Ingreso "Ventas" para
+// ese pedido, no crea otro.
 export async function recordSaleTransaction(order) {
   const alreadyExists = await transactionModel.findOne({
     relatedOrder: order._id,
@@ -39,5 +37,6 @@ export async function recordSaleTransaction(order) {
     amount: order.total,
     status: "Completado",
     relatedOrder: order._id,
+    orderNumber: order.orderNumber,
   });
 }
