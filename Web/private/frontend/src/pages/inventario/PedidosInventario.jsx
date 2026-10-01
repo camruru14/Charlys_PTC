@@ -15,7 +15,7 @@ import RadioCardList from "../../components/ui/RadioCardList";
 import DisclosureChevron from "../../components/ui/DisclosureChevron";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
-import { fmtNumber, fmtDate } from "../../lib/format";
+import { fmtNumber, fmtDate, formatBatchNumber } from "../../lib/format";
 import { IconOrders } from "../../lib/icons";
 import { statusTone, normalizeStatus } from "../../lib/statusDomains";
 import {
@@ -171,7 +171,7 @@ function LotProgress({ batch }) {
   return (
     <span className="flex w-full min-w-0 flex-col items-end gap-1">
       <span className="max-w-full text-right text-[11px] font-semibold leading-[1.3] tabular-nums text-tone-blue-text">
-        <span className="whitespace-nowrap">Lote {batch.batchNumber}</span>
+        <span className="whitespace-nowrap">Lote {formatBatchNumber(batch.batchNumber)}</span>
         {batch.status ? (
           <>
             {" "}
@@ -309,7 +309,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
       const b = item.manufacturingBatch;
       return (
         <p className="t-aux tabular-nums">
-          Lote {b.batchNumber || "—"} · meta {b.targetQuantity != null ? fmtNumber(b.targetQuantity) : "—"} · producido{" "}
+          Lote {formatBatchNumber(b.batchNumber) || "—"} · meta {b.targetQuantity != null ? fmtNumber(b.targetQuantity) : "—"} · producido{" "}
           {b.producedQuantity != null ? fmtNumber(b.producedQuantity) : "—"} · {b.status || "—"}
         </p>
       );
@@ -606,7 +606,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
   }
 
   return (
-    <MasterDetail listWidth={392} fill>
+    <MasterDetail listWidth={392}>
       <ListPanel
         header={
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">

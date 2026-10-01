@@ -6,7 +6,6 @@ import OrderCard from "../components/orders/OrderCard";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import FilterChips from "../components/ui/FilterChips";
-import IconButton from "../components/ui/IconButton";
 import LoadingState from "../components/ui/LoadingState";
 import SearchField from "../components/ui/SearchField";
 import { colors } from "../lib/theme";
@@ -19,12 +18,12 @@ const CHIP_FILTERS = {
   all: () => true,
   pendientes: (o) => o.status === "Pendiente",
   enRuta: (o) => o.status === "En Tránsito",
-  sinPago: (o) => o.paymentStatus === "Pendiente",
 };
 
 // Lista de pedidos, como Web/private/frontend/src/pages/Pedidos.jsx: búsqueda
 // por N° de pedido, cliente o correo + chips. Al tocar uno se abre su
-// detalle (PedidoDetalleScreen); el "+" del encabezado crea uno nuevo.
+// detalle (PedidoDetalleScreen). Los pedidos llegan de la tienda en línea: la
+// app no los crea ni los edita.
 export default function PedidosScreen({ navigation }) {
   const bottomPad = useBottomPad(32);
   const { orders, loading, refreshing, error, refresh } = useOrders();
@@ -42,14 +41,6 @@ export default function PedidosScreen({ navigation }) {
   useLayoutEffect(() => {
     navigation.setOptions({
       subtitle: `${formatNumber(activeCount)} activos · tienda en línea`,
-      headerRight: () => (
-        <IconButton
-          icon="plus"
-          variant="primary"
-          onPress={() => navigation.navigate("PedidoForm")}
-          accessibilityLabel="Nuevo pedido"
-        />
-      ),
     });
   }, [navigation, activeCount]);
 
@@ -58,7 +49,6 @@ export default function PedidosScreen({ navigation }) {
       { value: "all", label: "Todos", count: orders.length },
       { value: "pendientes", label: "Pendientes", count: orders.filter(CHIP_FILTERS.pendientes).length },
       { value: "enRuta", label: "En ruta", count: orders.filter(CHIP_FILTERS.enRuta).length },
-      { value: "sinPago", label: "Sin pago", count: orders.filter(CHIP_FILTERS.sinPago).length },
     ],
     [orders],
   );
@@ -105,7 +95,7 @@ export default function PedidosScreen({ navigation }) {
       ListEmptyComponent={
         <EmptyState
           icon="orders"
-          message={orders.length === 0 ? "No hay pedidos." : "Ningún pedido coincide con la búsqueda."}
+          message={orders.length === 0 ? "No hay pedidos. Los pedidos llegan desde la tienda en línea." : "Ningún pedido coincide con la búsqueda."}
         />
       }
     />

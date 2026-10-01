@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useFetch } from "../../hooks/useFetch";
 import { useBatchForm } from "../../hooks/useBatchForm";
 import { useDateRange, rangeLabel } from "../../context/dateRange";
-import { SectionCard, AsyncState } from "../ui/SectionCard";
+import PagedSection from "../ui/PagedSection";
 import BatchToolbar from "./BatchToolbar";
 import BatchTable from "./BatchTable";
 import BatchFormModal from "./BatchFormModal";
@@ -63,7 +63,7 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
         <KpiCard label="Producción total" value={fmtNumber(stats.produced)} note="unidades" />
       </div>
 
-      <SectionCard
+      <PagedSection
         title="Todos los lotes"
         action={
           editable ? (
@@ -72,19 +72,23 @@ function BatchHistoryView({ backTo, backLabel, editable = false }) {
             </Button>
           ) : null
         }
+        toolbar={<BatchToolbar list={all} filters={filters} setFilters={setFilters} />}
+        items={filtered}
+        rowHeight={44}
+        resetKey={`${JSON.stringify(filters)}|${rangeLabel(range)}`}
+        noun="lotes"
+        loading={loading}
+        error={error}
       >
-        <BatchToolbar list={all} filters={filters} setFilters={setFilters} />
-        <AsyncState loading={loading} error={error}>
-          <div className="-mx-5 -mb-5 border-t border-line-soft">
-            <BatchTable
-              batches={filtered}
-              showOperator
-              onEdit={editable ? openEdit : undefined}
-              onDelete={editable ? handleDelete : undefined}
-            />
-          </div>
-        </AsyncState>
-      </SectionCard>
+        {(rows) => (
+          <BatchTable
+            batches={rows}
+            showOperator
+            onEdit={editable ? openEdit : undefined}
+            onDelete={editable ? handleDelete : undefined}
+          />
+        )}
+      </PagedSection>
 
       {editable ? (
         <BatchFormModal

@@ -8,20 +8,12 @@ import paymentTransactionModel from "../models/PaymentTransaction.js";
 import wompiClient from "../utils/wompiClient.js";
 import { recordSaleTransaction } from "../utils/salesTransaction.js";
 
-// Nombre del artículo en Inventario del panel (singular) para cada categoría
-// del catálogo (plural). El panel busca la existencia por nombre exacto
-// (private/backend/src/lib/stock.js), así que la línea del pedido debe
-// guardar este nombre; la tienda sigue mostrando la categoría en plural.
-const INVENTORY_NAME = { Pajillas: "Pajilla", Pelotas: "Pelota" };
-
 // Cantidad máxima por línea (la tienda aplica el mismo tope en src/lib/quantity.js).
 const MAX_QUANTITY = 9_999_999;
 
 // Genera el siguiente N° de pedido correlativo del año (ORD-2026-0001, ORD-2026-0002, ...).
-// Mismo esquema que private/backend/src/controller/ordersController.js: ambos
-// backends escriben a la misma colección "orders", así que un pedido hecho
-// aquí (tienda pública) y uno creado a mano en el panel privado se numeran
-// igual, en la misma secuencia.
+// Los pedidos solo se crean aquí (el panel privado no crea ni edita pedidos);
+// la numeración sigue la misma secuencia de la colección "orders".
 async function generateOrderNumber() {
   const prefix = `ORD-${new Date().getFullYear()}-`;
   const last = await orderModel
@@ -69,13 +61,21 @@ async function buildOrderItems(rawItems) {
       throw { status: 400, message: `Color inválido para "${product.name}".` };
     }
 
-    // La tabla de Pedidos en admin (private/frontend) muestra este campo como
-    // "Producto", pero como el nombre ahora se escribe libre en Catálogo (ver
-    // ProductFormModal.jsx) no sirve como etiqueta uniforme para admin — se
-    // usa el nombre de Inventario de la categoría ("Pelota"/"Pajilla"), que es
-    // con el que el panel descuenta la existencia.
-    const inventoryName = INVENTORY_NAME[product.category] || product.category;
-    const productLabel = raw.size ? `${inventoryName} (${raw.size})` : inventoryName;
+    // La línea guarda como "producto" el nombre de la SUBCATEGORÍA del
+    // catálogo (Configuración > Subcategorías del panel), no el nombre libre
+    // del producto ni el de su categoría: es el nombre que usa todo el panel
+    // (Pedidos, Fabricación, Logística) y con el que Inventario busca el
+    // producto terminado al verificar el pedido (name = subcategoría + color,
+    // private/backend/src/lib/stock.js). Sin subcategoría no se vende: no hay
+    // nombre válido con el que el panel pueda descontar la existencia.
+    const subcategory = typeof product.subcategory === "string" ? product.subcategory.trim() : "";
+    if (!subcategory) {
+      throw {
+        status: 400,
+        message: `"${product.name}" no tiene subcategoría asignada; no se puede vender todavía.`,
+      };
+    }
+    const productLabel = raw.size ? `${subcategory} (${raw.size})` : subcategory;
     const unitPrice = product.price;
     const subtotal = Number((unitPrice * quantity).toFixed(2));
 
@@ -156,7 +156,9 @@ ordersController.checkout = async (req, res) => {
       });
     }
 
-    // 3) Pago aprobado: ahora sí se crea el pedido, ya marcado como pagado.
+    // 3) Pago aprobado: ahora sí se crea el pedido. Todo pedido de la tienda
+    // está pagado (solo existe si Wompi aprobó el cobro), por eso Order ya no
+    // guarda un estado de pago.
     const orderNumber = await generateOrderNumber();
 
     // El pedido pasa solo a Inventario al crearse: sentToInventoryAt y el
@@ -176,7 +178,6 @@ ordersController.checkout = async (req, res) => {
       source: "ecommerce",
       notes: req.body.notes,
       status: "Procesando",
-      paymentStatus: "Pagado",
       statusHistory: [{ status: "Procesando", at: createdAt }],
       sentToInventoryAt: createdAt,
     });
@@ -215,15 +216,22 @@ ordersController.checkout = async (req, res) => {
   }
 };
 
+// Pedido que ve el cliente: el pedido vivo o, si el panel lo eliminó (los
+// entregados se eliminan para que no se acumulen), el resumen que se guardó en
+// su CustomerOrder. Misma forma en ambos casos; sin enlace roto ni error.
+function visibleOrder(link, live) {
+  if (live) return live.toObject();
+  if (link.snapshot) return { ...link.snapshot, _id: link.order };
+  return null;
+}
+
 // GET /api/orders/mine  (requiere sesión de cliente)
 ordersController.getMyOrders = async (req, res) => {
   try {
-    const links = await customerOrderModel
-      .find({ customer: req.customer.id })
-      .populate("order")
-      .sort({ createdAt: -1 });
-
-    const orders = links.filter((l) => l.order).map((l) => l.order);
+    const links = await customerOrderModel.find({ customer: req.customer.id }).sort({ createdAt: -1 }).lean();
+    const live = await orderModel.find({ _id: { $in: links.map((l) => l.order) } });
+    const liveById = new Map(live.map((o) => [String(o._id), o]));
+    const orders = links.map((l) => visibleOrder(l, liveById.get(String(l.order)))).filter(Boolean);
 
     // Método de pago: vive en PaymentTransaction (no en Order). Una sola
     // consulta para todos los pedidos; si hubiera varias por pedido gana la
@@ -241,7 +249,7 @@ ordersController.getMyOrders = async (req, res) => {
       }
     }
 
-    res.json(orders.map((o) => ({ ...o.toObject(), payment: paymentByOrder.get(String(o._id)) || null })));
+    res.json(orders.map((o) => ({ ...o, payment: paymentByOrder.get(String(o._id)) || null })));
   } catch (error) {
     console.log("error " + error);
     res.status(500).json({ message: "Error interno del servidor." });
@@ -259,7 +267,7 @@ ordersController.getMyOrder = async (req, res) => {
       return res.status(404).json({ message: "Pedido no encontrado." });
     }
 
-    const order = await orderModel.findById(req.params.id);
+    const order = visibleOrder(link.toObject(), await orderModel.findById(req.params.id));
     const payments = await paymentTransactionModel
       .find({ order: req.params.id })
       .sort({ createdAt: -1 });

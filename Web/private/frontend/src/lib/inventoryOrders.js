@@ -1,3 +1,5 @@
+import { formatBatchNumber } from "./format";
+
 /*
   Lógica de Inventario > Pedidos a partir de /orders y /inventory:
   bodega sugerida por línea, estado de cada línea (o de cada parte de una
@@ -94,14 +96,14 @@ export function inventoryMacroStatus(order) {
   return "Verificando";
 }
 
-// «2 de 6 listos» o «1 de 2 · LOTE-2026-0012 en proceso» si espera un lote.
+// «2 de 6 listos» o «1 de 2 · L-2026-0012 en proceso» si espera un lote.
 export function progressLabel(order) {
   const items = order.items || [];
   const ready = items.filter(isReady).length;
   const waiting = items.find(isWaitingBatch);
   const batch = waiting?.manufacturingBatch;
   if (batch?.batchNumber) {
-    return `${ready} de ${items.length} · ${batch.batchNumber} ${String(batch.status || "").toLowerCase()}`;
+    return `${ready} de ${items.length} · ${formatBatchNumber(batch.batchNumber)} ${String(batch.status || "").toLowerCase()}`;
   }
   return `${ready} de ${items.length} listos`;
 }

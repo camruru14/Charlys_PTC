@@ -4,7 +4,6 @@ import { fromDateOnly } from "./format";
 // Flujo de un lote de stock (no «Pedido»): Programado → En proceso
 // (⇄ Detenido) → Completado, que se muestra «Por enviar» → Enviar a bodega
 // → «En bodega».
-export const PRODUCTS = ["Pajilla", "Pelota"];
 export const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
 export const BATCH_STATUSES = ["Programado", "En Proceso", "Completado", "Detenido"];
 

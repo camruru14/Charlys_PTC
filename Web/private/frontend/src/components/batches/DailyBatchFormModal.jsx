@@ -1,7 +1,8 @@
 import Modal from "../ui/Modal";
 import { Field, SelectField, ReadonlyField } from "../ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
-import { PRODUCTS, COLORS } from "../../lib/batchFlow";
+import ProductSelect from "../ui/ProductSelect";
+import { COLORS } from "../../lib/batchFlow";
 
 /*
   Modal de creación/edición de un lote diario (Producción diaria).
@@ -26,7 +27,7 @@ function DailyBatchFormModal({ open, onClose, editingId, form, handleChange, han
           <ReadonlyField label="ID de lote diario" value={form.dailyBatchNumber} />
         </div>
         <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} required />
-        <SelectField label="Producto" name="product" value={form.product} onChange={handleChange} options={PRODUCTS} required />
+        <ProductSelect value={form.product} onChange={handleChange} />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
       </form>
     </Modal>

@@ -3,6 +3,7 @@ const dailyBatchesController = {};
 import dailyBatchModel from "../models/DailyBatch.js";
 import batchModel from "../models/ProductionBatch.js";
 import { generateBatchNumber } from "./productionBatchesController.js";
+import { assertProductName } from "../lib/productName.js";
 
 // Genera el siguiente número de lote diario correlativo (LTE-DIARIO-0001, LTE-DIARIO-0002, ...)
 async function generateDailyBatchNumber() {
@@ -33,12 +34,15 @@ dailyBatchesController.getBatch = async (req, res) => {
 dailyBatchesController.insertBatch = async (req, res) => {
   const { date, product, color } = req.body;
 
+  // El producto es el nombre de una subcategoría activa.
+  const productName = await assertProductName(product, { required: true });
+
   const dailyBatchNumber = await generateDailyBatchNumber();
 
   const newBatch = new dailyBatchModel({
     dailyBatchNumber,
     date,
-    product,
+    product: productName,
     color,
   });
 
@@ -57,7 +61,10 @@ dailyBatchesController.updateBatch = async (req, res) => {
     return res.status(404).json({ message: "Daily batch not found" });
   }
 
-  batch.set({ date, product, color });
+  // Conserva el producto que ya tenía aunque su subcategoría esté inactiva.
+  const productName = await assertProductName(product, { current: batch.product });
+
+  batch.set({ date, product: productName, color });
 
   await batch.save();
 

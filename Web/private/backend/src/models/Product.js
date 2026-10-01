@@ -29,6 +29,12 @@ const productSchema = new Schema(
       enum: ["Pelotas", "Pajillas"],
       required: true,
     },
+    // Nombre de la subcategoría (colección "subcategories", Configuración >
+    // Subcategorías) a la que pertenece el producto; su categoría debe
+    // coincidir con `category`. No es required en el esquema porque los
+    // productos anteriores no la tienen: el panel la exige al crear o editar
+    // (private/backend/src/controller/productsController.js).
+    subcategory: { type: String, trim: true },
     description: { type: String, default: "" },
     price: { type: Number, required: true, min: 0 }, // precio unitario en USD
     compareAtPrice: { type: Number, min: 0 }, // precio "antes" opcional, para mostrar descuento

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
+import { useAuth } from "../hooks/useAuth";
 import { useInventory } from "../hooks/useInventory";
 import BottomBar from "../components/ui/BottomBar";
 import BottomSheet from "../components/ui/BottomSheet";
@@ -236,8 +237,17 @@ function VerifySheet({ index, item: current, stockMap, busy, onClose, onVerify }
   );
 }
 
+// Por qué un pedido no se puede eliminar, o null si sí (el backend lo vuelve a
+// validar): solo se eliminan los entregados que no están en una ruta activa.
+function deleteBlocker(order) {
+  if (order.status !== "Entregado") return "Solo se pueden eliminar pedidos entregados";
+  const route = order.delivery?.route;
+  if (route && route.status !== "Completada") return "El pedido está en una ruta activa";
+  return null;
+}
+
 // Detalle de un pedido. Junta lo que en la web está en la ficha de Pedidos
-// (recorrido, cliente, entrega, productos, editar y eliminar) con la
+// (recorrido, cliente, entrega, productos y eliminar los entregados) con la
 // preparación de Inventario > Pedidos (verificar, empacar, resolver
 // faltantes, enviar a fabricación), con los mismos endpoints y el mismo
 // «Deshacer». Fabricar, empacar lo fabricado y asignar la entrega siguen en
@@ -246,6 +256,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
   const bottomPad = useBottomPad(24);
   const id = route.params?.id;
   const toast = useToast();
+  const { user } = useAuth();
   const { orders, loading, refreshing, error, refresh, eliminar } = useOrders();
   const { items: inventory, refresh: refreshInventory } = useInventory();
   const [busy, setBusy] = useState(false);
@@ -254,7 +265,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
   const order = orders.find((o) => o._id === id);
   const stockMap = useMemo(() => buildStockMap(finishedItemsOf(inventory)), [inventory]);
 
-  // Al volver de editar el pedido, se vuelve a leer.
+  // Al volver a la pantalla, se vuelve a leer.
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -265,7 +276,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     if (!order) return;
     Alert.alert(
       "Eliminar pedido",
-      `¿Eliminar el pedido ${order.orderNumber}? El stock ya tomado de bodega vuelve a su lugar y se borran sus lotes que sigan Programados.`,
+      `¿Eliminar el pedido ${order.orderNumber}? Esta acción no se puede deshacer. La venta se conserva en Finanzas y el cliente lo sigue viendo en su historial de la tienda.`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -277,8 +288,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
               toast.show("Pedido eliminado");
               navigation.goBack();
             } catch (err) {
-              // El backend explica qué resolver primero (desempacar o
-              // resolver el lote en Fabricación).
+              // El backend explica por qué no se pudo (no entregado, ruta activa, sin permiso).
               Alert.alert("No se pudo eliminar", err.message);
             }
           },
@@ -287,23 +297,25 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     );
   }, [order, eliminar, navigation, toast]);
 
-  const openMenu = useCallback(() => {
-    Alert.alert(order?.orderNumber || "Pedido", undefined, [
-      { text: "Editar pedido", onPress: () => navigation.navigate("PedidoForm", { id }) },
-      { text: "Eliminar pedido", style: "destructive", onPress: confirmDelete },
-      { text: "Cancelar", style: "cancel" },
-    ]);
-  }, [order, navigation, id, confirmDelete]);
+  // «Eliminar»: solo administradores. En un pedido que no se puede eliminar,
+  // explica por qué en vez de ocultar la acción.
+  const askDelete = useCallback(() => {
+    const blocker = order ? deleteBlocker(order) : null;
+    if (blocker) Alert.alert("No se puede eliminar", blocker);
+    else confirmDelete();
+  }, [order, confirmDelete]);
 
   useLayoutEffect(() => {
     if (!order) return;
     navigation.setOptions({
       title: order.orderNumber,
       headerStatus: { label: order.status, tone: statusTone(order.status, "pedido") },
-      headerSubtitle: [order.customer?.name, formatMoney(order.total), order.paymentStatus].filter(Boolean).join(" · "),
-      headerRight: () => <IconButton icon="more" onPress={openMenu} accessibilityLabel="Más acciones del pedido" />,
+      headerSubtitle: [order.customer?.name, formatMoney(order.total)].filter(Boolean).join(" · "),
+      headerRight: user?.isAdmin
+        ? () => <IconButton icon="trash" onPress={askDelete} accessibilityLabel="Eliminar pedido" />
+        : undefined,
     });
-  }, [navigation, order, openMenu]);
+  }, [navigation, order, askDelete, user?.isAdmin]);
 
   // Recarga después de una acción; `stock`: la acción movió existencia.
   const reload = (stock) => Promise.all([refresh(), stock ? refreshInventory() : null]);
@@ -465,7 +477,6 @@ export default function PedidoDetalleScreen({ navigation, route }) {
             subtitle={[order.customer?.name, order.customer?.email, order.customer?.phone].filter(Boolean).join("\n") || "—"}
           />
           <ListRow title="Entrega" subtitle={`${address || "—"}\n${routeInfo}`} />
-          <ListRow title="Pago" right={<Pill label={order.paymentStatus} tone={statusTone(order.paymentStatus, "pago")} />} />
           <ListRow title="Solicitado" value={formatDateYear(order.createdAt)} />
           <ListRow
             title="Última acción"

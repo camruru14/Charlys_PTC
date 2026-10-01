@@ -1,17 +1,20 @@
 import ActionsMenu from "../ui/ActionsMenu";
 import EmptyState from "../ui/EmptyState";
+import Pagination from "../ui/Pagination";
+import { usePagedRows } from "../../hooks/usePagedRows";
 import { IconEdit, IconAlert } from "../../lib/icons";
 
 /*
   Tarjeta de artículos de inventario (Producto terminado y Materia prima):
-  indicadores (kpis, opcional), barra de filtros, tabla en grid, pie con
-  resumen y paginación.
+  indicadores (kpis, opcional), barra de filtros, tabla en grid y pie con
+  resumen o paginación.
     columns = [{ key, label, width, align, className, render(item) }]
-    rows    = artículos de la página actual (ya filtrados y paginados)
+    rows    = TODOS los artículos que pasan los filtros: la tarjeta pagina
+              (usePagedRows, como las listas de Configuración: llega hasta el
+              margen inferior y muestra las filas que caben)
+    resetKey = cambia con los filtros: vuelve a la primera página
   La última columna (Acción: editar + «…») la agrega la tarjeta.
 */
-
-export const PAGE_SIZE = 12;
 
 // Clases del <FilterSelect> de la barra de filtros (34px).
 export const filterSelectClass =
@@ -35,44 +38,6 @@ export function LowStockToggle({ active, count, onToggle }) {
   );
 }
 
-export function Pagination({ page, pageCount, onPage }) {
-  const pages = Array.from({ length: pageCount }, (_, i) => i + 1);
-  const btn = "flex h-[26px] min-w-[26px] items-center justify-center rounded-[7px] px-1.5 text-[12px] font-semibold tabular-nums transition";
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        aria-label="Página anterior"
-        disabled={page <= 1}
-        onClick={() => onPage(page - 1)}
-        className={`${btn} text-ink-2 hover:bg-surface disabled:opacity-40`}
-      >
-        ‹
-      </button>
-      {pages.map((p) => (
-        <button
-          key={p}
-          type="button"
-          aria-current={p === page ? "page" : undefined}
-          onClick={() => onPage(p)}
-          className={`${btn} ${p === page ? "bg-primary text-white" : "text-ink-2 hover:bg-surface"}`}
-        >
-          {p}
-        </button>
-      ))}
-      <button
-        type="button"
-        aria-label="Página siguiente"
-        disabled={page >= pageCount}
-        onClick={() => onPage(page + 1)}
-        className={`${btn} text-ink-2 hover:bg-surface disabled:opacity-40`}
-      >
-        ›
-      </button>
-    </div>
-  );
-}
-
 function InventoryItemsCard({
   kpis,
   filterBar,
@@ -85,10 +50,10 @@ function InventoryItemsCard({
   onEdit,
   onDelete,
   summary,
-  page,
-  pageCount,
-  onPage,
+  noun = "artículos",
+  resetKey = "",
 }) {
+  const { cardRef, areaRef, cardStyle, visible, page, setPage, size, total, paged } = usePagedRows(rows, { rowHeight: 46, headerHeight: 32, resetKey });
   const template = [...columns.map((c) => c.width), "92px"].join(" ");
   const gridStyle = { gridTemplateColumns: template };
 
@@ -97,7 +62,7 @@ function InventoryItemsCard({
   else if (error) body = <EmptyState title="No se pudo cargar el inventario" description={error} />;
   else if (rows.length === 0) body = <EmptyState title={emptyText} />;
   else {
-    body = rows.map((item) => (
+    body = visible.map((item) => (
       <div
         key={item._id}
         style={gridStyle}
@@ -128,13 +93,13 @@ function InventoryItemsCard({
   }
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
+    <section ref={cardRef} style={cardStyle} className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
       {/* Cabecera: indicadores arriba a la izquierda (opcional) y debajo los filtros. */}
-      <div className="flex flex-col gap-3 border-b border-line-soft px-[18px] py-[13px]">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-line-soft px-[18px] py-[13px]">
         {kpis}
         <div className="flex flex-wrap items-center gap-2">{filterBar}</div>
       </div>
-      <div className="overflow-x-auto">
+      <div ref={areaRef} className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-[1080px]">
           <div style={gridStyle} className="grid h-8 items-center border-b border-line-soft bg-surface-2">
             {columns.map((c) => (
@@ -150,10 +115,13 @@ function InventoryItemsCard({
           {body}
         </div>
       </div>
-      <div className="flex h-[38px] items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-[18px]">
-        <p className="t-aux tabular-nums">{summary}</p>
-<Pagination page={page} pageCount={Math.max(1, pageCount)} onPage={onPage} />
-      </div>
+      {paged ? (
+        <Pagination page={page} size={size} total={total} noun={noun} onChange={setPage} />
+      ) : (
+        <div className="flex h-[38px] shrink-0 items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-[18px]">
+          <p className="t-aux tabular-nums">{summary}</p>
+        </div>
+      )}
     </section>
   );
 }

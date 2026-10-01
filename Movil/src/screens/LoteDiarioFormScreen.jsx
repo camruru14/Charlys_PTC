@@ -6,12 +6,12 @@ import BottomBar from "../components/ui/BottomBar";
 import Button from "../components/ui/Button";
 import DateField from "../components/ui/DateField";
 import LoadingState from "../components/ui/LoadingState";
-import SegmentedField from "../components/ui/SegmentedField";
+import ProductSelect from "../components/ui/ProductSelect";
 import SelectField from "../components/ui/SelectField";
 import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { todayInput, toDateInputValue } from "../lib/format";
-import { COLORS, PRODUCTS, previewDailyBatchNumber } from "../lib/batchFlow";
+import { COLORS, previewDailyBatchNumber } from "../lib/batchFlow";
 
 // Crear o editar un lote diario, con los mismos campos que
 // DailyBatchFormModal/useDailyBatchForm de la web. El ID lo genera el backend
@@ -22,7 +22,7 @@ export default function LoteDiarioFormScreen({ navigation, route }) {
   const toast = useToast();
 
   const { dailyBatches, loading, crear, actualizar, eliminar } = useDailyBatches();
-  const [form, setForm] = useState(isEditing ? null : { date: todayInput(), product: "Pajilla", color: "Rojo" });
+  const [form, setForm] = useState(isEditing ? null : { date: todayInput(), product: "", color: "Rojo" });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -33,7 +33,7 @@ export default function LoteDiarioFormScreen({ navigation, route }) {
     if (daily) {
       setForm({
         date: toDateInputValue(daily.date),
-        product: daily.product || "Pajilla",
+        product: daily.product || "",
         color: daily.color || "",
       });
       return;
@@ -59,6 +59,10 @@ export default function LoteDiarioFormScreen({ navigation, route }) {
   const handleSave = async () => {
     if (!form.date) {
       Alert.alert("Falta información", "La fecha es obligatoria");
+      return;
+    }
+    if (!form.product) {
+      Alert.alert("Falta información", "Elige la categoría y el producto");
       return;
     }
     setSaving(true);
@@ -106,13 +110,7 @@ export default function LoteDiarioFormScreen({ navigation, route }) {
     <View style={styles.screen}>
       <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
         <DateField label="Fecha" value={form.date} onChange={(v) => handleChange("date", v)} required />
-        <SegmentedField
-          label="Producto"
-          value={form.product}
-          options={PRODUCTS}
-          onChange={(v) => handleChange("product", v)}
-          required
-        />
+        <ProductSelect value={form.product} onChange={(v) => handleChange("product", v)} />
         <SelectField
           label="Color"
           value={form.color}

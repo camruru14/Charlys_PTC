@@ -101,17 +101,19 @@ async function request(path, { method = "GET", body } = {}) {
   // usa para decidir qué mostrar). Se sigue lanzando el error, con
   // error.status marcado, para que el caller pueda distinguirlo de otros
   // errores si igual quiere mostrar algo antes de que la pantalla cambie.
-  if (response.status === 401 || response.status === 403) {
+  const isJson = response.headers
+    .get("content-type")
+    ?.includes("application/json");
+  const payload = isJson ? await response.json().catch(() => ({})) : null;
+
+  // El 403 de «solo administradores» (code ADMIN_ONLY) no es una sesión
+  // inválida: se muestra su mensaje y la sesión sigue abierta.
+  if (response.status === 401 || (response.status === 403 && payload?.code !== "ADMIN_ONLY")) {
     const error = new Error("Sesión expirada. Inicia sesión nuevamente.");
     error.status = response.status;
     emitUnauthorized();
     throw error;
   }
-
-  const isJson = response.headers
-    .get("content-type")
-    ?.includes("application/json");
-  const payload = isJson ? await response.json().catch(() => ({})) : null;
 
   if (!response.ok) {
     const error = new Error(payload?.message || `Error ${response.status}`);

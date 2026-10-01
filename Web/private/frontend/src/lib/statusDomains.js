@@ -3,7 +3,7 @@
   de color de estados del panel (la consume <StatusPill domain="..." />): un
   mismo estado tiene el mismo tono en todos los dominios, con una sola
   excepción intencional: "Pendiente" es gris en los dominios operativos
-  (pedido, ruta, parada) y ámbar en los financieros (pago, transacción).
+  (pedido, ruta, parada) y ámbar en los financieros (transacción).
   Criterio: azul = pasando ahora mismo (Procesando, En proceso, En
   fabricación, Recolectando); ámbar = programado o en espera (Programado,
   Esperando lote, Por enviar).
@@ -17,11 +17,6 @@ export const STATUS_DOMAINS = {
     Empacado: "purple",
     "En Tránsito": "teal",
     Entregado: "green",
-  },
-  pago: {
-    Pendiente: "amber",
-    Pagado: "green",
-    Reembolsado: "gray",
   },
   "pedido-inventario": {
     "Sin verificar": "gray",
@@ -75,6 +70,17 @@ export const STATUS_DOMAINS = {
     Esperando: "gray",
     // Pedido que volvió de una entrega parcial
     "Entrega parcial": "amber",
+  },
+  // Lo que le falta a un pedido incompleto en Para despacho (mismos tonos que
+  // el estado del lote o de la línea de la que viene cada texto).
+  falta: {
+    detenido: "rose",
+    "en proceso": "blue",
+    programado: "amber",
+    "completado sin empacar": "green",
+    "en fabricación": "blue",
+    "verificado sin empacar": "green",
+    "sin verificar": "gray",
   },
   stock: {
     Suficiente: "green",

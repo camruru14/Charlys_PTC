@@ -15,13 +15,14 @@ import Stepper from "../../components/ui/Stepper";
 import MiniStepper from "../../components/ui/MiniStepper";
 import InlineResolveBox from "../../components/ui/InlineResolveBox";
 import DisclosureChevron from "../../components/ui/DisclosureChevron";
-import { Field, SelectField } from "../../components/ui/Field";
+import ColorSwatch from "../../components/ui/ColorSwatch";
+import { SelectField } from "../../components/ui/Field";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
-import { statusTone } from "../../lib/statusDomains";
+import { buttonClass } from "../../lib/buttonStyles";
 import { blockNegativeKey } from "../../lib/numberInput";
-import { fmtNumber, fmtDate, fmtTime, fmtDateTime } from "../../lib/format";
-import { IconBox, IconOrders } from "../../lib/icons";
+import { fmtNumber, fmtDate, fmtTime, fmtDateTime, formatBatchNumber } from "../../lib/format";
+import { IconAlert, IconBox, IconCheck, IconOrders, IconPlay } from "../../lib/icons";
 import { batchStart, batchEnd } from "../../lib/batchFlow";
 import {
   buildGroups,
@@ -32,11 +33,13 @@ import {
   STEP_LABELS,
 } from "../../lib/orderManufacturing";
 
+// Colores de los chips (mockup): Todos azul sólido al activarse, En proceso
+// azul claro, Por empacar morado claro y Detenidos rojo claro.
 const CHIPS = [
   { key: "all", label: "Todos", tone: "gray" },
-  { key: "enProceso", label: "En proceso", tone: statusTone("En proceso", "pedido-fabricacion") },
-  { key: "porEmpacar", label: "Por empacar", tone: statusTone("Por empacar", "pedido-fabricacion") },
-  { key: "detenidos", label: "Detenidos", tone: statusTone("En proceso · detenido", "pedido-fabricacion") },
+  { key: "enProceso", label: "En proceso", tone: "blue" },
+  { key: "porEmpacar", label: "Por empacar", tone: "purple" },
+  { key: "detenidos", label: "Detenidos", tone: "rose" },
 ];
 
 const CHIP_TEST = {
@@ -46,9 +49,12 @@ const CHIP_TEST = {
   detenidos: (g) => g.stopped.length > 0,
 };
 
-// La 1.ª columna cabe en una línea un número real («LOTE-2026-0157»). Con
-// min-w-[640px] el producto conserva ~146px; a 1440px el panel da de sobra.
-const LOT_GRID = "124px minmax(0,1fr) 60px 112px 168px 18px";
+// Tabla de lotes: Lote · Producto · Color · Cantidad · Estado · Acción · ⌄.
+// Se acomoda según el ancho del propio panel (container query): si no caben
+// las siete columnas, Lote, Color y Cantidad pasan debajo del producto y el
+// estado y la acción siguen a la derecha.
+const LOT_COLS =
+  "grid-cols-[minmax(0,1fr)_auto_18px] @[700px]:grid-cols-[108px_minmax(130px,1.5fr)_82px_66px_104px_172px_18px]";
 const productLabel = (item) => `${item.product}${item.color ? ` · ${item.color}` : ""}`;
 const plural = (n, one, many) => `${fmtNumber(n)} ${n === 1 ? one : many}`;
 // Ejecuta las llamadas en orden y devuelve todas sus respuestas.
@@ -65,16 +71,16 @@ function OrderListRow({ group, selected, onSelect }) {
       className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}
     >
       <span className={selected ? "bg-select-bar" : ""} />
-      <span className="flex min-w-0 flex-col gap-1.5 px-3.5 py-3">
+      <span className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5">
         <span className="flex items-center justify-between gap-3">
-          <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+          <span className="text-[13px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
           <StatusPill status={group.macro} domain="pedido-fabricacion" variant="dot" />
         </span>
         <span className="flex items-center justify-between gap-3">
-          <span className="truncate text-[12.5px] text-ink-2">{order.customer?.name || "—"}</span>
-          <span className="shrink-0 text-[11.5px] tabular-nums text-muted">{plural(count, "producto", "productos")}</span>
+          <span className="truncate text-[12px] text-ink-2">{order.customer?.name || "—"}</span>
+          <span className="shrink-0 text-[11px] tabular-nums text-muted">{plural(count, "producto", "productos")}</span>
         </span>
-        <MiniStepper segments={miniSegments(group)} className="mt-0.5" />
+        <MiniStepper segments={miniSegments(group)} size="sm" className="mt-0.5" />
       </span>
     </button>
   );
@@ -125,7 +131,7 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
   if (kind === "start") {
     const needsOperator = operators.length > 0;
     return (
-      <InlineResolveBox title={`Iniciar ${batch.batchNumber}`} className="mx-4 mb-3">
+      <InlineResolveBox title={`Iniciar ${formatBatchNumber(batch.batchNumber)}`} className="mx-4 mb-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <SelectField label="Línea" name="productionLine" size="sm" value={line} onChange={(e) => setLine(e.target.value)} options={withCurrentLine(lines, batch.productionLine)} />
           <SelectField
@@ -157,16 +163,23 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
     return (
       <InlineResolveBox className="mx-4 mb-3">
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2"
           onSubmit={(e) => {
             e.preventDefault();
             actions.stop(lot, reason);
           }}
         >
-          <div className="min-w-[220px] flex-1">
-            <Field label="Motivo (opcional)" name="reason" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-          </div>
-          <div className="flex items-center gap-2 pb-[3px]">
+          <span className="text-[12.5px] font-bold tabular-nums text-ink">Detener {formatBatchNumber(batch.batchNumber)}</span>
+          <input
+            name="reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Motivo (opcional)"
+            aria-label="Motivo de la detención"
+            autoFocus
+            className="h-8 min-w-[200px] flex-1 rounded-[8px] border border-line bg-surface px-2.5 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-select-bar focus:ring-2 focus:ring-primary-soft"
+          />
+          <div className="ml-auto flex items-center gap-2">
             {cancel}
             <Button type="submit" variant="stop" size="row" disabled={busy}>
               Detener
@@ -177,18 +190,21 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
     );
   }
 
+  // «Completar»: una sola línea, con la cantidad producida y sin abrir el
+  // formulario completo del lote.
   return (
-    <InlineResolveBox title={`Completar ${batch.batchNumber}`} className="mx-4 mb-3">
+    <InlineResolveBox className="mx-4 mb-3">
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2"
         onSubmit={(e) => {
           e.preventDefault();
           actions.complete(lot, Number(produced));
         }}
       >
-        <div className="w-[150px]">
-          <Field
-            label="Producidas"
+        <span className="text-[12.5px] font-bold tabular-nums text-ink">Completar {formatBatchNumber(batch.batchNumber)}</span>
+        <label className="flex items-center gap-2 text-[12px] text-muted">
+          Producidas
+          <input
             name="producedQuantity"
             type="number"
             min="0"
@@ -197,14 +213,17 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
             onKeyDown={blockNegativeKey}
             value={produced}
             onChange={(e) => setProduced(e.target.value)}
+            className="h-8 w-[88px] rounded-[8px] border border-line bg-surface px-2.5 text-[13px] font-semibold tabular-nums text-ink outline-none transition focus:border-select-bar focus:ring-2 focus:ring-primary-soft"
           />
-        </div>
-        <span className="t-aux pb-2.5 tabular-nums">meta {batch.targetQuantity != null ? fmtNumber(batch.targetQuantity) : "—"}</span>
-        <div className="ml-auto flex items-center gap-2 pb-[3px]">
+        </label>
+        <span className="text-[12px] tabular-nums text-muted">meta {batch.targetQuantity != null ? fmtNumber(batch.targetQuantity) : "—"}</span>
+        <div className="ml-auto flex items-center gap-3">
           <Button type="submit" size="row" disabled={busy || produced === ""}>
             Confirmar
           </Button>
-          {cancel}
+          <button type="button" onClick={onClose} className="text-[12.5px] font-semibold text-primary hover:underline">
+            Cancelar
+          </button>
         </div>
       </form>
     </InlineResolveBox>
@@ -213,6 +232,7 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
 
 function OrderDetail({ group, operators, lines, busy, actions }) {
   const { order, lots, stopped } = group;
+  // Las filas empiezan colapsadas; el chevron abre su detalle.
   const [expanded, setExpanded] = useState(() => new Set());
   // Cuadro abierto: { id, kind }. «auto» abre «Completar» en el primer lote
   // en proceso; «none» es que el usuario lo cerró. Uno solo a la vez.
@@ -225,11 +245,14 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   const completed = lots.filter((l) => lotState(l) === "Completado");
   const packedCount = lots.filter((l) => l.packed).length;
   const { dates, stage } = stepperDates(group);
-  const steps = STEP_LABELS.map((label, i) => ({
-    label,
-    date: dates[i] ? fmtDate(dates[i]) : null,
-    state: i < stage || (i === 3 && stage === 3) ? "done" : i === stage ? "current" : "pending",
-  }));
+  // Subtítulo de cada paso: «30 sep · al llegar» (llegada), «desde 17 sep»
+  // (paso actual), la fecha de los pasos ya cumplidos y «—» en los pendientes.
+  const steps = STEP_LABELS.map((label, i) => {
+    const state = i < stage || (i === 3 && stage === 3) ? "done" : i === stage ? "current" : "pending";
+    const day = state !== "pending" && dates[i] ? fmtDate(dates[i]) : null;
+    const caption = !day ? null : i === 0 ? `${day} · al llegar` : state === "current" ? `desde ${day}` : day;
+    return { label, state, date: caption };
+  });
   const summary = [
     plural(lots.length, "lote", "lotes"),
     completed.length ? plural(completed.length, "completado", "completados") : null,
@@ -237,6 +260,7 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const stopReasons = [...new Set(stopped.map((l) => l.batch.stopReason).filter(Boolean))];
 
   const closeBox = () => setBox("none");
   const run = (fn) => async (...args) => {
@@ -269,6 +293,7 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
           <Button
             variant="start"
             size="row"
+            icon={IconPlay}
             disabled={busy}
             onClick={stop(() => {
               const hasOperator = lot.batch.operator || operators.length === 0;
@@ -296,7 +321,13 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
       }
       case "Detenido":
         return (
-          <Button variant="resume" size="row" disabled={busy} onClick={stop(() => actions.resume([lot]))}>
+          <Button
+            variant="resume"
+            size="row"
+            disabled={busy}
+            className="!border-0 !bg-tone-rose !text-tone-rose-text hover:brightness-95"
+            onClick={stop(() => actions.resume([lot]))}
+          >
             Reanudar
           </Button>
         );
@@ -308,8 +339,11 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
         );
       case "Empacado":
         return (
-          <span className="truncate text-[11.5px] tabular-nums text-muted">
-            {order.delivery?.pickupFactoryAt ? `Recogido ${fmtTime(order.delivery.pickupFactoryAt)}` : "En recolección · Fabricación"}
+          <span className="inline-flex min-w-0 items-center gap-1 text-[11.5px] font-semibold tabular-nums text-tone-green-text">
+            <IconCheck width={12} height={12} strokeWidth={2.6} className="shrink-0" />
+            <span className="truncate">
+              {order.delivery?.pickupFactoryAt ? `Recogido ${fmtTime(order.delivery.pickupFactoryAt)}` : "En recolección · Fabricación"}
+            </span>
           </span>
         );
       default:
@@ -319,9 +353,10 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
 
   return (
     <DetailPanel
+      plainHeader
       header={
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div className="flex min-w-0 flex-wrap items-center gap-2.5">
               <h2 className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-ink">{order.orderNumber}</h2>
               <StatusPill status={group.macro} domain="pedido-fabricacion" size="lg" />
@@ -335,86 +370,113 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
                   .join(" · ")}
               </span>
             </div>
-            <Link to={`/pedidos?id=${order._id}`} className="text-[12.5px] font-semibold text-primary hover:underline">
+            {/* Este pedido no tiene más acciones: sin menú «⋯». */}
+            <Link to={`/pedidos?id=${order._id}`} className={buttonClass("secondary", "detail")}>
               Ver productos completos
             </Link>
           </div>
-          <Stepper steps={steps} />
-        </div>
+          <div className="overflow-x-auto border-t border-line-soft px-5 py-4">
+            <div className="min-w-[500px]">
+              <Stepper steps={steps} variant="progress" />
+            </div>
+          </div>
+        </>
       }
     >
       <div className="flex flex-col gap-4">
         {stopped.length ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] bg-tone-rose px-3.5 py-2.5">
-            <p className="text-[13px] font-semibold text-tone-rose-text">
-              {stopped.length === 1
-                ? `1 lote detenido${stopped[0].batch.stopReason ? ` por ${stopped[0].batch.stopReason}` : ""}`
-                : `${fmtNumber(stopped.length)} lotes detenidos`}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-tone-rose-dot/25 bg-tone-rose px-3.5 py-2.5">
+            <p className="flex min-w-0 items-center gap-2 text-[13px] font-semibold text-tone-rose-text">
+              <IconAlert width={16} height={16} className="shrink-0" />
+              <span>
+                {stopped.length === 1 ? "1 lote detenido" : `${fmtNumber(stopped.length)} lotes detenidos`}
+                {stopReasons.length === 1 ? ` por ${stopReasons[0]}` : ""}
+              </span>
             </p>
-            <Button variant="secondary" size="row" disabled={busy} onClick={() => actions.resume(stopped)}>
+            <Button variant="danger" size="row" disabled={busy} onClick={() => actions.resume(stopped)}>
               Reanudar
             </Button>
           </div>
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-baseline gap-2.5">
-            <h3 className="t-card-title">Lotes de este pedido</h3>
+          <h3 className="t-label">Lotes de este pedido</h3>
+          <div className="flex flex-wrap items-center gap-3">
             <span className="t-aux tabular-nums">{summary}</span>
+            {completed.length ? (
+              <Button size="row" icon={IconBox} disabled={busy} onClick={() => actions.pack(completed)}>
+                Empacar completados · {fmtNumber(completed.length)}
+              </Button>
+            ) : null}
           </div>
-          {completed.length ? (
-            <Button size="row" icon={IconBox} disabled={busy} onClick={() => actions.pack(completed)}>
-              Empacar completados · {fmtNumber(completed.length)}
-            </Button>
-          ) : null}
         </div>
 
-        <div className="overflow-hidden rounded-[12px] border border-line">
-          <div className="overflow-x-auto">
-            <div className="min-w-[640px]">
-              {lots.map((lot) => {
-                const id = lot.batch._id;
-                const open = expanded.has(id);
-                const boxHere = openBox?.id === id ? openBox.kind : null;
-                return (
-                  <div key={id} className="border-b border-line-soft last:border-0">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => toggle(id)}
-                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && toggle(id)}
-                      className="grid min-h-[46px] cursor-pointer items-center py-1.5 pr-3 transition hover:bg-surface-2"
-                      style={{ gridTemplateColumns: LOT_GRID }}
-                    >
-                      <span className="whitespace-nowrap pl-4 text-[12.5px] font-semibold tabular-nums text-ink-2">{lot.batch.batchNumber}</span>
-                      <span className="truncate pr-3 text-[13.5px] font-semibold text-ink">{productLabel(lot.item)}</span>
-                      <span className="pr-3 text-right text-[13px] tabular-nums text-ink">{lot.qty != null ? `${fmtNumber(lot.qty)} u` : "—"}</span>
-                      <span>
-                        <StatusPill status={lotState(lot)} domain="lote" />
-                      </span>
-                      <span className="flex min-w-0 items-center">{rowAction(lot)}</span>
-                      <DisclosureChevron open={open} />
-                    </div>
-                    {open ? <LotDetails lot={lot} /> : null}
-                    {boxHere && (boxHere !== "complete" || lotState(lot) === "En proceso") ? (
-                      <div className="pt-1">
-                        <LotBox
-                          key={`${id}-${boxHere}`}
-                          kind={boxHere}
-                          lot={lot}
-                          operators={operators}
-                          lines={lines}
-                          busy={busy}
-                          onClose={closeBox}
-                          actions={lotActions}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+        <div className="@container overflow-hidden rounded-[12px] border border-line">
+          <div className={`hidden min-h-[30px] items-center border-b border-line-soft bg-surface-2 pr-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-subtle @[700px]:grid ${LOT_COLS}`}>
+            <span className="pl-4">Lote</span>
+            <span>Producto</span>
+            <span>Color</span>
+            <span className="pr-3 text-right">Cantidad</span>
+            <span className="pl-3">Estado</span>
+            <span />
+            <span />
           </div>
+          {lots.map((lot) => {
+            const id = lot.batch._id;
+            const open = expanded.has(id);
+            const boxHere = openBox?.id === id ? openBox.kind : null;
+            const state = lotState(lot);
+            const number = formatBatchNumber(lot.batch.batchNumber);
+            const qty = lot.qty != null ? `${fmtNumber(lot.qty)} u` : "—";
+            return (
+              <div key={id} className="border-b border-line-soft last:border-0">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
+                  onClick={() => toggle(id)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && toggle(id)}
+                  className={`grid min-h-[44px] cursor-pointer items-center py-1.5 pr-3 transition hover:bg-surface-2 ${LOT_COLS}`}
+                >
+                  <span className="hidden whitespace-nowrap pl-4 text-[12.5px] font-semibold tabular-nums text-ink-2 @[700px]:block">{number}</span>
+                  <span className="min-w-0 pl-4 pr-3 @[700px]:pl-0">
+                    <span className="flex items-center gap-2">
+                      <ColorSwatch color={lot.item.color} />
+                      <span className="truncate text-[13.5px] font-semibold text-ink">{lot.item.product}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate pl-[19px] text-[11.5px] tabular-nums text-muted @[700px]:hidden">
+                      {[number, lot.item.color, qty].filter(Boolean).join(" · ")}
+                    </span>
+                    <span className="mt-1 block pl-[19px] @[700px]:hidden">
+                      <StatusPill status={state} domain="lote" />
+                    </span>
+                  </span>
+                  <span className="hidden truncate pr-3 text-[13px] text-ink-2 @[700px]:block">{lot.item.color || "—"}</span>
+                  <span className="hidden pr-3 text-right text-[13px] tabular-nums text-ink @[700px]:block">{qty}</span>
+                  <span className="hidden pl-3 @[700px]:block">
+                    <StatusPill status={state} domain="lote" />
+                  </span>
+                  <span className="flex min-w-0 items-center justify-end pr-1">{rowAction(lot)}</span>
+                  <DisclosureChevron open={open} />
+                </div>
+                {open ? <LotDetails lot={lot} /> : null}
+                {boxHere && (boxHere !== "complete" || state === "En proceso") ? (
+                  <div className="pt-1">
+                    <LotBox
+                      key={`${id}-${boxHere}`}
+                      kind={boxHere}
+                      lot={lot}
+                      operators={operators}
+                      lines={lines}
+                      busy={busy}
+                      onClose={closeBox}
+                      actions={lotActions}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </DetailPanel>
@@ -496,25 +558,26 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refet
 
   const batchUrl = (lot, action) => `/productionBatches/${lot.batch._id}/${action}`;
   const lineUrl = (lot, action) => `/orders/${selected.order._id}/items/${lot.index}/${action}`;
+  const label = (lot) => formatBatchNumber(lot.batch.batchNumber);
 
   const actions = {
-    start: (lot, body) => act(() => api.patch(batchUrl(lot, "start"), body), `Lote ${lot.batch.batchNumber} iniciado`),
+    start: (lot, body) => act(() => api.patch(batchUrl(lot, "start"), body), `Lote ${label(lot)} iniciado`),
     stop: (lot, reason) =>
       act(
         () => api.patch(batchUrl(lot, "stop"), { reason }),
-        `Lote ${lot.batch.batchNumber} detenido`,
+        `Lote ${label(lot)} detenido`,
         () => api.patch(batchUrl(lot, "resume")),
       ),
     resume: (lots) =>
       act(
         () => runAll(lots.map((l) => () => api.patch(batchUrl(l, "resume")))),
-        lots.length === 1 ? `Lote ${lots[0].batch.batchNumber} reanudado` : `${fmtNumber(lots.length)} lotes reanudados`,
+        lots.length === 1 ? `Lote ${label(lots[0])} reanudado` : `${fmtNumber(lots.length)} lotes reanudados`,
         () => runAll(lots.map((l) => () => api.patch(batchUrl(l, "stop"), { reason: l.batch.stopReason }))),
       ),
     complete: (lot, producedQuantity) =>
       act(
         () => api.patch(batchUrl(lot, "complete"), { producedQuantity }),
-        `Lote ${lot.batch.batchNumber} completado · ${fmtNumber(producedQuantity)} unidades`,
+        `Lote ${label(lot)} completado · ${fmtNumber(producedQuantity)} unidades`,
         () => api.patch(batchUrl(lot, "reopen")),
       ),
     pack: (lots) =>
@@ -533,8 +596,8 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refet
       <ListPanel
         header={
           <>
-            <SearchInput value={query} onChange={setQuery} placeholder="Buscar pedido" />
-            <FilterChips value={chip} onChange={setChip} options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
+            <SearchInput value={query} onChange={setQuery} placeholder="Buscar pedido o cliente" />
+            <FilterChips compact value={chip} onChange={setChip} options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
           </>
         }
       >

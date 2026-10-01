@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import Order from "../src/models/Order.js";
+import { seedProductNames } from "./helpers/productNames.js";
 import Inventory from "../src/models/InventoryItem.js";
 import Batch from "../src/models/ProductionBatch.js";
 import ctl from "../src/controller/productionBatchesController.js";
@@ -27,6 +28,7 @@ after(async () => {
 
 beforeEach(async () => {
   await Promise.all([Order.deleteMany({}), Inventory.deleteMany({}), Batch.deleteMany({})]);
+  await seedProductNames();
   await Inventory.create({
     name: "Pajilla", color: "Verde", category: "Producto Terminado", location: "Bodega Central", stock: 6560,
   });

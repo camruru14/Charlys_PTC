@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import { useCompanySettings } from "../hooks/useCompanySettings";
 import { useEmployees } from "../hooks/useEmployees";
 import { useProductionLines } from "../hooks/useProductionLines";
+import { useSubcategories } from "../hooks/useSubcategories";
 import { useVehicles } from "../hooks/useVehicles";
 import { useWarehouses } from "../hooks/useWarehouses";
 import SettingsRow from "../components/settings/SettingsRow";
@@ -36,6 +37,7 @@ export default function ConfiguracionScreen({ navigation }) {
   const { warehouses, loading: warehousesLoading, refreshing, refresh: refreshWarehouses } = useWarehouses();
   const { vehicles, loading: vehiclesLoading, refresh: refreshVehicles } = useVehicles();
   const { lines, loading: linesLoading, refresh: refreshLines } = useProductionLines();
+  const { subcategories, loading: subcategoriesLoading, refresh: refreshSubcategories } = useSubcategories();
   const { employees, loading: employeesLoading, refresh: refreshEmployees } = useEmployees();
   // El contador solo aparece cuando ya cargó (mientras tanto no se muestra «0»).
   const countOf = (list, loading) => (loading && !list.length ? null : list.length);
@@ -45,8 +47,9 @@ export default function ConfiguracionScreen({ navigation }) {
     refreshWarehouses();
     refreshVehicles();
     refreshLines();
+    refreshSubcategories();
     refreshEmployees();
-  }, [refreshCompany, refreshWarehouses, refreshVehicles, refreshLines, refreshEmployees]);
+  }, [refreshCompany, refreshWarehouses, refreshVehicles, refreshLines, refreshSubcategories, refreshEmployees]);
 
   useFocusEffect(reload);
 
@@ -55,6 +58,7 @@ export default function ConfiguracionScreen({ navigation }) {
     { screen: "ConfigBodegas", icon: "box", title: "Bodegas", description: "Destinos del inventario", count: countOf(warehouses, warehousesLoading) },
     { screen: "ConfigVehiculos", icon: "truck", title: "Vehículos", description: "Flota para armar rutas", count: countOf(vehicles, vehiclesLoading) },
     { screen: "ConfigLineas", icon: "factory", title: "Líneas de producción", description: "Opciones al crear lotes", count: countOf(lines, linesLoading) },
+    { screen: "ConfigSubcategorias", icon: "tag", title: "Subcategorías", description: "Productos de Pajillas y Pelotas", count: countOf(subcategories, subcategoriesLoading) },
     { screen: "ConfigPersonal", icon: "users", title: "Personal y permisos", description: "Alta y edición de empleados", count: countOf(employees, employeesLoading) },
     { screen: "MiCuenta", icon: "user", title: "Mi cuenta", description: "Tu correo, contraseña y datos" },
   ];

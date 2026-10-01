@@ -1,6 +1,8 @@
 const productsController = {};
 
 import productModel from "../models/Product.js";
+import { findSubcategoryByName } from "../lib/subcategories.js";
+import { NAME_COLLATION } from "../models/Subcategory.js";
 import cloudinary, { uploadProductImageBuffer } from "../lib/cloudinary.js";
 
 /*
@@ -10,6 +12,13 @@ import cloudinary, { uploadProductImageBuffer } from "../lib/cloudinary.js";
   "products" que public/backend lee (ver models/Product.js). Las rutas
   públicas de solo lectura (GET /products y GET /products/:slug) siguen en
   public/backend.
+
+  El nombre de un producto es SIEMPRE el de su subcategoría (Configuración >
+  Subcategorías): es el «producto» que muestra todo el sistema y la tienda. El
+  panel ya no manda `name`; si llega en el cuerpo se ignora, y el backend lo
+  llena con la subcategoría. Una subcategoría = un producto del catálogo. El
+  slug se genera al crear y no cambia al editar (lo usan los carritos
+  guardados y los enlaces de la tienda).
 */
 
 // Genera un slug simple y legible a partir del nombre del producto.
@@ -35,6 +44,33 @@ function sendError(res, error) {
   res.status(500).json({ message: "Error interno del servidor." });
 }
 
+const CATEGORIES = ["Pelotas", "Pajillas"];
+const sameName = (a, b) => String(a ?? "").trim().toLocaleLowerCase("es") === String(b ?? "").trim().toLocaleLowerCase("es");
+
+// La subcategoría es obligatoria al crear o editar desde el panel: debe
+// existir, estar activa (o ser la que el producto ya tenía) y pertenecer a la
+// categoría del producto. Devuelve { name } con el nombre tal como está
+// guardado en Configuración, o { error } con el mensaje para el 400.
+async function resolveSubcategory(category, subcategory, current) {
+  if (!CATEGORIES.includes(category)) return { error: "Categoría no válida." };
+  const wanted = typeof subcategory === "string" ? subcategory.trim() : "";
+  if (!wanted) return { error: "Elige una subcategoría." };
+
+  const sub = await findSubcategoryByName(wanted);
+  if (!sub) return { error: `La subcategoría «${wanted}» no existe.` };
+  if (!sub.active && !sameName(sub.name, current)) return { error: `La subcategoría «${sub.name}» está inactiva.` };
+  if (sub.category !== category) {
+    return { error: `La subcategoría «${sub.name}» pertenece a «${sub.category}», no a «${category}».` };
+  }
+  return { name: sub.name };
+}
+
+// ¿Otro producto del catálogo ya usa esta subcategoría? (sin distinguir
+// mayúsculas, como el nombre de la subcategoría). `exceptId`: el propio producto.
+const subcategoryTaken = (name, exceptId) =>
+  productModel.exists({ subcategory: name, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_COLLATION);
+const takenMessage = (name) => `La subcategoría «${name}» ya tiene un producto en el catálogo.`;
+
 // GET /api/products/admin/all
 // A diferencia del catálogo público, no filtra por `active`: la pantalla de
 // administración necesita ver también los productos desactivados para poder
@@ -52,8 +88,8 @@ productsController.getAllProductsAdmin = async (_req, res) => {
 productsController.createProduct = async (req, res) => {
   try {
     const {
-      name,
       category,
+      subcategory,
       description,
       price,
       compareAtPrice,
@@ -65,12 +101,18 @@ productsController.createProduct = async (req, res) => {
       active,
     } = req.body;
 
-    if (!name || !category || price === undefined) {
+    if (!category || !subcategory || price === undefined) {
       return res
         .status(400)
-        .json({ message: "name, category y price son obligatorios." });
+        .json({ message: "category, subcategory y price son obligatorios." });
     }
 
+    const resolved = await resolveSubcategory(category, subcategory);
+    if (resolved.error) return res.status(400).json({ message: resolved.error });
+    if (await subcategoryTaken(resolved.name)) return res.status(409).json({ message: takenMessage(resolved.name) });
+
+    // El nombre del producto es el de su subcategoría (se ignora el del cuerpo).
+    const name = resolved.name;
     let slug = slugify(name);
     // Evitar colisiones de slug
     const existing = await productModel.findOne({ slug });
@@ -82,6 +124,7 @@ productsController.createProduct = async (req, res) => {
       name,
       slug,
       category,
+      subcategory: resolved.name,
       description,
       price,
       compareAtPrice,
@@ -103,10 +146,34 @@ productsController.createProduct = async (req, res) => {
 // PUT /api/products/:id
 productsController.updateProduct = async (req, res) => {
   try {
-    const updated = await productModel.findByIdAndUpdate(req.params.id, req.body, {
-      returnDocument: "after",
-      runValidators: true,
-    });
+    const existing = await productModel.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ message: "Producto no encontrado." });
+    }
+
+    // Lo que no venga en el cuerpo se toma del producto guardado: un producto
+    // anterior a las subcategorías no se puede editar sin asignarle una.
+    const resolved = await resolveSubcategory(
+      req.body.category ?? existing.category,
+      req.body.subcategory ?? existing.subcategory,
+      existing.subcategory,
+    );
+    if (resolved.error) return res.status(400).json({ message: resolved.error });
+
+    // Una subcategoría = un producto: solo se comprueba al cambiarla (un
+    // producto que ya la tenía no se bloquea por datos anteriores).
+    if (!sameName(resolved.name, existing.subcategory) && (await subcategoryTaken(resolved.name, existing._id))) {
+      return res.status(409).json({ message: takenMessage(resolved.name) });
+    }
+
+    // El nombre siempre es el de la subcategoría y el slug no cambia: se
+    // ignoran `name` y `slug` del cuerpo.
+    const { name: _name, slug: _slug, ...fields } = req.body;
+    const updated = await productModel.findByIdAndUpdate(
+      req.params.id,
+      { ...fields, subcategory: resolved.name, name: resolved.name },
+      { returnDocument: "after", runValidators: true },
+    );
 
     if (!updated) {
       return res.status(404).json({ message: "Producto no encontrado." });

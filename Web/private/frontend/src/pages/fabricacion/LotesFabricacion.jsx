@@ -14,7 +14,7 @@ import BatchDetail from "../../components/batches/BatchDetail";
 import SendToWarehouseModal from "../../components/batches/SendToWarehouseModal";
 import { toastUndo } from "../../lib/toastUndo";
 import { statusTone } from "../../lib/statusDomains";
-import { fmtNumber } from "../../lib/format";
+import { fmtNumber, formatBatchNumber } from "../../lib/format";
 import { IconFactory } from "../../lib/icons";
 import { batchState, productLabel, batchSearchText, pendingUnits } from "../../lib/batchFlow";
 import { useProductionLines } from "../../hooks/useProductionLines";
@@ -42,7 +42,7 @@ function BatchListRow({ batch, selected, onSelect }) {
       <span className="flex min-w-0 flex-col justify-center gap-1 px-3.5">
         <span className="flex items-center justify-between gap-3">
           <span className="truncate text-[11.5px] font-medium tabular-nums text-muted">
-            {batch.batchNumber} · {batch.productionLine || "Sin línea"}
+            {formatBatchNumber(batch.batchNumber)} · {batch.productionLine || "Sin línea"}
           </span>
           <StatusPill status={batchState(batch)} domain="lote" variant="dot" />
         </span>
@@ -147,23 +147,23 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
   const url = (b, action) => `/productionBatches/${b._id}/${action}`;
 
   const actions = {
-    start: (b, body) => act(() => api.patch(url(b, "start"), body), `Lote ${b.batchNumber} iniciado`),
+    start: (b, body) => act(() => api.patch(url(b, "start"), body), `Lote ${formatBatchNumber(b.batchNumber)} iniciado`),
     stop: (b, reason) =>
       act(
         () => api.patch(url(b, "stop"), { reason }),
-        `Lote ${b.batchNumber} detenido`,
+        `Lote ${formatBatchNumber(b.batchNumber)} detenido`,
         () => api.patch(url(b, "resume")),
       ),
     resume: (b) =>
       act(
         () => api.patch(url(b, "resume")),
-        `Lote ${b.batchNumber} reanudado`,
+        `Lote ${formatBatchNumber(b.batchNumber)} reanudado`,
         () => api.patch(url(b, "stop"), { reason: b.stopReason }),
       ),
     complete: (b, producedQuantity) =>
       act(
         () => api.patch(url(b, "complete"), { producedQuantity }),
-        `Lote ${b.batchNumber} completado · ${fmtNumber(producedQuantity)} unidades`,
+        `Lote ${formatBatchNumber(b.batchNumber)} completado · ${fmtNumber(producedQuantity)} unidades`,
         () => api.patch(url(b, "reopen")),
       ),
     openSend: (b) => setSendTarget(b),
@@ -174,7 +174,7 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
           setSendTarget(null);
           return res;
         },
-        `${fmtNumber(pendingUnits(b))} unidades de ${b.batchNumber} enviadas a ${warehouse}`,
+        `${fmtNumber(pendingUnits(b))} unidades de ${formatBatchNumber(b.batchNumber)} enviadas a ${warehouse}`,
         () => api.patch(url(b, "undo-send")),
         { stock: true },
       ),

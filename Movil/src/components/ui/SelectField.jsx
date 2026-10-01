@@ -9,7 +9,8 @@ import { FieldLabel, fieldStyles } from "./fieldStyles";
 // Selector de una opción entre una lista, que se abre en una BottomSheet.
 // `label` es opcional (si no se pasa, no ocupa espacio arriba — útil para
 // usarlo como filtro compacto, ver Dashboard); `title` es el encabezado de
-// la hoja y por defecto usa `label`.
+// la hoja y por defecto usa `label`. `disabled` bloquea el campo y una opción
+// { label, value, disabled: true } se ve (en gris) pero no se puede elegir.
 export default function SelectField({
   label,
   title,
@@ -18,6 +19,7 @@ export default function SelectField({
   onChange,
   required = false,
   placeholder = "Seleccionar",
+  disabled = false,
   style,
 }) {
   const [open, setOpen] = useState(false);
@@ -28,10 +30,12 @@ export default function SelectField({
     <View style={[fieldStyles.field, style]}>
       <FieldLabel label={label} required={required} />
       <Pressable
-        style={({ pressed }) => [fieldStyles.box, pressed && styles.pressed]}
+        style={({ pressed }) => [fieldStyles.box, pressed && styles.pressed, disabled && styles.disabled]}
         onPress={() => setOpen(true)}
+        disabled={disabled}
         hitSlop={4}
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
         accessibilityLabel={`${heading || "Seleccionar"}: ${selected ? selected.label : "sin seleccionar"}`}
       >
         <Text style={selected ? fieldStyles.value : fieldStyles.placeholder} numberOfLines={1}>
@@ -52,16 +56,17 @@ export default function SelectField({
                 style={({ pressed }) => [
                   styles.option,
                   index > 0 && styles.optionDivider,
-                  pressed && styles.pressed,
+                  pressed && !item.disabled && styles.pressed,
                 ]}
+                disabled={item.disabled}
                 onPress={() => {
                   onChange(item.value);
                   setOpen(false);
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
+                accessibilityState={{ selected: isSelected, disabled: Boolean(item.disabled) }}
               >
-                <Text style={[styles.optionText, isSelected && styles.optionSelected]}>{item.label}</Text>
+                <Text style={[styles.optionText, isSelected && styles.optionSelected, item.disabled && styles.optionDisabled]}>{item.label}</Text>
                 {isSelected ? <Icon name="check" size={18} color={colors.primary} /> : null}
               </Pressable>
             );
@@ -75,6 +80,8 @@ export default function SelectField({
 
 const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.surface2 },
+  disabled: { opacity: 0.55 },
+  optionDisabled: { color: colors.faint },
   list: { flexGrow: 0 },
   option: {
     flexDirection: "row",

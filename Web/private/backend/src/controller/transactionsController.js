@@ -3,8 +3,6 @@ const transactionsController = {};
 import transactionModel from "../models/Transaction.js";
 
 // Genera el siguiente N° de transacción correlativo del año (TRAN-2026-0001, TRAN-2026-0002, ...)
-// Exportada: ordersController la reutiliza para las transacciones que crea
-// automáticamente al marcar un pedido como Pagado/Reembolsado.
 export async function generateReference() {
   const prefix = `TRAN-${new Date().getFullYear()}-`;
   const last = await transactionModel

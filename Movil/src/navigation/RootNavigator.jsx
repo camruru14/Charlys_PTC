@@ -12,7 +12,6 @@ import EmpleadoFormScreen from "../screens/EmpleadoFormScreen";
 import ProductoFormScreen from "../screens/ProductoFormScreen";
 import RegistrarMarcacionFormScreen from "../screens/RegistrarMarcacionFormScreen";
 import InventarioItemFormScreen from "../screens/InventarioItemFormScreen";
-import PedidoFormScreen from "../screens/PedidoFormScreen";
 import PedidoDetalleScreen from "../screens/PedidoDetalleScreen";
 import BatchHistoryScreen from "../screens/BatchHistoryScreen";
 import LoteDetalleScreen from "../screens/LoteDetalleScreen";
@@ -22,6 +21,7 @@ import ConfigEmpresaScreen from "../screens/ConfigEmpresaScreen";
 import ConfigBodegasScreen from "../screens/ConfigBodegasScreen";
 import ConfigVehiculosScreen from "../screens/ConfigVehiculosScreen";
 import ConfigLineasScreen from "../screens/ConfigLineasScreen";
+import ConfigSubcategoriasScreen from "../screens/ConfigSubcategoriasScreen";
 import ConfigPersonalScreen from "../screens/ConfigPersonalScreen";
 import MiCuentaScreen from "../screens/MiCuentaScreen";
 import LineaFormScreen from "../screens/LineaFormScreen";
@@ -88,6 +88,7 @@ export default function RootNavigator() {
           <Stack.Screen name="ConfigBodegas" component={ConfigBodegasScreen} options={{ ...detailHeader, title: "Bodegas" }} />
           <Stack.Screen name="ConfigVehiculos" component={ConfigVehiculosScreen} options={{ ...detailHeader, title: "Vehículos" }} />
           <Stack.Screen name="ConfigLineas" component={ConfigLineasScreen} options={{ ...detailHeader, title: "Líneas de producción" }} />
+          <Stack.Screen name="ConfigSubcategorias" component={ConfigSubcategoriasScreen} options={{ ...detailHeader, title: "Subcategorías" }} />
           <Stack.Screen name="ConfigPersonal" component={ConfigPersonalScreen} options={{ ...detailHeader, title: "Personal y permisos" }} />
           <Stack.Screen name="MiCuenta" component={MiCuentaScreen} options={{ ...detailHeader, title: "Mi cuenta" }} />
 
@@ -132,7 +133,6 @@ export default function RootNavigator() {
             <Stack.Screen name="ProductoForm" component={ProductoFormScreen} />
             <Stack.Screen name="RegistrarMarcacionForm" component={RegistrarMarcacionFormScreen} />
             <Stack.Screen name="InventarioItemForm" component={InventarioItemFormScreen} />
-            <Stack.Screen name="PedidoForm" component={PedidoFormScreen} />
           </Stack.Group>
         </>
       ) : (

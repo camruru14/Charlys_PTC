@@ -41,9 +41,15 @@ y se cobra desde este mismo backend dentro de `POST /api/orders/checkout`, en
 la misma petición — no hay enlace de pago, redirect ni webhook, así que no
 hace falta exponer el backend con ningún túnel para probarlo en local.
 
-Solo si Wompi aprueba el cobro se crea el pedido (ya con `paymentStatus:
-"Pagado"`); si lo rechaza, no se crea nada y el cliente puede reintentar con
-otra tarjeta desde el mismo checkout.
+Solo si Wompi aprueba el cobro se crea el pedido (y su Ingreso en Finanzas);
+si lo rechaza, no se crea nada y el cliente puede reintentar con otra tarjeta
+desde el mismo checkout. Por eso todo pedido está pagado y `Order` no guarda
+un estado de pago.
+
+Los pedidos solo se crean aquí: el panel no crea ni edita pedidos, solo los
+hace avanzar y puede eliminar los ya entregados. Al eliminarlos, el
+`CustomerOrder` se conserva con un resumen del pedido (`snapshot`) y
+«Mis pedidos» lo sigue mostrando.
 
 ## Administración del catálogo
 

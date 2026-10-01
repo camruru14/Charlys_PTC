@@ -16,9 +16,33 @@
 //   --regenerar-productos   borra y recrea el catálogo de la tienda (sin imágenes)
 //   --incluir-tienda        reemplaza cuentas, compras y pagos de la tienda en línea
 //
+// Subcategorías: el «producto» de todo el sistema es el nombre de una
+// subcategoría (Configuración > Subcategorías, ver SUBCATEGORIES): se guarda
+// como texto en orders.items.product, productionbatches.product,
+// dailybatches.product e inventoryitems.name (Producto Terminado). Cada corrida
+// reinicia la colección `subcategories` con las 7 iniciales (4 de Pajillas y 3
+// de Pelotas) y genera pedidos, lotes, producción diaria, inventario, rutas y
+// finanzas usando solo esos nombres. El catálogo (`products`) se CONSERVA con
+// sus imágenes: cada producto se empareja con su subcategoría por nombre
+// (ignorando mayúsculas, tildes y espacios extra; la categoría debe coincidir)
+// y con --run solo se le asigna el campo `subcategory` (un updateOne por _id,
+// nada más del producto cambia). Si un producto no empareja, o dos emparejan
+// con la misma subcategoría, o una subcategoría queda sin producto, el script
+// se detiene sin hacer nada. Los precios, mínimos de pedido y colores salen de
+// ese producto; los parámetros de fabricación (costo, stock mínimo, tamaño de
+// lote, unidades por día, líneas y bodega) son por CATEGORÍA (CATEGORY_INFO) y
+// sus cantidades se reparten entre las subcategorías de la categoría.
+//
+// Pedidos: todos son compras de la tienda en línea, como las deja el checkout de
+// public/backend (cliente con correo de su cuenta, «Procesando» desde el
+// inicio, ya pagados y con su Ingreso en Finanzas). No hay estado de pago, ni
+// pedidos pendientes de cobro, ni reembolsos. Sin --incluir-tienda los pedidos
+// quedan con el correo de cuentas que no se crean: úsalo siempre en una corrida real.
+//
 // Cómo se generan los datos: en vez de armar documentos a mano, el script
 // ejecuta la lógica real del sistema (los mismos controladores que usa el
-// panel: pedidos, inventario, lotes, rutas y finanzas) sobre una base
+// panel: inventario, lotes, rutas y finanzas; los pedidos se arman como los
+// arma el checkout de la tienda, que el panel ya no tiene) sobre una base
 // MongoDB EN MEMORIA, con un reloj simulado que avanza desde hace ~15
 // semanas hasta hoy. Así el stock, el statusHistory, los lotes y las rutas
 // quedan exactamente como si el sistema se hubiera usado de verdad. Después
@@ -51,6 +75,7 @@ const PANEL = [
   "warehouses",
   "vehicles",
   "workschedules",
+  "subcategories", // las 7 iniciales (ver SUBCATEGORIES)
   "inventoryitems",
   "orders",
   "productionbatches",
@@ -59,8 +84,9 @@ const PANEL = [
   "transactions",
 ];
 // Catálogo de la tienda: lo usa el panel (Catálogo), pero sus imágenes viven
-// en Cloudinary. Por defecto se conserva; con --regenerar-productos se
-// recrea sin imágenes.
+// en Cloudinary. Por defecto se conserva (solo se le asigna `subcategory` a
+// cada producto); con --regenerar-productos se recrea sin imágenes, con un
+// producto por subcategoría.
 const PRODUCTS = "products";
 // Tienda en línea (public/backend): no son módulos del panel. Por defecto no
 // se tocan; con --incluir-tienda se vacían y se repueblan con cuentas y
@@ -153,14 +179,48 @@ function back(n) {
 /* -------------------------------------------------------------------------- */
 
 const COLORS = ["Rojo", "Azul", "Verde", "Blanco", "Negro", "Amarillo"];
-const PRODUCT_INFO = {
-  Pajilla: { price: 0.15, unitCost: 0.06, minStock: 15000, batch: 40000, perDay: 25000, lines: ["Línea 1", "Línea 2"], warehouse: "Bodega A-1" },
-  Pelota: { price: 0.25, unitCost: 0.11, minStock: 2000, batch: 6000, perDay: 4000, lines: ["Línea 3", "Línea 4"], warehouse: "Bodega A-2" },
+
+// Subcategorías iniciales (Configuración > Subcategorías): nombre EXACTO,
+// categoría y activa. `price` y `min` solo se usan para recrear el catálogo con
+// --regenerar-productos (con el catálogo real, precio, mínimo y colores salen
+// del producto emparejado).
+const SUBCATEGORIES = [
+  { name: "Pelotas de Celuloide", category: "Pelotas", price: 0.05, min: 400 },
+  { name: "Pelotas Inflables", category: "Pelotas", price: 0.15, min: 1 },
+  { name: "Pelotas LDPE", category: "Pelotas", price: 0.25, min: 50 },
+  { name: "Pajillas Mezcladoras", category: "Pajillas", price: 0.08, min: 300 },
+  { name: "Pajillas Rectas", category: "Pajillas", price: 0.15, min: 100 },
+  { name: "Pajillas Flexibles", category: "Pajillas", price: 0.1, min: 100 },
+  { name: "Pajillas Anchas", category: "Pajillas", price: 0.2, min: 100 },
+];
+const SUB_NAMES = SUBCATEGORIES.map((s) => s.name);
+const subsOf = (category) => SUBCATEGORIES.filter((s) => s.category === category).map((s) => s.name);
+const categoryOf = (name) => SUBCATEGORIES.find((s) => s.name === name).category;
+
+// Parámetros de fabricación por CATEGORÍA (los de antes, cuando «Pajilla» y
+// «Pelota» eran los dos productos). Las cantidades (stock mínimo, tamaño de
+// lote y existencia inicial) se reparten entre las subcategorías de la
+// categoría, así el total por categoría queda parecido al de antes.
+const CATEGORY_INFO = {
+  Pajillas: { unitCost: 0.06, minStock: 15000, batch: 40000, perDay: 25000, lines: ["Línea 1", "Línea 2"], warehouse: "Bodega A-1", stockStep: 1000 },
+  Pelotas: { unitCost: 0.11, minStock: 2000, batch: 6000, perDay: 4000, lines: ["Línea 3", "Línea 4"], warehouse: "Bodega A-2", stockStep: 100 },
 };
+const infoOf = (sub) => CATEGORY_INFO[categoryOf(sub)];
+const share = (sub, total, step) => Math.max(step, Math.round(total / subsOf(categoryOf(sub)).length / step) * step);
+const minStockOf = (sub) => share(sub, infoOf(sub).minStock, 50);
+const batchOf = (sub) => share(sub, infoOf(sub).batch, 500);
+
 // Combinaciones reservadas para que al final haya existencia parcial y
-// productos agotados (no entran en pedidos al azar ni se reponen).
-const RESERVED = { "Pelota|Amarillo": 0, "Pajilla|Negro": 2500, "Pelota|Negro": 600 };
-const isReserved = (p, c) => `${p}|${c}` in RESERVED;
+// productos agotados (no entran en pedidos al azar ni se reponen). Antes:
+// Pelota Amarillo (agotada), Pajilla Negro (2 500) y Pelota Negro (600).
+const RESERVED = {
+  "Pelotas de Celuloide|Amarillo": 0,
+  "Pelotas Inflables|Amarillo": 0,
+  "Pelotas LDPE|Amarillo": 0,
+  "Pajillas Flexibles|Negro": 2500,
+  "Pelotas LDPE|Negro": 600,
+};
+const isReserved = (sub, color) => `${sub}|${color}` in RESERVED;
 
 const WAREHOUSES = ["Bodega A-1", "Bodega A-2", "Bodega B-1"];
 const VEHICLES = ["P-512-KLM", "C-208-RTS", "P-731-BNX", "C-119-HDP"];
@@ -197,35 +257,35 @@ const ZONES = {
   OC: "Santa Ana – Occidente",
 };
 const CUSTOMERS = [
-  { name: "Cafetería Los Almendros", address: "Calle La Mascota #214, Col. Maquilishuat, San Salvador", zone: "SS", buys: "Pajilla", big: true },
-  { name: "Licuados y Batidos Tropicana", address: "Blvd. Constitución #88, San Salvador", zone: "SS", buys: "Pajilla", big: true },
-  { name: "Sorbetería Los Pinos", address: "79 Av. Norte #305, Col. Escalón, San Salvador", zone: "SS", buys: "Pajilla", big: true },
-  { name: "Cafetín Universitario La Esquina", address: "Autopista Norte, frente a Ciudad Universitaria, San Salvador", zone: "SS", buys: "Pajilla", big: false },
-  { name: "Heladería Nevada Tropical", address: "Paseo El Carmen #7, Santa Tecla", zone: "ST", buys: "Pajilla", big: true },
-  { name: "Colegio San Andrés", address: "Col. Jardines de la Sabana, Calle Circunvalación #40, Santa Tecla", zone: "ST", buys: "Pelota", big: true },
+  { name: "Cafetería Los Almendros", address: "Calle La Mascota #214, Col. Maquilishuat, San Salvador", zone: "SS", buys: "Pajillas", big: true },
+  { name: "Licuados y Batidos Tropicana", address: "Blvd. Constitución #88, San Salvador", zone: "SS", buys: "Pajillas", big: true },
+  { name: "Sorbetería Los Pinos", address: "79 Av. Norte #305, Col. Escalón, San Salvador", zone: "SS", buys: "Pajillas", big: true },
+  { name: "Cafetín Universitario La Esquina", address: "Autopista Norte, frente a Ciudad Universitaria, San Salvador", zone: "SS", buys: "Pajillas", big: false },
+  { name: "Heladería Nevada Tropical", address: "Paseo El Carmen #7, Santa Tecla", zone: "ST", buys: "Pajillas", big: true },
+  { name: "Colegio San Andrés", address: "Col. Jardines de la Sabana, Calle Circunvalación #40, Santa Tecla", zone: "ST", buys: "Pelotas", big: true },
   { name: "Parque Acuático Las Palmeras", address: "Carretera al Puerto de La Libertad Km 28, La Libertad", zone: "ST", buys: "both", big: true },
-  { name: "Pupusería y Comedor Doña Mari", address: "3a Calle Poniente, Barrio El Centro, Soyapango", zone: "SO", buys: "Pajilla", big: false },
+  { name: "Pupusería y Comedor Doña Mari", address: "3a Calle Poniente, Barrio El Centro, Soyapango", zone: "SO", buys: "Pajillas", big: false },
   { name: "Distribuidora El Rosario", address: "Km 12 Carretera de Oro, Ilopango", zone: "SO", buys: "both", big: true },
-  { name: "Centro Escolar Católico Santa Rosa", address: "Col. Las Margaritas, Pje. 3, Soyapango", zone: "SO", buys: "Pelota", big: true },
+  { name: "Centro Escolar Católico Santa Rosa", address: "Col. Las Margaritas, Pje. 3, Soyapango", zone: "SO", buys: "Pelotas", big: true },
   { name: "Minisúper El Buen Precio", address: "Res. Miralvalle, Pje. 4 #12, Mejicanos", zone: "AM", buys: "both", big: false },
   { name: "Comercial Hermanos Villalta", address: "Col. San José, Calle Principal #56, Apopa", zone: "AM", buys: "both", big: true },
-  { name: "Juguetería Arcoíris", address: "Av. Roosevelt Sur #1520, San Miguel", zone: "OR", buys: "Pelota", big: true },
-  { name: "Piñatería y Fiestas Carolina", address: "2a Av. Norte #510, Barrio San Felipe, San Miguel", zone: "OR", buys: "Pelota", big: false },
-  { name: "Distribuidora de Desechables Oriente", address: "Carretera Panamericana Km 138, San Miguel", zone: "OR", buys: "Pajilla", big: true },
-  { name: "Refresquería La Ceiba", address: "Av. Independencia Sur #18, Santa Ana", zone: "OC", buys: "Pajilla", big: false },
-  { name: "Restaurante Brisas del Lago", address: "Carretera al Lago de Coatepeque, El Congo, Santa Ana", zone: "OC", buys: "Pajilla", big: true },
-  { name: "Deportes La Cancha", address: "Calle Libertad Oriente #22, Santa Ana", zone: "OC", buys: "Pelota", big: false },
-  { name: "María José Hernández", address: "Urb. La Coruña, Senda 3 #20, Soyapango", zone: "SO", buys: "Pelota", big: false },
-  { name: "Carlos Alberto Meléndez", address: "Col. Ciudad Pacífica, Pje. 7 #14, San Miguel", zone: "OR", buys: "Pelota", big: false },
-  { name: "Ana Beatriz Rivas", address: "Res. Altamira, Calle 2 #45, Santa Ana", zone: "OC", buys: "Pajilla", big: false },
-  { name: "Luis Fernando Chávez", address: "Col. Médica, Av. Dr. Emilio Álvarez #612, San Salvador", zone: "SS", buys: "Pelota", big: false },
-  { name: "Daniela Alejandra Quintanilla", address: "Res. Villas de San Antonio, Pol. C #9, Santa Tecla", zone: "ST", buys: "Pajilla", big: false },
+  { name: "Juguetería Arcoíris", address: "Av. Roosevelt Sur #1520, San Miguel", zone: "OR", buys: "Pelotas", big: true },
+  { name: "Piñatería y Fiestas Carolina", address: "2a Av. Norte #510, Barrio San Felipe, San Miguel", zone: "OR", buys: "Pelotas", big: false },
+  { name: "Distribuidora de Desechables Oriente", address: "Carretera Panamericana Km 138, San Miguel", zone: "OR", buys: "Pajillas", big: true },
+  { name: "Refresquería La Ceiba", address: "Av. Independencia Sur #18, Santa Ana", zone: "OC", buys: "Pajillas", big: false },
+  { name: "Restaurante Brisas del Lago", address: "Carretera al Lago de Coatepeque, El Congo, Santa Ana", zone: "OC", buys: "Pajillas", big: true },
+  { name: "Deportes La Cancha", address: "Calle Libertad Oriente #22, Santa Ana", zone: "OC", buys: "Pelotas", big: false },
+  { name: "María José Hernández", address: "Urb. La Coruña, Senda 3 #20, Soyapango", zone: "SO", buys: "Pelotas", big: false },
+  { name: "Carlos Alberto Meléndez", address: "Col. Ciudad Pacífica, Pje. 7 #14, San Miguel", zone: "OR", buys: "Pelotas", big: false },
+  { name: "Ana Beatriz Rivas", address: "Res. Altamira, Calle 2 #45, Santa Ana", zone: "OC", buys: "Pajillas", big: false },
+  { name: "Luis Fernando Chávez", address: "Col. Médica, Av. Dr. Emilio Álvarez #612, San Salvador", zone: "SS", buys: "Pelotas", big: false },
+  { name: "Daniela Alejandra Quintanilla", address: "Res. Villas de San Antonio, Pol. C #9, Santa Tecla", zone: "ST", buys: "Pajillas", big: false },
   { name: "Jorge Ernesto Alvarado", address: "Col. Zacamil, Edificio 23, Apto. 4, Mejicanos", zone: "AM", buys: "both", big: false },
 ];
 
-// Cuentas de la tienda en línea (public/backend). Los pedidos de estas
-// personas se crean como los crea el checkout: con su correo, ya pagados con
-// Wompi y en «Procesando». Los correos usan el dominio reservado example.com
+// Cuentas de la tienda en línea (public/backend). Los pedidos se crean como los
+// crea el checkout: con el correo de la cuenta, ya pagados con Wompi y en
+// «Procesando». Los correos usan el dominio reservado example.com
 // para que la recuperación de contraseña nunca le escriba a alguien real.
 // `orders: false`: cuenta registrada que todavía no ha comprado.
 const STORE_ACCOUNTS = [
@@ -243,6 +303,26 @@ const STORE_ACCOUNTS = [
     address: "Col. Flor Blanca, 45 Av. Sur #1215, San Salvador", orders: false,
   },
 ];
+// Todos los pedidos llegan de la tienda: los clientes que no tienen una cuenta
+// propia arriba (los negocios) compran con una cuenta a nombre del negocio.
+// Datos deterministas a partir del nombre (no gastan números aleatorios).
+{
+  const slugOf = (text) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+  const hashOf = (text) => [...text].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  for (const c of CUSTOMERS) {
+    if (STORE_ACCOUNTS.some((a) => a.full === c.name)) continue;
+    const h = hashOf(c.name);
+    STORE_ACCOUNTS.push({
+      full: c.name,
+      name: c.name,
+      lastName: "",
+      email: `${slugOf(c.name)}@example.com`,
+      phone: `2${String(1000000 + (h % 9000000))}`,
+      city: c.address.split(",").pop().trim(),
+      card: String(1000 + (h % 9000)),
+    });
+  }
+}
 const storeAccount = (name) => STORE_ACCOUNTS.find((a) => a.full === name && a.orders !== false);
 const STORE_NOTES = [
   "Casa de portón negro, frente a la tienda de la esquina",
@@ -252,21 +332,27 @@ const STORE_NOTES = [
 ];
 // Mensaje que devuelve Wompi en modo de prueba (igual al de los registros existentes).
 const WOMPI_TEST_MESSAGE = "Esta no es una transacción real, ya que el aplicativo está en modo de prueba.";
-const phoneFor = (c) => (c.name.split(" ").length > 3 || /^(Caf|Lic|Sor|Hel|Col|Par|Pup|Dis|Cen|Min|Com|Jug|Piñ|Ref|Res|Dep)/.test(c.name) ? `2${int(200, 799)}-${int(1000, 9999)}` : `7${int(100, 999)}-${int(1000, 9999)}`);
 
 /* -------------------------------------------------------------------------- */
 /* Simulación sobre una base en memoria                                        */
 /* -------------------------------------------------------------------------- */
 
-async function simulate() {
+// `catalog`: un elemento por subcategoría con el producto del catálogo que le
+// corresponde: { sub, price, min, colors } (ver pairProducts / catalogDocs).
+async function simulate(catalog) {
+  const byName = new Map(catalog.map((c) => [c.sub, c]));
+  const priceOf = (sub) => byName.get(sub).price;
+  const minOf = (sub) => byName.get(sub).min;
+  // Colores del producto, en el orden canónico de COLORS.
+  const colorsOf = (sub) => COLORS.filter((c) => byName.get(sub).colors.includes(c));
   const { MongoMemoryReplSet } = await import("mongodb-memory-server");
   const replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   const log = { warnings: [] };
   try {
     await mongoose.connect(replSet.getUri(), { dbName: "charly_seed" });
     const imp = (p) => import(pathToFileURL(path.join(BACKEND_DIR, p)).href).then((m) => m.default);
-    const [Employee, Warehouse, Vehicle, WorkSchedule, Inventory, Order, Batch, DailyBatch, Route, Transaction] = await Promise.all(
-      ["Employee", "Warehouse", "Vehicle", "WorkSchedule", "InventoryItem", "Order", "ProductionBatch", "DailyBatch", "Route", "Transaction"].map((m) =>
+    const [Employee, Warehouse, Vehicle, WorkSchedule, Inventory, Order, Batch, DailyBatch, Route, Transaction, Subcategory] = await Promise.all(
+      ["Employee", "Warehouse", "Vehicle", "WorkSchedule", "InventoryItem", "Order", "ProductionBatch", "DailyBatch", "Route", "Transaction", "Subcategory"].map((m) =>
         imp(`src/models/${m}.js`),
       ),
     );
@@ -275,8 +361,12 @@ async function simulate() {
     const dailyCtl = await imp("src/controller/dailyBatchesController.js");
     const routesCtl = await imp("src/controller/routesController.js");
     const txCtl = await imp("src/controller/transactionsController.js");
-    for (const m of [Employee, Warehouse, Vehicle, WorkSchedule, Inventory, Order, Batch, DailyBatch, Route, Transaction]) await m.createCollection();
+    const { generateReference } = await import(pathToFileURL(path.join(BACKEND_DIR, "src/controller/transactionsController.js")).href);
+    for (const m of [Employee, Warehouse, Vehicle, WorkSchedule, Inventory, Order, Batch, DailyBatch, Route, Transaction, Subcategory]) await m.createCollection();
     await Route.syncIndexes();
+    // Los controladores validan que el producto sea una subcategoría activa:
+    // en la base en memoria existen desde el principio (antes del reloj simulado).
+    await Subcategory.create(SUBCATEGORIES.map(({ name, category }) => ({ name, category, active: true })));
 
     // Reloj simulado: se activa después de cargar los modelos (Mongoose
     // resuelve el tipo Date al definir los esquemas).
@@ -378,17 +468,21 @@ async function simulate() {
     await WorkSchedule.create(schedule);
 
     // --- Inventario inicial ------------------------------------------------
+    // Producto Terminado: una fila por subcategoría + color (los colores del
+    // producto del catálogo) en la bodega de su categoría.
     const finished = [];
-    for (const [product, info] of Object.entries(PRODUCT_INFO)) {
-      for (const color of COLORS) {
-        const reserved = RESERVED[`${product}|${color}`];
+    for (const sub of SUB_NAMES) {
+      const info = infoOf(sub);
+      const n = subsOf(categoryOf(sub)).length;
+      for (const color of colorsOf(sub)) {
+        const reserved = RESERVED[`${sub}|${color}`];
         finished.push({
-          name: product,
+          name: sub,
           category: "Producto Terminado",
           color,
           unit: "unidad",
-          stock: reserved ?? qstep(info.minStock * 2.5, info.minStock * 4.5, product === "Pajilla" ? 1000 : 100),
-          minStock: reserved != null ? (product === "Pajilla" ? 5000 : 1000) : info.minStock,
+          stock: reserved ?? qstep((info.minStock * 2.5) / n, (info.minStock * 4.5) / n, info.stockStep),
+          minStock: reserved != null ? share(sub, categoryOf(sub) === "Pajillas" ? 5000 : 1000, 50) : minStockOf(sub),
           unitCost: info.unitCost,
           location: info.warehouse,
         });
@@ -428,56 +522,67 @@ async function simulate() {
     async function bestStock(product, color) {
       const rows = await stockRows(product, color);
       rows.sort((a, b) => b.stock - a.stock);
-      return rows[0] ? { warehouse: rows[0].location, stock: rows[0].stock } : { warehouse: PRODUCT_INFO[product].warehouse, stock: 0 };
+      return rows[0] ? { warehouse: rows[0].location, stock: rows[0].stock } : { warehouse: infoOf(product).warehouse, stock: 0 };
     }
     const idOf = (d) => String(d._id);
     const loadOrder = (id) => Order.findById(id);
     const opFor = () => idOf(pick(operators));
-    const lineFor = (product) => pick(PRODUCT_INFO[product].lines);
+    const lineFor = (product) => pick(infoOf(product).lines);
     const manual = new Set(); // pedidos con guion propio (no los toca el despacho automático)
-    const payOnDelivery = new Map(); // id -> true si se paga contra entrega
     const storeOrders = []; // compras de la tienda: { id, account }
-    const storeIds = new Set();
 
+    // Siguiente N° de pedido del año (ORD-2026-0001…): igual que el checkout.
+    async function nextOrderNumber() {
+      const prefix = `ORD-${new Date().getFullYear()}-`;
+      const last = await Order.findOne({ orderNumber: { $regex: `^${prefix}` } }).sort({ orderNumber: -1 });
+      const lastNumber = last ? parseInt(last.orderNumber.slice(prefix.length), 10) : 0;
+      return `${prefix}${String((Number.isNaN(lastNumber) ? 0 : lastNumber) + 1).padStart(4, "0")}`;
+    }
+
+    // Una compra de la tienda, como la deja el checkout de public/backend
+    // (controller/ordersController.js): pedido «Procesando» con el correo de la
+    // cuenta, que pasa solo a Inventario, y su Ingreso «Ventas» en Finanzas al
+    // crearse. Los pedidos ya no se crean desde el panel.
     async function newOrder(customer, items) {
       const lines = items.map(({ product, color, quantity }) => ({
         product,
         color,
         quantity,
-        unitPrice: PRODUCT_INFO[product].price,
-        subtotal: Number((quantity * PRODUCT_INFO[product].price).toFixed(2)),
+        unitPrice: priceOf(product),
+        subtotal: Number((quantity * priceOf(product)).toFixed(2)),
       }));
       const total = Number(lines.reduce((s, l) => s + l.subtotal, 0).toFixed(2));
       const account = storeAccount(customer.name);
-      // Compra en la tienda en línea: el mismo pedido que arma el checkout de
-      // public/backend (correo del cliente, ya pagado con Wompi, «Procesando»
-      // desde el inicio). Ese checkout no crea transacción de Ventas, así que
-      // aquí tampoco (pay() ya no hace nada porque nace Pagado).
-      const body = account
-        ? {
-            customer: { name: customer.name, email: account.email, phone: account.phone, address: customer.address },
-            items: lines,
-            total,
-            status: "Procesando",
-            paymentStatus: "Pagado",
-            notes: storeRand() < 0.35 ? STORE_NOTES[storeInt(0, STORE_NOTES.length - 1)] : "",
-          }
-        : { customer: { name: customer.name, phone: customer.phone, address: customer.address }, items: lines, total };
-      const res = await call(ordersCtl.insertOrder, { body }, "crear pedido");
-      const id = String(res._id);
-      if (account) {
-        storeOrders.push({ id, account });
-        storeIds.add(id);
-      }
-      return id;
-    }
-    async function pay(orderId, paymentStatus = "Pagado") {
-      const o = await loadOrder(orderId);
-      if (o.paymentStatus === paymentStatus) return;
-      await call(ordersCtl.updateOrder, { params: { id: orderId }, body: { paymentStatus, status: o.status } }, "pago");
+      if (!account) throw new Error(`«${customer.name}» no tiene cuenta de tienda: todos los pedidos deben salir de la tienda`);
+      const createdAt = new Date();
+      const order = new Order({
+        orderNumber: await nextOrderNumber(),
+        customer: { name: customer.name, email: account.email, phone: account.phone, address: customer.address },
+        items: lines,
+        total,
+        source: "ecommerce",
+        notes: storeRand() < 0.35 ? STORE_NOTES[storeInt(0, STORE_NOTES.length - 1)] : undefined,
+        status: "Procesando",
+        statusHistory: [{ status: "Procesando", at: createdAt }],
+        sentToInventoryAt: createdAt,
+      });
+      await order.save();
       // Transaction.date usa default: Date.now, que Mongoose fijó al cargar el
-      // esquema (antes del reloj simulado): se deja con la hora del pago.
-      await Transaction.updateOne({ relatedOrder: o._id, type: paymentStatus === "Pagado" ? "Ingreso" : "Gasto" }, { date: new RealDate(fakeNow) });
+      // esquema (antes del reloj simulado): se pone la hora de la compra.
+      await Transaction.create({
+        reference: await generateReference(),
+        concept: `Venta pedido ${order.orderNumber}`,
+        type: "Ingreso",
+        category: "Ventas",
+        amount: order.total,
+        status: "Completado",
+        date: createdAt,
+        relatedOrder: order._id,
+        orderNumber: order.orderNumber,
+      });
+      const id = String(order._id);
+      storeOrders.push({ id, account });
+      return id;
     }
     const line = (id, index) => ({ id, index: String(index) });
 
@@ -521,7 +626,7 @@ async function simulate() {
           if (autoFlow) {
             const lot = await Batch.findById((await loadOrder(orderId)).items[index].manufacturingBatch);
             const startDay = nextWorkday(dayOffsetOf(when));
-            const days = Math.max(1, Math.ceil(lot.targetQuantity / PRODUCT_INFO[item.product].perDay));
+            const days = Math.max(1, Math.ceil(lot.targetQuantity / infoOf(item.product).perDay));
             let endDay = startDay;
             for (let k = 1; k < days; k += 1) endDay = nextWorkday(endDay);
             scheduleOrderLot(orderId, index, {
@@ -536,18 +641,21 @@ async function simulate() {
     const dayOffsetOf = (t) => Math.round((RealDate.UTC(...new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador", year: "numeric", month: "2-digit", day: "2-digit" }).format(t).split("-").map((v, i) => (i === 1 ? Number(v) - 1 : Number(v)))) - RealDate.UTC(TY, TM - 1, TD)) / 86400000);
 
     // --- Pedidos históricos (hasta hace 4 días) ----------------------------
-    const buyable = (product) => COLORS.filter((c) => !isReserved(product, c) || (product === "Pelota" && c === "Amarillo"));
+    // Colores que se compran al azar de una subcategoría: sin los reservados,
+    // salvo Amarillo en Pelotas (agotado a propósito: esos pedidos van a fabricación).
+    const buyable = (sub) => colorsOf(sub).filter((c) => !isReserved(sub, c) || (categoryOf(sub) === "Pelotas" && c === "Amarillo"));
     function randomItems(customer) {
-      const products = customer.buys === "both" ? (chance(0.5) ? ["Pajilla", "Pelota"] : [pick(["Pajilla", "Pelota"])]) : [customer.buys];
+      const categories = customer.buys === "both" ? (chance(0.5) ? ["Pajillas", "Pelotas"] : [pick(["Pajillas", "Pelotas"])]) : [customer.buys];
       const items = [];
-      for (const product of products) {
+      for (const category of categories) {
+        // Cada cliente compra una de las subcategorías de la categoría.
+        const product = pick(subsOf(category));
         const colors = [...buyable(product)].sort(() => rand() - 0.5).slice(0, customer.big && chance(0.35) ? 2 : 1);
         for (const color of colors) {
-          // Compras de la tienda: cantidades de menudeo (mínimos del catálogo:
-          // 100 pajillas, 50 pelotas).
+          // Compras de la tienda: cantidades de menudeo.
           const store = storeAccount(customer.name);
           const quantity =
-            product === "Pajilla"
+            category === "Pajillas"
               ? customer.big
                 ? qstep(8000, 25000, 1000)
                 : store
@@ -558,7 +666,8 @@ async function simulate() {
                 : store
                   ? qstep(50, 300, 50)
                   : qstep(100, 400, 50);
-          items.push({ product, color, quantity });
+          // Nunca por debajo del mínimo de pedido del producto.
+          items.push({ product, color, quantity: Math.max(quantity, minOf(product)) });
         }
       }
       return items;
@@ -569,11 +678,8 @@ async function simulate() {
       for (let k = 0; k < count; k += 1) {
         const createdAt = sv(o, int(8, 16), int(0, 59));
         const customer = { ...pick(chance(0.75) ? CUSTOMERS.filter((c) => c.big) : CUSTOMERS.filter((c) => !c.big)) };
-        customer.phone = phoneFor(customer);
         at(createdAt, async () => {
           const id = await newOrder(customer, randomItems(customer));
-          if (chance(0.6)) at(createdAt + int(5, 30) * 60000, () => pay(id));
-          else payOnDelivery.set(id, true);
           const processAt = createdAt + int(90, 360) * 60000;
           at(processAt, () => processLines(id, processAt));
         });
@@ -584,9 +690,9 @@ async function simulate() {
     // hábil y salen en el despacho automático), para cuentas que no salieron
     // al azar entre los pedidos históricos.
     for (const [name, o, items] of [
-      ["Daniela Alejandra Quintanilla", back(20), [{ product: "Pajilla", color: "Azul", quantity: 800 }]],
-      ["Jorge Ernesto Alvarado", back(13), [{ product: "Pajilla", color: "Rojo", quantity: 500 }, { product: "Pelota", color: "Verde", quantity: 100 }]],
-      ["Daniela Alejandra Quintanilla", back(8), [{ product: "Pajilla", color: "Verde", quantity: 1200 }]],
+      ["Daniela Alejandra Quintanilla", back(20), [{ product: "Pajillas Rectas", color: "Azul", quantity: 800 }]],
+      ["Jorge Ernesto Alvarado", back(13), [{ product: "Pajillas Flexibles", color: "Rojo", quantity: 500 }, { product: "Pelotas LDPE", color: "Verde", quantity: 100 }]],
+      ["Daniela Alejandra Quintanilla", back(8), [{ product: "Pajillas Anchas", color: "Verde", quantity: 1200 }]],
     ]) {
       const createdAt = sv(o, storeInt(19, 21), storeInt(0, 59));
       at(createdAt, async () => {
@@ -601,11 +707,12 @@ async function simulate() {
     for (let o = SIM_START + 3; o <= -3; o += 1) {
       if (weekday(o) !== 1) continue;
       at(sv(o, 6, 45), async () => {
-        for (const [product, info] of Object.entries(PRODUCT_INFO)) {
-          for (const color of COLORS) {
+        for (const product of SUB_NAMES) {
+          const info = infoOf(product);
+          for (const color of colorsOf(product)) {
             if (isReserved(product, color)) continue;
             const total = (await stockRows(product, color)).reduce((s, r) => s + r.stock, 0);
-            if (total >= info.minStock * 2.2 || plannedStock.has(`${product}|${color}|${o}`)) continue;
+            if (total >= minStockOf(product) * 2.2 || plannedStock.has(`${product}|${color}|${o}`)) continue;
             plannedStock.add(`${product}|${color}|${o}`);
             let startDay = nextWorkday(o);
             if (chance(0.5)) startDay = nextWorkday(startDay);
@@ -613,7 +720,7 @@ async function simulate() {
             const daily = await DailyBatch.findOne({ dailyBatchNumber: created.dailyBatchNumber });
             const { batchNumber } = await call(dailyCtl.scheduleBatch, { params: { id: idOf(daily) } }, "programar");
             const lot = await Batch.findOne({ batchNumber });
-            lot.targetQuantity = info.batch;
+            lot.targetQuantity = batchOf(product);
             await lot.save();
             const lotId = idOf(lot);
             at(sv(startDay, 7, int(5, 25)), () =>
@@ -627,7 +734,7 @@ async function simulate() {
             }
             const endDay = nextWorkday(startDay);
             at(sv(endDay, 14, int(0, 50)), () =>
-              call(batchCtl.completeBatch, { params: { id: lotId }, body: { producedQuantity: Math.round(info.batch * (0.96 + rand() * 0.07)) } }, "completar lote de stock"),
+              call(batchCtl.completeBatch, { params: { id: lotId }, body: { producedQuantity: Math.round(batchOf(product) * (0.96 + rand() * 0.07)) } }, "completar lote de stock"),
             );
             at(sv(endDay, 16, int(0, 45)), () => call(batchCtl.sendToWarehouse, { params: { id: lotId }, body: { warehouse: info.warehouse } }, "enviar a bodega"));
           }
@@ -674,10 +781,7 @@ async function simulate() {
             at(sv(o, 8, 50 + r * 4), () => call(routesCtl.depart, { params: { id: rid } }, "salir"));
             current.orders.forEach((ord, i) => {
               const when = sv(o, 10 + i, int(0, 50));
-              at(when, async () => {
-                await call(routesCtl.deliverOrder, { params: { id: rid, orderId: idOf(ord) } }, "entregar");
-                if (payOnDelivery.get(idOf(ord)) && (o < -12 || chance(0.6))) at(when + 15 * 60000, () => pay(idOf(ord)));
-              });
+              at(when, () => call(routesCtl.deliverOrder, { params: { id: rid, orderId: idOf(ord) } }, "entregar"));
             });
           });
         });
@@ -724,27 +828,43 @@ async function simulate() {
 
 
     // --- Guion de los últimos días: cubre todos los estados ----------------
-    const C = (name) => ({ ...CUSTOMERS.find((c) => c.name === name), phone: `2${int(200, 799)}-${int(1000, 9999)}` });
-    const topColor = async (product) => {
+    const C = (name) => ({ ...CUSTOMERS.find((c) => c.name === name) });
+    // "TOP": en una línea con categoría ("Pajillas"/"Pelotas") y color "TOP" se
+    // elige la subcategoría + color con más existencia en este momento (entre
+    // las no reservadas y cuyo mínimo de pedido cabe en la cantidad).
+    const topPick = async (category, quantity) => {
       let best = null;
-      for (const color of COLORS.filter((c) => !isReserved(product, c))) {
-        const s = (await stockRows(product, color)).reduce((a, r) => a + r.stock, 0);
-        if (!best || s > best.s) best = { color, s };
+      for (const sub of subsOf(category)) {
+        if (minOf(sub) > quantity) continue;
+        for (const color of colorsOf(sub).filter((c) => !isReserved(sub, c))) {
+          const stock = (await stockRows(sub, color)).reduce((acc, r) => acc + r.stock, 0);
+          if (!best || stock > best.stock) best = { product: sub, color, stock };
+        }
       }
-      return best.color;
+      return best;
     };
     const created = {};
     // Cada paso del guion es un evento de la cola: se ejecuta en su hora,
     // intercalado con los eventos automáticos, sin importar el orden del código.
-    const scripted = (key, when, customer, items, opts) => at(when, () => createScripted(key, customer, items, opts));
-    async function createScripted(key, customer, items, { payNow = true } = {}) {
-      // "TOP": el color con más existencia en este momento.
-      for (const it of items) if (it.color === "TOP") it.color = await topColor(it.product);
+    const scripted = (key, when, customer, items) => at(when, () => createScripted(key, customer, items));
+    async function createScripted(key, customer, items) {
+      for (const it of items) {
+        if (it.color !== "TOP") continue;
+        const top = await topPick(it.product, it.quantity);
+        if (!top) throw new Error(`Sin existencia de ${it.product} para el pedido «${key}»`);
+        it.product = top.product;
+        it.color = top.color;
+        // Si ninguna combinación tiene tanta existencia, el pedido se ajusta a
+        // lo disponible (así sigue siendo un pedido que se puede verificar).
+        if (it.quantity > top.stock) {
+          const fitted = Math.max(minOf(top.product), Math.floor((top.stock * 0.9) / 100) * 100);
+          log.warnings.push(`Pedido «${key}»: ${it.quantity} de ${top.product} ${top.color} excede la existencia (${top.stock}); se ajustó a ${fitted}`);
+          it.quantity = fitted;
+        }
+      }
       const id = await newOrder(customer, items);
       manual.add(id);
       created[key] = id;
-      if (payNow) await pay(id);
-      else payOnDelivery.set(id, true);
       return id;
     }
     const verify = async (id, index) => {
@@ -767,20 +887,10 @@ async function simulate() {
     const packLot = (id, index) => call(ordersCtl.packManufacturedItem, { params: line(id, index) }, "empacar lote");
     const stepAt = (t, fn) => at(t, fn);
 
-    // Reembolso (hace ~3 semanas): un pedido ya entregado y pagado.
-    stepAt(sv(back(17), 11, 25), async () => {
-      const candidates = await Order.find({ status: "Entregado", paymentStatus: "Pagado" }).sort({ createdAt: 1 });
-      // No se reembolsa una compra de la tienda: su pago Wompi quedó «aprobado».
-      const reembolso = candidates.find((x) => !manual.has(idOf(x)) && !storeIds.has(idOf(x)) && x.total < 900);
-      if (reembolso) await pay(idOf(reembolso), "Reembolsado");
-      else log.warnings.push("No hubo un pedido candidato para Reembolsado");
-    });
-
-
     // Entrega parcial (hace 6 días): una línea iba en ruta y la otra seguía en fabricación.
     await scripted("parcial", sv(back(6), 9, 30), C("Distribuidora El Rosario"), [
-      { product: "Pajilla", color: "TOP", quantity: 8000 },
-      { product: "Pelota", color: "Amarillo", quantity: 1500 },
+      { product: "Pajillas", color: "TOP", quantity: 8000 },
+      { product: "Pelotas Inflables", color: "Amarillo", quantity: 1500 },
     ]);
     await stepAt(sv(back(6), 11, 0), async () => {
       await verify(created.parcial, 0);
@@ -806,18 +916,18 @@ async function simulate() {
 
 
     // Lote de pedido «Por empacar» (completado ayer, sin empacar).
-    await scripted("porEmpacar", sv(back(4), 10, 5), C("Juguetería Arcoíris"), [{ product: "Pelota", color: "Amarillo", quantity: 2200 }]);
+    await scripted("porEmpacar", sv(back(4), 10, 5), C("Juguetería Arcoíris"), [{ product: "Pelotas LDPE", color: "Amarillo", quantity: 2200 }]);
     await stepAt(sv(back(4), 12, 0), () => sendLot(created.porEmpacar, 0));
     await stepAt(sv(back(3), 7, 15), () => startLot(created.porEmpacar, 0));
     await stepAt(sv(back(1), 14, 40), () => completeLot(created.porEmpacar, 0));
 
     // Lote de pedido en proceso y lote de pedido detenido.
-    await scripted("enProceso", sv(back(3), 9, 40), C("Colegio San Andrés"), [{ product: "Pelota", color: "Amarillo", quantity: 3000 }], { payNow: false });
+    await scripted("enProceso", sv(back(3), 9, 40), C("Colegio San Andrés"), [{ product: "Pelotas de Celuloide", color: "Amarillo", quantity: 3000 }]);
     await stepAt(sv(back(3), 11, 30), () => sendLot(created.enProceso, 0));
     await stepAt(sv(back(1), 7, 20), () => startLot(created.enProceso, 0));
     await scripted("detenido", sv(back(3), 15, 10), C("Parque Acuático Las Palmeras"), [
-      { product: "Pelota", color: "Amarillo", quantity: 2500 },
-      { product: "Pajilla", color: "TOP", quantity: 12000 },
+      { product: "Pelotas Inflables", color: "Amarillo", quantity: 2500 },
+      { product: "Pajillas", color: "TOP", quantity: 12000 },
     ]);
     await stepAt(sv(back(2), 8, 30), async () => {
       await sendLot(created.detenido, 0);
@@ -830,41 +940,40 @@ async function simulate() {
     );
 
     // Existencia parcial dividida: parte de bodega empacada, resto en fabricación.
-    await scripted("dividido", sv(back(2), 9, 15), C("Distribuidora de Desechables Oriente"), [{ product: "Pajilla", color: "Negro", quantity: 6000 }]);
-    await stepAt(sv(back(2), 11, 45), () => call(ordersCtl.splitPartialItem, { params: line(created.dividido, 0), body: { warehouse: "Bodega A-1", quantity: RESERVED["Pajilla|Negro"] } }, "dividir"));
+    await scripted("dividido", sv(back(2), 9, 15), C("Distribuidora de Desechables Oriente"), [{ product: "Pajillas Flexibles", color: "Negro", quantity: 6000 }]);
+    await stepAt(sv(back(2), 11, 45), () => call(ordersCtl.splitPartialItem, { params: line(created.dividido, 0), body: { warehouse: CATEGORY_INFO.Pajillas.warehouse, quantity: RESERVED["Pajillas Flexibles|Negro"] } }, "dividir"));
     await stepAt(sv(back(2), 13, 0), () => packLine(created.dividido, 0));
     await stepAt(sv(back(1), 7, 30), () => startLot(created.dividido, 0));
 
     // Esperando lote (programado, sin iniciar).
-    await scripted("esperando", sv(back(1), 10, 20), C("Piñatería y Fiestas Carolina"), [{ product: "Pelota", color: "Amarillo", quantity: 400 }], { payNow: false });
+    await scripted("esperando", sv(back(1), 10, 20), C("Piñatería y Fiestas Carolina"), [{ product: "Pelotas de Celuloide", color: "Amarillo", quantity: 400 }]);
     await stepAt(sv(back(1), 13, 0), () => sendLot(created.esperando, 0));
 
     // Pedidos empacados listos para despacho (hoy van en rutas o esperan ruta).
     const packedOrders = [
-      ["r1a", back(2), "Cafetería Los Almendros", [{ product: "Pajilla", color: "TOP", quantity: 6000 }]],
-      ["r1b", back(2), "Luis Fernando Chávez", [{ product: "Pelota", color: "TOP", quantity: 250 }]],
-      ["r2a", back(2), "Heladería Nevada Tropical", [{ product: "Pajilla", color: "TOP", quantity: 9000 }]],
-      ["r2b", back(2), "Colegio San Andrés", [{ product: "Pelota", color: "TOP", quantity: 1200 }]],
-      ["r2c", back(1), "Sorbetería Los Pinos", [{ product: "Pajilla", color: "TOP", quantity: 7000 }]],
-      ["r3a", back(2), "Juguetería Arcoíris", [{ product: "Pelota", color: "TOP", quantity: 1800 }]],
-      ["r3b", back(1), "Carlos Alberto Meléndez", [{ product: "Pelota", color: "TOP", quantity: 300 }]],
-      ["r4b", back(1), "Minisúper El Buen Precio", [{ product: "Pajilla", color: "TOP", quantity: 2500 }]],
-      ["r5a", back(1), "Refresquería La Ceiba", [{ product: "Pajilla", color: "TOP", quantity: 3000 }]],
-      ["libre1", back(1), "Restaurante Brisas del Lago", [{ product: "Pajilla", color: "TOP", quantity: 10000 }]],
-      ["libre2", 0, "Deportes La Cancha", [{ product: "Pelota", color: "TOP", quantity: 350 }]],
+      ["r1a", back(2), "Cafetería Los Almendros", [{ product: "Pajillas", color: "TOP", quantity: 6000 }]],
+      ["r1b", back(2), "Luis Fernando Chávez", [{ product: "Pelotas", color: "TOP", quantity: 250 }]],
+      ["r2a", back(2), "Heladería Nevada Tropical", [{ product: "Pajillas", color: "TOP", quantity: 9000 }]],
+      ["r2b", back(2), "Colegio San Andrés", [{ product: "Pelotas", color: "TOP", quantity: 1200 }]],
+      ["r2c", back(1), "Sorbetería Los Pinos", [{ product: "Pajillas", color: "TOP", quantity: 7000 }]],
+      ["r3a", back(2), "Juguetería Arcoíris", [{ product: "Pelotas", color: "TOP", quantity: 1800 }]],
+      ["r3b", back(1), "Carlos Alberto Meléndez", [{ product: "Pelotas", color: "TOP", quantity: 300 }]],
+      ["r4b", back(1), "Minisúper El Buen Precio", [{ product: "Pajillas", color: "TOP", quantity: 2500 }]],
+      ["r5a", back(1), "Refresquería La Ceiba", [{ product: "Pajillas", color: "TOP", quantity: 3000 }]],
+      ["libre1", back(1), "Restaurante Brisas del Lago", [{ product: "Pajillas", color: "TOP", quantity: 10000 }]],
+      ["libre2", 0, "Deportes La Cancha", [{ product: "Pelotas", color: "TOP", quantity: 350 }]],
     ];
     for (const [key, o, name, items] of packedOrders) {
-      const payNow = chance(0.6);
       stepAt(sv(o, o === 0 ? 7 : 9, int(0, 50)), async () => {
-        await createScripted(key, C(name), items, { payNow });
+        await createScripted(key, C(name), items);
         await verify(created[key], 0);
       });
       await stepAt(sv(o, o === 0 ? 8 : 13, int(0, 50)), () => packLine(created[key], 0));
     }
     // Pedido con línea de Fabricación empacada ayer (Ruta 4 recoge ahí).
     await scripted("r4a", sv(back(3), 8, 20), C("Comercial Hermanos Villalta"), [
-      { product: "Pelota", color: "Amarillo", quantity: 800 },
-      { product: "Pajilla", color: "TOP", quantity: 5000 },
+      { product: "Pelotas LDPE", color: "Amarillo", quantity: 800 },
+      { product: "Pajillas", color: "TOP", quantity: 5000 },
     ]);
     await stepAt(sv(back(3), 10, 0), async () => {
       await sendLot(created.r4a, 0);
@@ -912,18 +1021,18 @@ async function simulate() {
 
     // Pedidos de hoy en Inventario (sin verificar / verificando / listo para empacar).
     await scripted("pendiente1", sv(0, 8, 15), C("Licuados y Batidos Tropicana"), [
-      { product: "Pajilla", color: "TOP", quantity: 8000 },
-      { product: "Pelota", color: "Negro", quantity: 1500 },
-      { product: "Pelota", color: "Amarillo", quantity: 600 },
-    ], { payNow: false });
-    await scripted("pendiente2", sv(0, 10, 40), C("María José Hernández"), [{ product: "Pelota", color: "TOP", quantity: 150 }]);
-    await scripted("pendiente3", sv(0, 11, 55), C("Cafetín Universitario La Esquina"), [{ product: "Pajilla", color: "TOP", quantity: 2000 }], { payNow: false });
+      { product: "Pajillas", color: "TOP", quantity: 8000 },
+      { product: "Pelotas LDPE", color: "Negro", quantity: 1500 },
+      { product: "Pelotas Inflables", color: "Amarillo", quantity: 600 },
+    ]);
+    await scripted("pendiente2", sv(0, 10, 40), C("María José Hernández"), [{ product: "Pelotas", color: "TOP", quantity: 150 }]);
+    await scripted("pendiente3", sv(0, 11, 55), C("Cafetín Universitario La Esquina"), [{ product: "Pajillas", color: "TOP", quantity: 2000 }]);
     await scripted("verificando", sv(back(1), 14, 10), C("Pupusería y Comedor Doña Mari"), [
-      { product: "Pajilla", color: "TOP", quantity: 3000 },
-      { product: "Pelota", color: "TOP", quantity: 200 },
-    ], { payNow: false });
+      { product: "Pajillas", color: "TOP", quantity: 3000 },
+      { product: "Pelotas", color: "TOP", quantity: 200 },
+    ]);
     await stepAt(sv(0, 8, 40), () => verify(created.verificando, 0));
-    await scripted("listo", sv(back(1), 15, 30), C("Ana Beatriz Rivas"), [{ product: "Pajilla", color: "TOP", quantity: 1500 }]);
+    await scripted("listo", sv(back(1), 15, 30), C("Ana Beatriz Rivas"), [{ product: "Pajillas", color: "TOP", quantity: 1500 }]);
     await stepAt(sv(0, 9, 0), () => verify(created.listo, 0));
 
     // Lotes de stock de esta semana: por enviar, en proceso, detenido y programados.
@@ -932,16 +1041,16 @@ async function simulate() {
       const d = await DailyBatch.findOne({ dailyBatchNumber: daily.dailyBatchNumber });
       const { batchNumber } = await call(dailyCtl.scheduleBatch, { params: { id: idOf(d) } }, "programar");
       const lot = await Batch.findOne({ batchNumber });
-      lot.targetQuantity = PRODUCT_INFO[product].batch;
+      lot.targetQuantity = batchOf(product);
       await lot.save();
       return idOf(lot);
     };
-    const colorsFor = (product) => COLORS.filter((c) => !isReserved(product, c));
+    const colorsFor = (sub) => colorsOf(sub).filter((c) => !isReserved(sub, c));
     let lotPorEnviar, lotEnProceso, lotDetenido;
     await stepAt(sv(back(3), 6, 50), async () => {
-      lotPorEnviar = await stockLot("Pajilla", colorsFor("Pajilla")[1], back(1));
-      lotDetenido = await stockLot("Pelota", colorsFor("Pelota")[2], back(1));
-      lotEnProceso = await stockLot("Pajilla", colorsFor("Pajilla")[3], 0);
+      lotPorEnviar = await stockLot("Pajillas Rectas", colorsFor("Pajillas Rectas")[1], back(1));
+      lotDetenido = await stockLot("Pelotas LDPE", colorsFor("Pelotas LDPE")[2], back(1));
+      lotEnProceso = await stockLot("Pajillas Flexibles", colorsFor("Pajillas Flexibles")[3], 0);
     });
     await stepAt(sv(back(1), 7, 5), async () => {
       await call(batchCtl.startBatch, { params: { id: lotPorEnviar }, body: { productionLine: "Línea 1", operator: opFor() } }, "iniciar");
@@ -955,12 +1064,12 @@ async function simulate() {
     });
     // Programados para los próximos días y producción diaria sin programar.
     await stepAt(sv(0, 13, 30), async () => {
-      await stockLot("Pelota", colorsFor("Pelota")[0], nextWorkday(0));
-      await stockLot("Pajilla", colorsFor("Pajilla")[0], nextWorkday(0));
+      await stockLot("Pelotas Inflables", colorsFor("Pelotas Inflables")[0], nextWorkday(0));
+      await stockLot("Pajillas Anchas", colorsFor("Pajillas Anchas")[0], nextWorkday(0));
       const d2 = nextWorkday(nextWorkday(0));
-      await call(dailyCtl.insertBatch, { body: { date: dayKey(d2), product: "Pelota", color: colorsFor("Pelota")[1] } }, "producción diaria");
-      await call(dailyCtl.insertBatch, { body: { date: dayKey(d2), product: "Pajilla", color: colorsFor("Pajilla")[2] } }, "producción diaria");
-      await call(dailyCtl.insertBatch, { body: { date: dayKey(nextWorkday(d2)), product: "Pelota", color: "Amarillo" } }, "producción diaria");
+      await call(dailyCtl.insertBatch, { body: { date: dayKey(d2), product: "Pelotas de Celuloide", color: colorsFor("Pelotas de Celuloide")[1] } }, "producción diaria");
+      await call(dailyCtl.insertBatch, { body: { date: dayKey(d2), product: "Pajillas Mezcladoras", color: colorsFor("Pajillas Mezcladoras")[2] } }, "producción diaria");
+      await call(dailyCtl.insertBatch, { body: { date: dayKey(nextWorkday(d2)), product: "Pelotas LDPE", color: "Amarillo" } }, "producción diaria");
     });
 
     await runUntil(Infinity);
@@ -979,15 +1088,57 @@ async function simulate() {
   }
 }
 
-// Catálogo de la tienda (solo con --regenerar-productos): mismas dos
-// categorías, precios y colores que ya tenía; sin imágenes.
+// Catálogo de la tienda (solo con --regenerar-productos): un producto por
+// subcategoría, con su mismo nombre, el precio y mínimo de SUBCATEGORIES, todos
+// los colores y sin imágenes.
 function catalogDocs() {
   const now = new RealDate(NOW);
-  const colors = [...COLORS];
-  return [
-    { name: "Pelotas", slug: "pelotas", category: "Pelotas", price: 0.25, colors, minOrderQuantity: 50, stock: 8000, images: [], active: true, featured: true },
-    { name: "Pajillas", slug: "pajillas", category: "Pajillas", price: 0.15, colors, minOrderQuantity: 100, stock: 40000, images: [], active: true, featured: false },
-  ].map((p) => ({ ...p, createdAt: now, updatedAt: now, __v: 0 }));
+  const slugify = (text) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, "-");
+  return SUBCATEGORIES.map((sc, i) => ({
+    name: sc.name,
+    slug: slugify(sc.name),
+    category: sc.category,
+    subcategory: sc.name,
+    price: sc.price,
+    colors: [...COLORS],
+    minOrderQuantity: sc.min,
+    stock: batchOf(sc.name),
+    images: [],
+    active: true,
+    featured: i === 0,
+    createdAt: now,
+    updatedAt: now,
+    __v: 0,
+  }));
+}
+
+// Empareja cada producto del catálogo con una de las SUBCATEGORIES por nombre
+// (ignorando mayúsculas, tildes y espacios de más) y con la misma categoría.
+// Devuelve { pairs: [{ product, sub }], errors }: un producto sin pareja, dos
+// productos con la misma subcategoría o una subcategoría sin producto son
+// errores y el script se detiene sin tocar nada.
+const normName = (text) => String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function pairProducts(products) {
+  const pairs = [];
+  const errors = [];
+  const bySub = new Map();
+  for (const product of products) {
+    const matches = SUBCATEGORIES.filter((sc) => normName(sc.name) === normName(product.name) && sc.category === product.category);
+    if (matches.length !== 1) {
+      errors.push(`El producto «${product.name}» (${product.category}, ${product._id ?? "sin _id"}) no empareja con ninguna subcategoría`);
+      continue;
+    }
+    const sub = matches[0].name;
+    if (bySub.has(sub)) {
+      errors.push(`«${sub}» empareja con más de un producto: «${bySub.get(sub).name}» (${bySub.get(sub)._id}) y «${product.name}» (${product._id})`);
+      continue;
+    }
+    if (!Array.isArray(product.colors) || !product.colors.length) errors.push(`El producto «${product.name}» no tiene colores: no habría inventario que generar`);
+    bySub.set(sub, product);
+    pairs.push({ product, sub });
+  }
+  for (const sc of SUBCATEGORIES) if (!bySub.has(sc.name)) errors.push(`La subcategoría «${sc.name}» se queda sin producto`);
+  return { pairs, errors };
 }
 
 // Tienda en línea (se insertan solo con --incluir-tienda): una cuenta por
@@ -1104,8 +1255,8 @@ async function checkGenerated(docs, adminId) {
     linkByOrder.set(key, l);
     const o = orderById.get(key);
     const c = customers.get(String(l.customer));
-    if (o && c && (o.customer.email !== c.email || o.customer.name !== `${c.name} ${c.lastName}`)) problems.push(`pedido ${o.orderNumber}: cliente ≠ cuenta ${c.email}`);
-    if (o && o.paymentStatus !== "Pagado") problems.push(`pedido de tienda ${o.orderNumber} no está Pagado`);
+    if (o && c && (o.customer.email !== c.email || o.customer.name !== `${c.name} ${c.lastName}`.trim())) problems.push(`pedido ${o.orderNumber}: cliente ≠ cuenta ${c.email}`);
+    if (o && o.paymentStatus !== undefined) problems.push(`pedido ${o.orderNumber} trae paymentStatus (ya no existe)`);
   }
   const payByOrder = new Map();
   for (const p of docs.paymenttransactions) {
@@ -1124,6 +1275,32 @@ async function checkGenerated(docs, adminId) {
     if (linkByOrder.has(key) && payByOrder.get(key) !== 1) problems.push(`pedido de tienda ${o.orderNumber} con ${payByOrder.get(key) || 0} pagos`);
   }
   if (new Set(docs.customers.map((c) => c.email)).size !== docs.customers.length) problems.push("correos de clientes repetidos");
+
+  // Todo pedido sale de la tienda y tiene su Ingreso «Ventas» (uno solo, con el
+  // N° de pedido); no hay Gastos por reembolso.
+  const salesByOrder = new Map();
+  for (const t of docs.transactions) {
+    if (t.relatedOrder && t.category === "Ventas") salesByOrder.set(String(t.relatedOrder), [...(salesByOrder.get(String(t.relatedOrder)) || []), t]);
+    if (/reembolso/i.test(t.concept)) problems.push(`transacción ${t.reference} es un reembolso (ya no existen)`);
+  }
+  for (const o of docs.orders) {
+    const sales = salesByOrder.get(String(o._id)) || [];
+    if (!o.customer.email || !emails.has(o.customer.email)) problems.push(`pedido ${o.orderNumber} no es de una cuenta de la tienda`);
+    if (sales.length !== 1 || sales[0].type !== "Ingreso" || sales[0].amount !== o.total || sales[0].orderNumber !== o.orderNumber) {
+      problems.push(`pedido ${o.orderNumber}: debe tener exactamente un Ingreso «Ventas» por su total y con su N° de pedido`);
+    }
+  }
+
+  // El «producto» de todo dato generado es el nombre de una subcategoría.
+  const validNames = new Set(SUB_NAMES);
+  const notSub = (where, names) => {
+    for (const name of new Set(names)) if (!validNames.has(name)) problems.push(`${where}: «${name}» no es una subcategoría`);
+  };
+  notSub("orders.items.product", docs.orders.flatMap((o) => o.items.map((i) => i.product)));
+  notSub("productionbatches.product", docs.productionbatches.map((b) => b.product));
+  notSub("dailybatches.product", docs.dailybatches.map((d) => d.product));
+  notSub("inventoryitems.name (Producto Terminado)", docs.inventoryitems.filter((i) => i.category === "Producto Terminado").map((i) => i.name));
+  if (JSON.stringify(docs.subcategories.map((sc) => sc.name).sort()) !== JSON.stringify([...SUB_NAMES].sort())) problems.push("subcategories no coincide con SUBCATEGORIES");
 
   // Consistencia con la lógica del sistema.
   const { computeOrderStatus } = await import(pathToFileURL(path.join(BACKEND_DIR, "src/lib/orderStatus.js")).href);
@@ -1157,7 +1334,6 @@ async function coverage(docs) {
   const count = (arr) => arr.reduce((m, v) => ((m[v] = (m[v] || 0) + 1), m), {});
   const out = {
     "pedido (status)": count(docs.orders.map((o) => o.status)),
-    "pago (paymentStatus)": count(docs.orders.map((o) => o.paymentStatus)),
     "lote": count(docs.productionbatches.map((b) => (b.packedAt ? "Empacado" : batchState(b)))),
     "lote · categoría": count(docs.productionbatches.map((b) => b.category)),
     "ruta": count(docs.routes.map((r) => (r.delayed && r.status !== "Completada" ? "Demorada" : r.status))),
@@ -1185,6 +1361,8 @@ function preview(name, docs, all) {
       return docs.map((e) => `${e.name} ${e.lastName} · ${e.department} · ${e.position} · $${e.hourlyRate}/h · ${e.isActive ? "activo" : "inactivo"} · ${e.attendance.length} marcaciones`);
     case "warehouses":
       return docs.map((w) => w.name);
+    case "subcategories":
+      return docs.map((sc) => `${sc.name} · ${sc.category} · ${sc.active ? "activa" : "inactiva"}`);
     case "vehicles":
       return docs.map((v) => v.plate);
     case "workschedules":
@@ -1193,7 +1371,7 @@ function preview(name, docs, all) {
       return sample(docs, 10).map((i) => `${i.category} · ${i.name}${i.color ? " " + i.color : ""} · ${i.stock.toLocaleString("en-US")} ${i.unit} (mín ${i.minStock}) · ${i.location}${i.lastInbound?.quantity ? ` · último ingreso +${i.lastInbound.quantity} (${i.lastInbound.batchNumber})` : ""}`);
     case "orders":
       return sample([...docs].sort((a, b) => a.createdAt - b.createdAt), 10).map(
-        (o) => `${o.orderNumber} · ${d10(o.createdAt)} · ${o.customer.name} · ${o.items.map((i) => `${i.product} ${i.color} ×${i.quantity.toLocaleString("en-US")}`).join(", ")} · ${money(o.total)} · ${o.status} · pago ${o.paymentStatus}`,
+        (o) => `${o.orderNumber} · ${d10(o.createdAt)} · ${o.customer.name} · ${o.items.map((i) => `${i.product} ${i.color} ×${i.quantity.toLocaleString("en-US")}`).join(", ")} · ${money(o.total)} · ${o.status}`,
       );
     case "productionbatches":
       return sample([...docs].sort((a, b) => a.createdAt - b.createdAt), 10).map(
@@ -1208,7 +1386,7 @@ function preview(name, docs, all) {
     case "transactions":
       return sample([...docs].sort((a, b) => a.date - b.date), 10).map((t) => `${t.reference} · ${d10(t.date)} · ${t.type} · ${t.category} · ${t.concept} · ${money(t.amount)} · ${t.status}`);
     case "products":
-      return docs.map((p) => `${p.name} · ${p.category} · $${p.price} · mín ${p.minOrderQuantity} · colores ${p.colors.join("/")}`);
+      return docs.map((p) => `${p.name} · ${p.category} · subcategoría ${p.subcategory} · $${p.price} · mín ${p.minOrderQuantity} · colores ${p.colors.join("/")}`);
     case "customers":
       return docs.map((c) => {
         const n = all.customerorders.filter((l) => String(l.customer) === String(c._id)).length;
@@ -1224,7 +1402,7 @@ function preview(name, docs, all) {
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((l) => {
           const o = orderOf(l.order);
-          return `${o.orderNumber} · ${d10(o.createdAt)} · ${nameOf(l.customer)} · ${o.items.map((i) => `${i.product} ${i.color} ×${i.quantity.toLocaleString("en-US")}`).join(", ")} · ${money(o.total)} · ${o.status} · pago ${o.paymentStatus}${o.notes ? ` · nota «${o.notes}»` : ""}`;
+          return `${o.orderNumber} · ${d10(o.createdAt)} · ${nameOf(l.customer)} · ${o.items.map((i) => `${i.product} ${i.color} ×${i.quantity.toLocaleString("en-US")}`).join(", ")} · ${money(o.total)} · ${o.status}${o.notes ? ` · nota «${o.notes}»` : ""}`;
         });
     }
     case "paymenttransactions":
@@ -1301,9 +1479,20 @@ async function main() {
     const missing = PANEL.filter((n) => !existing.includes(n));
     if (missing.length) throw new Error(`Faltan colecciones del panel en la base: ${missing.join(", ")}. No se crean colecciones nuevas; no se hace nada.`);
 
+    // Catálogo: el real (se conserva) o el regenerado. Cada producto se empareja
+    // con su subcategoría; si algo no cuadra no se hace nada.
+    const catalogSource = regenProducts ? catalogDocs() : await db.collection(PRODUCTS).find().toArray();
+    const { pairs, errors: pairErrors } = pairProducts(catalogSource);
+    console.log(`\n=== Emparejamiento producto → subcategoría (${regenProducts ? "catálogo regenerado" : "catálogo real, se conserva"}) ===`);
+    for (const { product, sub } of pairs) {
+      console.log(`- ${String(product._id ?? "(nuevo)").padEnd(24)} «${product.name}» [${product.category}] $${product.price} · mín ${product.minOrderQuantity} · ${(product.colors || []).join("/")}  →  subcategory = «${sub}»`);
+    }
+    if (pairErrors.length) throw new Error(`El emparejamiento no es válido; no se hace nada:\n- ${pairErrors.join("\n- ")}`);
+    const catalog = pairs.map(({ product, sub }) => ({ sub, price: product.price, min: product.minOrderQuantity ?? 1, colors: product.colors }));
+
     console.log("\nGenerando datos (ensayo completo en una base en memoria)…");
-    const { docs, warnings } = await simulate();
-    if (regenProducts) docs.products = catalogDocs();
+    const { docs, warnings } = await simulate(catalog);
+    if (regenProducts) docs.products = catalogSource;
     const problems = await checkGenerated(docs, admin._id);
 
     // Plan por colección.
@@ -1323,7 +1512,7 @@ async function main() {
         del = current;
         add = docs[name]?.length ?? 0;
         action = add ? "borrar todos · insertar nuevos" : "borrar todos (no se repuebla)";
-      } else if (name === PRODUCTS) action = "SE CONSERVA (usa --regenerar-productos para recrearlo)";
+      } else if (name === PRODUCTS) action = `SE CONSERVA · con --run se asigna subcategory a ${pairs.length} productos (un updateOne por _id, solo ese campo; usa --regenerar-productos para recrearlo)`;
       else if (STORE.includes(name)) action = "NO SE TOCA (tienda en línea; --incluir-tienda para reemplazarla)";
       else if (LEGACY.includes(name)) action = "NO SE TOCA (colección heredada, sin código que la use)";
       else action = "NO SE TOCA (no reconocida)";
@@ -1353,6 +1542,15 @@ async function main() {
     console.log(`Finanzas del período: ingresos ${money(income)} · gastos ${money(spend)} · neto ${money(income - spend)}`);
     console.log("\n=== Estados que se verán en el panel ===");
     for (const [k, v] of Object.entries(await coverage(docs))) console.log(`- ${k}: ${Object.entries(v).map(([s, n]) => `${s} ${n}`).join(" · ")}`);
+    console.log("\n=== Productos en los datos generados (solo deben ser subcategorías) ===");
+    const distinct = (label, names) => {
+      const counts = names.reduce((m, n) => ((m[n] = (m[n] || 0) + 1), m), {});
+      console.log(`- ${label}: ${Object.entries(counts).sort().map(([n, c]) => `${n} (${c})`).join(" · ")}`);
+    };
+    distinct("orders.items.product", docs.orders.flatMap((o) => o.items.map((i) => i.product)));
+    distinct("productionbatches.product", docs.productionbatches.map((b) => b.product));
+    distinct("dailybatches.product", docs.dailybatches.map((d) => d.product));
+    distinct("inventoryitems.name (Producto Terminado)", docs.inventoryitems.filter((i) => i.category === "Producto Terminado").map((i) => i.name));
     console.log("\n=== Verificaciones ===");
     console.log(problems.length ? problems.map((p) => `✖ ${p}`).join("\n") : "✔ Sin referencias huérfanas; estados de pedidos y rutas coherentes con la lógica del sistema; sin stock negativo.");
     if (warnings.length) console.log(warnings.map((w) => `⚠ ${w}`).join("\n"));
@@ -1378,6 +1576,12 @@ async function main() {
           const list = docs[name] ?? [];
           if (list.length) await col.insertMany(list, { session, ordered: true });
         }
+        // Catálogo conservado: solo se le asigna su subcategoría (nada más cambia).
+        if (!regenProducts) {
+          for (const { product, sub } of pairs) {
+            await db.collection(PRODUCTS).updateOne({ _id: product._id }, { $set: { subcategory: sub } }, { session });
+          }
+        }
       });
     } finally {
       await session.endSession();
@@ -1388,6 +1592,8 @@ async function main() {
     console.log("\n=== Resultado ===");
     for (const name of Object.keys(after).sort()) console.log(`- ${name.padEnd(20)} ${await db.collection(name).countDocuments()}`);
     console.log(same ? "✔ Mismas colecciones, índices, opciones y validadores que antes de la corrida (nada se soltó ni se recreó)." : "✖ La estructura cambió respecto de antes: revisar.");
+    const withSub = await db.collection(PRODUCTS).countDocuments({ subcategory: { $in: SUB_NAMES } });
+    console.log(withSub === pairs.length ? `✔ ${withSub} productos con su subcategoría asignada.` : `✖ Solo ${withSub} de ${pairs.length} productos quedaron con subcategoría: revisar.`);
     const stillAdmin = await db.collection("employees").countDocuments({ _id: admin._id, role: "admin" });
     console.log(stillAdmin === 1 ? "✔ El administrador sigue intacto." : "✖ No se encontró el administrador.");
   } finally {

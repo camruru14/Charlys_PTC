@@ -7,6 +7,7 @@ import BottomBar from "../components/ui/BottomBar";
 import Button from "../components/ui/Button";
 import FormField from "../components/ui/FormField";
 import LoadingState from "../components/ui/LoadingState";
+import ProductSelect from "../components/ui/ProductSelect";
 import SegmentedField from "../components/ui/SegmentedField";
 import SelectField from "../components/ui/SelectField";
 import { useToast } from "../components/ui/Toast";
@@ -71,7 +72,7 @@ export default function InventarioItemFormScreen({ navigation, route }) {
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      Alert.alert("Falta información", "El artículo es obligatorio");
+      Alert.alert("Falta información", isFinished ? "Elige la categoría y el producto" : "El artículo es obligatorio");
       return;
     }
     if (form.stock === "") {
@@ -139,7 +140,11 @@ export default function InventarioItemFormScreen({ navigation, route }) {
   return (
     <View style={styles.screen}>
       <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
-        <FormField label="Artículo" value={form.name} onChangeText={(v) => handleChange("name", v)} required />
+        {isFinished ? (
+          <ProductSelect value={form.name} onChange={(v) => handleChange("name", v)} />
+        ) : (
+          <FormField label="Artículo" value={form.name} onChangeText={(v) => handleChange("name", v)} required />
+        )}
         {isFinished ? (
           <FormField
             label="Tipo"

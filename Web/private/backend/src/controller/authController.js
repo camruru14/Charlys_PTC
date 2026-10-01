@@ -4,6 +4,7 @@ import employeeModel from "../models/Employee.js";
 import jsonwebtoken from "jsonwebtoken";
 import { encryptPassword, readablePassword, verifyPassword } from "../lib/passwordCrypto.js";
 import { config } from "../../config.js";
+import { isAdministratorId } from "../lib/permissions.js";
 import { checkPassword, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
 
 // LOGIN del panel administrativo (empleados)
@@ -33,6 +34,7 @@ authController.login = async (req, res) => {
 
     //#4- Generar el token de sesión (el sistema ya no maneja roles/permisos:
     // cualquier empleado autenticado puede usar cualquier ruta, ver authMiddleware.js)
+    const isAdmin = await isAdministratorId(employeeFound._id);
     jsonwebtoken.sign(
       { id: employeeFound._id },
       config.JWT.secret,
@@ -57,6 +59,9 @@ authController.login = async (req, res) => {
             lastName: employeeFound.lastName,
             email: employeeFound.email,
             position: employeeFound.position,
+            department: employeeFound.department,
+            // Quien puede hacer acciones delicadas (eliminar pedidos): ver lib/permissions.js
+            isAdmin,
           },
         });
       },
@@ -71,7 +76,7 @@ authController.login = async (req, res) => {
 // ver authMiddleware.js). Para editar a OTRO empleado está /employees/:id
 // (Configuración > Personal y permisos).
 
-const toAccount = (e) => ({
+const toAccount = (e, isAdmin) => ({
   id: e._id,
   name: e.name,
   lastName: e.lastName,
@@ -80,6 +85,7 @@ const toAccount = (e) => ({
   dui: e.dui || "",
   position: e.position || "",
   department: e.department || "",
+  isAdmin: Boolean(isAdmin),
 });
 
 async function findSessionEmployee(req, res) {
@@ -95,7 +101,7 @@ async function findSessionEmployee(req, res) {
 authController.getMe = async (req, res) => {
   try {
     const employee = await findSessionEmployee(req, res);
-    if (employee) res.json(toAccount(employee));
+    if (employee) res.json(toAccount(employee, await isAdministratorId(employee._id)));
   } catch (error) {
     sendEmployeeError(res, error);
   }
@@ -121,7 +127,7 @@ authController.updateMe = async (req, res) => {
     employee.phone = typeof req.body.phone === "string" ? req.body.phone.trim() : employee.phone;
     if (req.body.dui !== undefined) employee.dui = normalizeDui(req.body.dui);
     await employee.save();
-    res.json(toAccount(employee));
+    res.json(toAccount(employee, await isAdministratorId(employee._id)));
   } catch (error) {
     sendEmployeeError(res, error);
   }
@@ -147,7 +153,7 @@ authController.updateCredentials = async (req, res) => {
     employee.email = nextEmail;
     if (newPassword) employee.password = encryptPassword(checkPassword(newPassword));
     await employee.save();
-    res.json(toAccount(employee));
+    res.json(toAccount(employee, await isAdministratorId(employee._id)));
   } catch (error) {
     sendEmployeeError(res, error);
   }

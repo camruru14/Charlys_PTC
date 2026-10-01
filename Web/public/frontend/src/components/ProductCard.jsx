@@ -5,7 +5,7 @@ import QuickAddModal from "./QuickAddModal";
 
 // Disponibilidad según product.stock, con los colores de estado que ya usa el
 // sitio: verde de éxito (Entregado en Mis pedidos, Pago confirmado), ámbar de
-// advertencia (En Fabricación, Pago pendiente) y el rojo de error de Field.
+// advertencia (En Fabricación) y el rojo de error de Field.
 const LOW_STOCK_MAX = 10;
 function availability(stock = 0) {
   if (stock <= 0) return { label: "Agotado", tone: "text-red-600" };

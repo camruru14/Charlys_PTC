@@ -3,7 +3,7 @@ import { Schema, model } from "mongoose";
 // Cada línea del pedido
 const orderItemSchema = new Schema(
   {
-    product: { type: String, required: true }, // ej. "Pajilla", "Pelota"
+    product: { type: String, required: true }, // nombre de la subcategoría del producto, ej. "Pajilla jumbo"
     color: { type: String }, // ej. "Rojo", "Azul"
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
@@ -123,11 +123,6 @@ const orderSchema = new Schema(
       ],
       default: "Pendiente",
     },
-    paymentStatus: {
-      type: String,
-      enum: ["Pendiente", "Pagado", "Reembolsado"],
-      default: "Pendiente",
-    },
     source: {
       type: String,
       default: "ecommerce",
@@ -137,7 +132,7 @@ const orderSchema = new Schema(
       type: String,
     },
     // Fecha en que el pedido pasó a Inventario. Se llena sola al crearse el
-    // pedido (aquí en insertOrder y en el checkout de public/backend); el
+    // pedido (en el checkout de public/backend); el
     // PATCH /orders/:id/request-inventory solo la vuelve a poner si falta.
     // Inventario > Pedidos la usa para listar el pedido y el panel la
     // muestra como «Pasó solo a Inventario». No afecta stock.

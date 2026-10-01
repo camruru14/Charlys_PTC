@@ -206,10 +206,13 @@ export async function updateRoute(id, body, session) {
 
 export async function deleteRoute(id, session) {
   const route = await loadRoute(id, session);
-  if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió; no se puede eliminar`);
   if (route.orders.length || route.deliveries.length) {
+    if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió; no se puede eliminar`);
     throw new HttpError(409, `${routeLabel(route)} tiene pedidos; quítalos antes de eliminarla`);
   }
+  // Una ruta que salió solo se elimina si ya se completó y quedó vacía (sus
+  // pedidos se eliminaron del panel).
+  if (route.departedAt && route.status !== "Completada") throw new HttpError(409, `${routeLabel(route)} ya salió; no se puede eliminar`);
   await routeModel.deleteOne({ _id: route._id }, { session });
 }
 

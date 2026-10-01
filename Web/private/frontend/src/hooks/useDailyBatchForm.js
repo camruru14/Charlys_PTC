@@ -3,11 +3,12 @@ import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { todayInput } from "./useBatchForm";
 import { useConfirm } from "./useConfirm";
+import { formatBatchNumber } from "../lib/format";
 
 export const emptyDailyBatchForm = {
   dailyBatchNumber: "",
   date: "",
-  product: "Pajilla",
+  product: "", // nombre de una subcategoría (ProductSelect); sin valor por defecto
   color: "Rojo",
 };
 
@@ -45,7 +46,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
     setForm({
       dailyBatchNumber: batch.dailyBatchNumber || "",
       date: batch.date ? new Date(batch.date).toISOString().slice(0, 10) : "",
-      product: batch.product || "Pajilla",
+      product: batch.product || "",
       color: batch.color || "",
     });
     setModalOpen(true);
@@ -55,6 +56,10 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!form.product) {
+      toast.error("Elige la categoría y el producto");
+      return;
+    }
     setSaving(true);
     const { dailyBatchNumber, ...rest } = form;
     const payload = {
@@ -93,7 +98,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
   async function handleSchedule(batch) {
     try {
       const res = await api.patch(`/dailyBatches/${batch._id}/schedule`);
-      toast.success(res?.batchNumber ? `Lote ${res.batchNumber} programado` : "Lote programado");
+      toast.success(res?.batchNumber ? `Lote ${formatBatchNumber(res.batchNumber)} programado` : "Lote programado");
       refetch();
       onScheduled?.();
     } catch (err) {

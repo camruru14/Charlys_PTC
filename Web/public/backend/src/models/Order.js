@@ -16,7 +16,7 @@ import { Schema, model } from "mongoose";
 
 const orderItemSchema = new Schema(
   {
-    product: { type: String, required: true }, // ej. "Pajilla", "Pelota"
+    product: { type: String, required: true }, // nombre de la subcategoría del producto, ej. "Pajilla jumbo"
     color: { type: String },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
@@ -101,11 +101,6 @@ const orderSchema = new Schema(
         "En Tránsito",
         "Entregado",
       ],
-      default: "Pendiente",
-    },
-    paymentStatus: {
-      type: String,
-      enum: ["Pendiente", "Pagado", "Reembolsado"],
       default: "Pendiente",
     },
     source: {

@@ -4,7 +4,8 @@ import EmptyState from "../../components/ui/EmptyState";
 import SearchInput from "../../components/ui/SearchInput";
 import StatusPill from "../../components/ui/StatusPill";
 import { FilterSelect } from "../../components/ui/Field";
-import { Pagination } from "../../components/inventory/InventoryItemsCard";
+import Pagination from "../../components/ui/Pagination";
+import { usePagedRows } from "../../hooks/usePagedRows";
 import { filterSelectClass } from "../../lib/filterStyles";
 import {
   TIMELINE_TICKS,
@@ -15,7 +16,6 @@ import {
 } from "../../lib/attendance";
 import { fmtDayLong, fmtNumber } from "../../lib/format";
 
-const PAGE_SIZE = 30;
 const GRID = "grid grid-cols-[232px_minmax(0,1fr)_72px] items-center gap-4 px-5";
 
 const fullName = (emp) => `${emp.name || ""} ${emp.lastName || ""}`.trim();
@@ -66,7 +66,6 @@ function PersonCell({ emp }) {
 */
 function Asistencia({ days, months, month, onMonth, schedule, loading, error }) {
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
 
   // Filas planas (encabezado de día + marcaciones + ausentes), filtradas por nombre.
   const { rows, total } = useMemo(() => {
@@ -85,9 +84,15 @@ function Asistencia({ days, months, month, onMonth, schedule, loading, error }) 
     return { rows: out, total: count };
   }, [days, query]);
 
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount);
-  const pageRows = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  // Las filas se paginan como las listas de Configuración (las que caben en la
+  // tarjeta); cada página repite el encabezado del día en que empieza. Se reserva
+  // el encabezado de columnas (32) y dos encabezados de día (37 cada uno): una
+  // página rara vez abarca más de dos días.
+  const { cardRef, areaRef, cardStyle, visible: pageRows, page, setPage, size, total: rowCount, paged } = usePagedRows(rows, {
+    rowHeight: 48,
+    headerHeight: 32 + 2 * 37,
+    resetKey: `${query}|${month}`,
+  });
   const shown = pageRows.filter((r) => r.type === "entry").length;
 
   // Agrupa la página por día; el conteo del subtítulo es del día completo.
@@ -140,23 +145,17 @@ function Asistencia({ days, months, month, onMonth, schedule, loading, error }) 
     ));
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-2 px-5 py-3.5">
+    <section ref={cardRef} style={cardStyle} className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-5 py-3.5">
         <SearchInput
           value={query}
-          onChange={(v) => {
-            setQuery(v);
-            setPage(1);
-          }}
+          onChange={setQuery}
           placeholder="Buscar empleado"
           className="w-full sm:w-[240px]"
         />
         <FilterSelect
           value={month}
-          onChange={(e) => {
-            onMonth(e.target.value);
-            setPage(1);
-          }}
+          onChange={(e) => onMonth(e.target.value)}
           className={filterSelectClass}
           options={monthOptions}
         />
@@ -170,7 +169,7 @@ function Asistencia({ days, months, month, onMonth, schedule, loading, error }) 
         </div>
       </div>
 
-      <div className="overflow-x-auto border-t border-line-soft">
+      <div ref={areaRef} className="min-h-0 flex-1 overflow-auto border-t border-line-soft">
         <div className="min-w-[760px]">
           <div className={`${GRID} h-8 border-b border-line-soft bg-surface-2`}>
             <span className="t-label">Empleado</span>
@@ -193,12 +192,15 @@ function Asistencia({ days, months, month, onMonth, schedule, loading, error }) 
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-5 py-2.5">
-        <span className="t-aux tabular-nums">
-          {fmtNumber(shown)} de {fmtNumber(total)} marcaciones · {monthLabel(month, { withYear: true })}
-        </span>
-        {pageCount > 1 ? <Pagination page={current} pageCount={pageCount} onPage={setPage} /> : null}
-      </div>
+      {paged ? (
+        <Pagination page={page} size={size} total={rowCount} noun="registros" onChange={setPage} />
+      ) : (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-5 py-2.5">
+          <span className="t-aux tabular-nums">
+            {fmtNumber(shown)} de {fmtNumber(total)} marcaciones · {monthLabel(month, { withYear: true })}
+          </span>
+        </div>
+      )}
     </section>
   );
 }

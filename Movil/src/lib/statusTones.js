@@ -2,7 +2,7 @@
 // Web/private/frontend/src/lib/statusDomains.js: un mismo estado tiene el
 // mismo tono en todos los dominios, con una sola excepción intencional:
 // "Pendiente" es gris en los dominios operativos (pedido, ruta, parada) y
-// ámbar en los financieros (pago, transacción).
+// ámbar en los financieros (transacción).
 // Criterio: azul = pasando ahora mismo (Procesando, En proceso, En
 // fabricación, Recolectando); ámbar = programado o en espera (Programado,
 // Esperando lote, Por enviar).
@@ -15,11 +15,6 @@ export const STATUS_DOMAINS = {
     Empacado: "purple",
     "En Tránsito": "teal",
     Entregado: "green",
-  },
-  pago: {
-    Pendiente: "amber",
-    Pagado: "green",
-    Reembolsado: "gray",
   },
   "pedido-inventario": {
     "Sin verificar": "gray",

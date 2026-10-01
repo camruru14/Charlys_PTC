@@ -10,6 +10,10 @@ import { api } from "../lib/api";
     useFetch("/ruta", { client: otroCliente });
   - refetch() vuelve a pedir la ruta. Si ya hay datos, no pasa por «Cargando…»
     (la pantalla se queda como está hasta que llega la respuesta).
+  - refetch({ silent: true }) es el refresco en segundo plano (useAutoRefresh):
+    no cambia loading ni error (si falla se queda con lo que ya había), no se
+    lanza si ya hay una lectura en curso y descarta su respuesta si mientras
+    tanto llegó una lectura más nueva o un mutate().
   - mutate(updater) cambia los datos locales sin pedir nada al servidor, p. ej.
     para reemplazar un registro con la respuesta de una acción
     (ver replaceById).
@@ -19,22 +23,40 @@ export function useFetch(path, { client = api } = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const hasData = useRef(false);
+  // generation: sube con cada lectura y cada mutate; pending: lecturas en curso.
+  const generation = useRef(0);
+  const pending = useRef(0);
 
-  const load = useCallback(async () => {
-    if (!hasData.current) setLoading(true);
-    setError(null);
-    try {
-      const result = await client.get(path);
-      hasData.current = true;
-      setData(result);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [path, client]);
+  const load = useCallback(
+    async (options) => {
+      // refetch suele pasarse como callback (onSaved={refetch}): solo importa { silent: true }.
+      const silent = options?.silent === true;
+      if (silent && pending.current > 0) return;
+      const mine = ++generation.current;
+      pending.current += 1;
+      if (!silent) {
+        if (!hasData.current) setLoading(true);
+        setError(null);
+      }
+      try {
+        const result = await client.get(path);
+        if (silent && mine !== generation.current) return;
+        hasData.current = true;
+        setData(result);
+      } catch (e) {
+        if (!silent) setError(e.message);
+      } finally {
+        pending.current -= 1;
+        if (!silent) setLoading(false);
+      }
+    },
+    [path, client],
+  );
 
-  const mutate = useCallback((updater) => setData((prev) => (typeof updater === "function" ? updater(prev) : updater)), []);
+  const mutate = useCallback((updater) => {
+    generation.current += 1;
+    setData((prev) => (typeof updater === "function" ? updater(prev) : updater));
+  }, []);
 
   // Carga inicial y cada vez que cambia la ruta (ej. el rango de fechas del
   // Dashboard). Los setState van en callbacks de la promesa, no en el cuerpo

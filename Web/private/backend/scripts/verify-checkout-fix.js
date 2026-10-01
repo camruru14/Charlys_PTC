@@ -104,7 +104,7 @@ try {
     },
     201,
   );
-  console.log(`Checkout: ${order.orderNumber} · ${order.status} · ${order.paymentStatus} · total $${order.total}`);
+  console.log(`Checkout: ${order.orderNumber} · ${order.status} · total $${order.total}`);
 
   // 2) Pedido y Finanzas.
   const saved = await Order.findById(order._id);
@@ -140,7 +140,6 @@ try {
     items: [{ product: "Pajillas", color: "Azul", quantity: 100, unitPrice: 0.15, subtotal: 15 }],
     total: 15,
     status: "Procesando",
-    paymentStatus: "Pagado",
   });
   const legacyRes = await call(panelOrders.verifyOrderItem, { params: { id: String(legacy._id), index: "0" }, body: { warehouse: "Bodega A-1" } }, 409);
   check(`antes del arreglo («Pajillas») el panel respondía 409: «${legacyRes.message}»`, () => assert.match(legacyRes.message, /No hay existencia suficiente de Pajillas/));

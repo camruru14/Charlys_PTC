@@ -7,15 +7,15 @@ import { useProductionLines, withCurrentLine } from "../hooks/useProductionLines
 import BottomBar from "../components/ui/BottomBar";
 import FormField from "../components/ui/FormField";
 import LoadingState from "../components/ui/LoadingState";
-import SegmentedField from "../components/ui/SegmentedField";
+import ProductSelect from "../components/ui/ProductSelect";
 import SelectField from "../components/ui/SelectField";
 import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { todayInput, toDateInputValue } from "../lib/format";
-import { BATCH_STATUSES, COLORS, PRODUCTS, previewBatchNumber } from "../lib/batchFlow";
+import { BATCH_STATUSES, COLORS, previewBatchNumber } from "../lib/batchFlow";
 
 const emptyForm = {
-  product: "Pajilla",
+  product: "",
   color: "Rojo",
   productionLine: "",
   producedQuantity: "",
@@ -51,7 +51,7 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
     if (!isEditing || form) return;
     if (batch) {
       setForm({
-        product: batch.product || "Pajilla",
+        product: batch.product || "",
         color: batch.color || "",
         productionLine: batch.productionLine || "",
         producedQuantity: batch.producedQuantity != null ? String(batch.producedQuantity) : "",
@@ -90,6 +90,10 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
   const handleChange = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
   const handleSave = async () => {
+    if (!form.product) {
+      Alert.alert("Falta información", "Elige la categoría y el producto");
+      return;
+    }
     setSaving(true);
     const payload = {
       ...form,
@@ -122,13 +126,7 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
   return (
     <View style={styles.screen}>
       <KeyboardScreen style={styles.container} contentContainerStyle={styles.content}>
-        <SegmentedField
-          label="Producto"
-          value={form.product}
-          options={PRODUCTS}
-          onChange={(v) => handleChange("product", v)}
-          required
-        />
+        <ProductSelect value={form.product} onChange={(v) => handleChange("product", v)} />
         <SelectField
           label="Color"
           value={form.color}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useCatalog } from "../hooks/useCatalog";
+import { subcategoryOptions, useSubcategories } from "../hooks/useSubcategories";
 import ColorChips from "../components/catalog/ColorChips";
 import ImageThumbRow from "../components/catalog/ImageThumbRow";
 import BottomBar from "../components/ui/BottomBar";
@@ -18,9 +19,11 @@ import { PRODUCT_CATEGORIES, catalogStatus } from "../lib/catalogOptions";
 import { MAX_IMAGES_PER_UPLOAD, pickFromLibrary, pickPhotoSource, takePhoto } from "../lib/pickImages";
 import { statusTone } from "../lib/statusTones";
 
+// Sin nombre (el nombre del producto es el de su subcategoría, lo pone el backend)
+// y sin categoría elegida: la subcategoría se habilita al elegirla.
 const emptyForm = {
-  name: "",
-  category: "Pelotas",
+  category: "",
+  subcategory: "",
   description: "",
   price: "",
   compareAtPrice: "",
@@ -64,6 +67,7 @@ export default function ProductoFormScreen({ navigation, route }) {
   const toast = useToast();
 
   const { products, loading, crear, actualizar, eliminar, agregarImagenes, eliminarImagen } = useCatalog();
+  const { subcategories } = useSubcategories();
 
   const [form, setForm] = useState(isEditing ? null : emptyForm);
   const [saving, setSaving] = useState(false);
@@ -76,8 +80,8 @@ export default function ProductoFormScreen({ navigation, route }) {
     if (!isEditing || form) return;
     if (product) {
       setForm({
-        name: product.name || "",
-        category: product.category || "Pelotas",
+        category: product.category || "",
+        subcategory: product.subcategory || "",
         description: product.description || "",
         price: product.price != null ? String(product.price) : "",
         compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : "",
@@ -133,7 +137,7 @@ export default function ProductoFormScreen({ navigation, route }) {
       title: product.name,
       headerBackTitle: "Catálogo",
       headerStatus: { label: status, tone: statusTone(status, "catalogo") },
-      headerSubtitle: [product.category, nColors ? `${nColors} ${nColors === 1 ? "color" : "colores"}` : "sin colores"]
+      headerSubtitle: [product.category, product.subcategory, nColors ? `${nColors} ${nColors === 1 ? "color" : "colores"}` : "sin colores"]
         .filter(Boolean)
         .join(" · "),
       headerRight: () => (
@@ -181,8 +185,12 @@ export default function ProductoFormScreen({ navigation, route }) {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      Alert.alert("Falta información", "Escribe el nombre del producto");
+    if (!form.category) {
+      Alert.alert("Falta información", "Elige la categoría");
+      return;
+    }
+    if (!form.subcategory) {
+      Alert.alert("Falta información", "Elige una subcategoría");
       return;
     }
     if (form.price === "") {
@@ -236,9 +244,20 @@ export default function ProductoFormScreen({ navigation, route }) {
 
   if (!form) return <LoadingState />;
 
-  const categories = PRODUCT_CATEGORIES.includes(form.category)
+  const categories = !form.category || PRODUCT_CATEGORIES.includes(form.category)
     ? PRODUCT_CATEGORIES
     : [...PRODUCT_CATEGORIES, form.category];
+  // Solo las activas de la categoría elegida (más la actual si ya está inactiva);
+  // las que ya usa OTRO producto del catálogo salen deshabilitadas (una
+  // subcategoría = un producto; el propio producto no cuenta).
+  const usedByOther = new Set(
+    products.filter((p) => p._id !== id && p.subcategory).map((p) => p.subcategory.trim().toLocaleLowerCase("es")),
+  );
+  const subOptions = (form.category ? subcategoryOptions(subcategories, form.category, form.subcategory) : []).map((n) => {
+    const taken = usedByOther.has(n.trim().toLocaleLowerCase("es"));
+    return { label: taken ? `${n} · ya tiene producto` : n, value: n, disabled: taken };
+  });
+  const available = subOptions.filter((o) => !o.disabled).length;
 
   return (
     <View style={styles.screen}>
@@ -267,20 +286,31 @@ export default function ProductoFormScreen({ navigation, route }) {
           </>
         )}
 
-        <FormField
-          label="Nombre"
-          value={form.name}
-          onChangeText={(v) => handleChange("name", v)}
-          placeholder="Ej. Pelota plástica 40 mm"
-          required
-        />
         <SelectField
           label="Categoría"
           value={form.category}
+          placeholder="Seleccionar"
           options={categories.map((c) => ({ label: c, value: c }))}
-          onChange={(v) => handleChange("category", v)}
+          onChange={(v) => setForm((f) => (v === f.category ? f : { ...f, category: v, subcategory: "" }))}
           required
         />
+        <SelectField
+          label="Subcategoría"
+          value={form.subcategory}
+          options={subOptions}
+          onChange={(v) => handleChange("subcategory", v)}
+          disabled={!form.category}
+          placeholder={!form.category ? "Elige primero la categoría" : subOptions.length ? "Seleccionar" : "Sin subcategorías"}
+          required
+        />
+        {form.category && available === 0 ? (
+          <Text style={styles.hint}>
+            {subOptions.length === 0
+              ? `No hay subcategorías activas de ${form.category}.`
+              : `Todas las subcategorías de ${form.category} ya tienen producto.`}{" "}
+            Crea una en Configuración › Subcategorías.
+          </Text>
+        ) : null}
         <FormField
           label="Descripción"
           value={form.description}
@@ -368,6 +398,7 @@ const styles = StyleSheet.create({
   },
   photoPressed: { backgroundColor: colors.primarySoft },
   photoText: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.primary },
+  hint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: -6, marginBottom: 14 },
   columns: { flexDirection: "row", gap: 10 },
   column: { flex: 1 },
 });

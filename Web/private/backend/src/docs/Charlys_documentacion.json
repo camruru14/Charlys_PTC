@@ -1295,11 +1295,6 @@
             "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"],
             "default": "Pendiente"
           },
-          "paymentStatus": {
-            "type": "string",
-            "enum": ["Pendiente", "Pagado", "Reembolsado"],
-            "default": "Pendiente"
-          },
           "source": {
             "type": "string",
             "default": "ecommerce"
@@ -1337,85 +1332,6 @@
           }
         },
         "required": ["_id", "orderNumber", "customer", "total"]
-      },
-      "OrderCreateInput": {
-        "type": "object",
-        "properties": {
-          "customer": {
-            "$ref": "#/components/schemas/CustomerInfo"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderItem"
-            }
-          },
-          "total": {
-            "type": "number",
-            "minimum": 0,
-            "example": 250.0
-          },
-          "status": {
-            "type": "string",
-            "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"],
-            "default": "Pendiente"
-          },
-          "paymentStatus": {
-            "type": "string",
-            "enum": ["Pendiente", "Pagado", "Reembolsado"],
-            "default": "Pendiente"
-          },
-          "notes": {
-            "type": "string",
-            "example": "Pedido especial"
-          }
-        },
-        "required": ["customer", "total"]
-      },
-      "OrderUpdateInput": {
-        "type": "object",
-        "properties": {
-          "customer": {
-            "$ref": "#/components/schemas/CustomerInfo"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrderItem"
-            }
-          },
-          "total": {
-            "type": "number",
-            "minimum": 0,
-            "example": 250.0
-          },
-          "status": {
-            "type": "string",
-            "enum": ["Pendiente", "Procesando", "En Fabricación", "Empacado", "En Tránsito", "Entregado"]
-          },
-          "paymentStatus": {
-            "type": "string",
-            "enum": ["Pendiente", "Pagado", "Reembolsado"]
-          },
-          "notes": {
-            "type": "string",
-            "example": "Notas actualizadas"
-          }
-        }
-      },
-      "OrderCreatedResponse": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string",
-            "example": "Order saved"
-          },
-          "orderNumber": {
-            "type": "string",
-            "example": "ORD-2026-0001"
-          }
-        },
-        "required": ["message", "orderNumber"]
       },
       "OrderManufactureResponse": {
         "type": "object",
@@ -1945,50 +1861,6 @@
             "$ref": "#/components/responses/InternalServerError"
           }
         }
-      },
-      "post": {
-        "tags": ["Pedidos"],
-        "summary": "Crear un nuevo pedido",
-        "description": "Crea un pedido generando automáticamente el correlativo `ORD-YYYY-XXXX`.\n\n**Roles permitidos:** `admin`, `gerente`.",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OrderCreateInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Pedido registrado exitosamente",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderCreatedResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/UnauthorizedError"
-          },
-          "403": {
-            "$ref": "#/components/responses/ForbiddenError"
-          },
-          "429": {
-            "$ref": "#/components/responses/RateLimitError"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalServerError"
-          }
-        }
       }
     },
     "/api/orders/{id}": {
@@ -2040,81 +1912,10 @@
           }
         }
       },
-      "put": {
-        "tags": ["Pedidos"],
-        "summary": "Actualizar un pedido",
-        "description": "Actualiza la información general del pedido. Si el estado de pago cambia a `Pagado` o `Reembolsado`, genera automáticamente la transacción contable correspondiente en Finanzas.\n\n**Roles permitidos:** `admin`, `gerente`.",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "ObjectId del pedido",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OrderUpdateInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Pedido actualizado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
-                },
-                "example": {
-                  "message": "Order updated"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/UnauthorizedError"
-          },
-          "403": {
-            "$ref": "#/components/responses/ForbiddenError"
-          },
-          "404": {
-            "description": "Pedido no encontrado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "message": "Order not found"
-                }
-              }
-            }
-          },
-          "429": {
-            "$ref": "#/components/responses/RateLimitError"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalServerError"
-          }
-        }
-      },
       "delete": {
         "tags": ["Pedidos"],
         "summary": "Eliminar un pedido",
-        "description": "Elimina el pedido. En la misma transacción devuelve a su bodega el stock tomado por sus líneas (verificadas o la parte `fromStockQty` de una línea dividida) y borra los lotes de fabricación que sigan Programados. Responde 409 si alguna línea ya está empacada o si algún lote ya empezó (En Proceso, Completado…); en ese caso no se mueve nada.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Elimina un pedido ya entregado, para que no se acumulen. Solo administradores (403 si no lo es). Responde 409 si el pedido no está `Entregado` («Solo se pueden eliminar pedidos entregados») o si está en una ruta activa («El pedido está en una ruta activa»). Al eliminarlo: se quita de las rutas completadas (la ruta se conserva); su Ingreso en Finanzas se conserva sin `relatedOrder` y con el N° de pedido en `orderNumber`; los lotes de fabricación se conservan; el vínculo de la tienda (`CustomerOrder`) se conserva con un resumen del pedido, para que el cliente lo siga viendo en «Mis pedidos»; no se devuelve existencia.",
         "security": [
           {
             "cookieAuth": []

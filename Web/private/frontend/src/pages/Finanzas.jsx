@@ -11,7 +11,8 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import Button from "../components/ui/Button";
 import SearchInput from "../components/ui/SearchInput";
 import { Field, SelectField, FilterSelect, ReadonlyField } from "../components/ui/Field";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
+import { AsyncState } from "../components/ui/SectionCard";
+import PagedSection from "../components/ui/PagedSection";
 import MonthlyChart from "../components/finance/MonthlyChart";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { defaultTransactionFilters, filterTransactions, inRange, txDateParts } from "../lib/transactionFilters";
@@ -210,7 +211,7 @@ function Finanzas() {
         <MonthlyChart months={months} selected={selectedMonth} onSelect={setSelectedMonth} />
       </AsyncState>
 
-      <SectionCard
+      <PagedSection
         title="Transacciones"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -226,13 +227,15 @@ function Finanzas() {
             </Button>
           </div>
         }
+        items={tableList}
+        rowHeight={42}
+        resetKey={`${query}|${type}|${range.from}|${range.to}`}
+        noun="transacciones"
+        loading={loading}
+        error={error}
       >
-        <AsyncState loading={loading} error={error}>
-          <div className="-mx-5 -mb-5 border-t border-line-soft">
-            <TransactionTable transactions={tableList} onEdit={openEdit} onDelete={handleDelete} />
-          </div>
-        </AsyncState>
-      </SectionCard>
+        {(rows) => <TransactionTable transactions={rows} onEdit={openEdit} onDelete={handleDelete} />}
+      </PagedSection>
 
       <Modal
         open={modalOpen}

@@ -171,6 +171,12 @@ export const IconAlert = (p) => (
   </svg>
 );
 
+export const IconPlay = (p) => (
+  <svg {...base} {...p}>
+    <path d="M7 4.5v15l12-7.5-12-7.5Z" fill="currentColor" />
+  </svg>
+);
+
 export const IconCheck = (p) => (
   <svg {...base} {...p}>
     <path d="M20 6 9 17l-5-5" />

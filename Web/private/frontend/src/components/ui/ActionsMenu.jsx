@@ -6,6 +6,8 @@ import { buttonClass } from "../../lib/buttonStyles";
   Menú «…» con acciones secundarias (normalmente las destructivas, que piden
   confirmación en quien las llama).
     items = [{ label, onClick, danger, disabled, hint }]
+    El menú se posiciona con `position: fixed` contra el botón (y se abre hacia
+    arriba si abajo no cabe), así una tarjeta con scroll o overflow no lo recorta.
             (hint: motivo que se muestra al pasar sobre una acción desactivada)
     size  = "detail" (34×34, encabezado de detalle) | "row" (30×30, fila)
             | "card" (32×32 con borde, pie de tarjeta)
@@ -18,6 +20,7 @@ const TRIGGERS = {
 };
 function ActionsMenu({ items, size = "detail", label = "Más acciones" }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -26,23 +29,41 @@ function ActionsMenu({ items, size = "detail", label = "Más acciones" }) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     const onKey = (e) => e.key === "Escape" && setOpen(false);
+    const close = () => setOpen(false);
+    const onScroll = (e) => {
+      if (!ref.current?.contains(e.target)) setOpen(false);
+    };
     window.addEventListener("mousedown", onClick);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    document.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("mousedown", onClick);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
+
+  function toggle() {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const menuHeight = items.length * 38 + 14;
+      const fitsBelow = window.innerHeight - r.bottom >= menuHeight + 12;
+      setPos({ right: Math.max(8, window.innerWidth - r.right), ...(fitsBelow ? { top: r.bottom + 6 } : { bottom: window.innerHeight - r.top + 6 }) });
+    }
+    setOpen((v) => !v);
+  }
 
   const trigger = TRIGGERS[size] || TRIGGERS.detail;
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-label={label} title={label} aria-expanded={open} className={trigger}>
+      <button type="button" onClick={toggle} aria-label={label} title={label} aria-expanded={open} className={trigger}>
         <IconMore width={size === "detail" ? 17 : 16} height={size === "detail" ? 17 : 16} />
       </button>
       {open ? (
-        <div className="absolute right-0 z-30 mt-1.5 w-48 rounded-[12px] border border-line bg-surface p-1.5 shadow-modal">
+        <div style={{ position: "fixed", ...pos }} className="z-30 w-48 rounded-[12px] border border-line bg-surface p-1.5 shadow-modal">
           {items.map((item) => (
             <button
               key={item.label}

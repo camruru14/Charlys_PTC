@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import { useFetch, replaceById } from "../hooks/useFetch";
 import { useUrlState } from "../hooks/useUrlState";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import Button from "../components/ui/Button";
@@ -17,7 +18,11 @@ const TABS = [
   { key: "transito", label: "En tránsito" },
   { key: "despacho", label: "Para despacho" },
 ];
-const FILTERS = ["todos", "sin-ruta", "incompletos"];
+const FILTERS = ["todos", "listos", "incompletos", "recoleccion"];
+const ROUTE_FILTERS = ["todas", "porSalir", "transito", "completadas", "retraso"];
+
+// Refresco automático de los datos de Logística (cambios de otras pantallas, computadoras o la app móvil).
+const REFRESH_MS = 15000;
 
 const SUBTITLES = {
   transito: "Asignación de motoristas, vehículos y seguimiento de entregas",
@@ -27,7 +32,11 @@ const SUBTITLES = {
 /*
   Logística: rutas de hoy (En tránsito) y armado de rutas con los pedidos
   empacados (Para despacho). Usa la API de rutas (/routes).
-  URL: ?tab= (transito | despacho), ?ruta= (ruta abierta), ?filtro= (lista de Para despacho).
+  URL: ?tab= (transito | despacho), ?ruta= (ruta abierta), ?filtro= (lista de
+  Para despacho), ?estado= (lista de rutas de En tránsito).
+  Tiempo real: no hay WebSocket ni SSE, así que los datos se vuelven a leer en
+  silencio cada 15 s mientras la pestaña del navegador está visible (y al
+  volver a ella); los grupos se recalculan solos con cada lectura.
 */
 function Logistica() {
   const { data: routesData, loading: routesLoading, error: routesError, refetch: refetchRoutes, mutate: mutateRoutes } = useFetch("/routes");
@@ -37,6 +46,7 @@ function Logistica() {
   const [activeTab, setActiveTab] = useUrlState("tab", "transito", { allowed: TABS.map((t) => t.key) });
   const [routeId, setRouteId] = useUrlState("ruta");
   const [filter, setFilter] = useUrlState("filtro", "todos", { allowed: FILTERS });
+  const [routeFilter, setRouteFilter] = useUrlState("estado", "todas", { allowed: ROUTE_FILTERS });
   const [newRouteOpen, setNewRouteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -50,6 +60,16 @@ function Logistica() {
     refetchAvailability();
     refetchOrders();
   }
+
+  // Lectura en segundo plano: sin spinners, sin tocar errores y sin solaparse
+  // con otra lectura ni con una acción en curso.
+  function refreshQuietly() {
+    if (busy) return;
+    refetchRoutes({ silent: true });
+    refetchAvailability({ silent: true });
+    refetchOrders({ silent: true });
+  }
+  useAutoRefresh(refreshQuietly, { interval: REFRESH_MS });
 
   // Toda acción de ruta responde la ruta actualizada (poblada): se reemplaza
   // en la lista sin volver a pedir /routes. Los pedidos sí se recargan (la
@@ -142,7 +162,9 @@ function Logistica() {
           selectedId={routeId}
           onSelect={setRouteId}
           unassignedCount={unassigned}
-          onAssign={() => goTo({ tab: "despacho", filtro: "sin-ruta", ruta: null })}
+          onAssign={() => goTo({ tab: "despacho", filtro: null, ruta: null })}
+          filter={routeFilter}
+          onFilter={setRouteFilter}
           availability={availability}
           busy={busy}
           act={act}

@@ -31,9 +31,9 @@ export default function TransactionRow({ transaction: t, onPress, onLongPress })
         <Text style={styles.meta} numberOfLines={1}>
           {meta}
         </Text>
-        {t.relatedOrder?.orderNumber ? (
+        {t.relatedOrder?.orderNumber || t.orderNumber ? (
           <View style={styles.orderChip}>
-            <Text style={styles.orderText}>{t.relatedOrder.orderNumber}</Text>
+            <Text style={styles.orderText}>{t.relatedOrder?.orderNumber || t.orderNumber}</Text>
           </View>
         ) : null}
         {t.status === "Pendiente" ? <Pill label="Pendiente" tone={transactionStatusTone(t.status)} /> : null}

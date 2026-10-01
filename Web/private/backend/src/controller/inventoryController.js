@@ -4,6 +4,7 @@ import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
 import { resetBatchToUnreported, releaseReportedItem } from "./productionBatchesController.js";
 import { addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
+import { assertProductName } from "../lib/productName.js";
 
 // SELECT
 inventoryController.getItems = async (req, res) => {
@@ -33,8 +34,11 @@ inventoryController.insertItem = async (req, res) => {
     const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
       req.body;
 
+    // El nombre de un producto terminado es el de una subcategoría activa.
+    const itemName = category === "Producto Terminado" ? await assertProductName(name, { required: true }) : name;
+
     const newItem = new inventoryModel({
-      name,
+      name: itemName,
       category,
       type,
       materialType,
@@ -49,8 +53,7 @@ inventoryController.insertItem = async (req, res) => {
     await newItem.save();
     res.json({ message: "Inventory item saved" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -60,16 +63,23 @@ inventoryController.updateItem = async (req, res) => {
     const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
       req.body;
 
+    // Un producto terminado conserva su nombre aunque la subcategoría se haya
+    // desactivado; un nombre nuevo debe ser el de una subcategoría activa.
+    let itemName = name;
+    if (category === "Producto Terminado") {
+      const existing = await inventoryModel.findById(req.params.id);
+      itemName = await assertProductName(name, { current: existing?.name, required: true });
+    }
+
     await inventoryModel.findByIdAndUpdate(
       req.params.id,
-      { name, category, type, materialType, color, unit, stock, minStock, unitCost, location },
+      { name: itemName, category, type, materialType, color, unit, stock, minStock, unitCost, location },
       { returnDocument: "after" },
     );
 
     res.json({ message: "Inventory item updated" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 

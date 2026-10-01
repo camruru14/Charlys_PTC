@@ -3,7 +3,7 @@ import Modal from "../ui/Modal";
 import RadioCardList from "../ui/RadioCardList";
 import ColorSwatch from "../ui/ColorSwatch";
 import { buttonClass } from "../../lib/buttonStyles";
-import { fmtNumber } from "../../lib/format";
+import { fmtNumber, formatBatchNumber } from "../../lib/format";
 import { productLabel, pendingUnits } from "../../lib/batchFlow";
 
 // Existencia actual del artículo del lote (mismo producto y color) por bodega.
@@ -57,7 +57,7 @@ function SendToWarehouseModal({ batch, warehouses, finishedItems, busy, onClose,
       subtitle={
         <span className="inline-flex items-center gap-1.5 tabular-nums">
           <ColorSwatch color={batch.color} size={12} />
-          {productLabel(batch)} · {batch.batchNumber} · {fmtNumber(units)} unidades
+          {productLabel(batch)} · {formatBatchNumber(batch.batchNumber)} · {fmtNumber(units)} unidades
         </span>
       }
       footer={

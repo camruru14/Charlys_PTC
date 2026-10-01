@@ -50,9 +50,9 @@ function TransactionTable({ transactions = [], onEdit, onDelete, empty = "No hay
             <span className="t-row tabular-nums">{fmtDate(txDay(t))}</span>
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate text-[13px] font-semibold text-ink">{t.concept || "—"}</span>
-              {t.relatedOrder?.orderNumber ? (
+              {t.relatedOrder?.orderNumber || t.orderNumber ? (
                 <span className="shrink-0 rounded-[6px] bg-primary-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary-soft-text">
-                  {t.relatedOrder.orderNumber}
+                  {t.relatedOrder?.orderNumber || t.orderNumber}
                 </span>
               ) : null}
             </span>

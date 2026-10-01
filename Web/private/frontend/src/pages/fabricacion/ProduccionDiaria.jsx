@@ -6,7 +6,9 @@ import SearchInput from "../../components/ui/SearchInput";
 import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
 import { FilterSelect } from "../../components/ui/Field";
-import { Pagination, PAGE_SIZE, filterSelectClass } from "../../components/inventory/InventoryItemsCard";
+import { filterSelectClass } from "../../components/inventory/InventoryItemsCard";
+import Pagination from "../../components/ui/Pagination";
+import { usePagedRows } from "../../hooks/usePagedRows";
 import { fmtNumber, fmtDateYear, fmtMonth, fromDateOnly } from "../../lib/format";
 import { IconEdit } from "../../lib/icons";
 
@@ -25,7 +27,6 @@ function currentMonthKey() {
 function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, onDelete }) {
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState(currentMonthKey);
-  const [page, setPage] = useState(1);
 
   // Meses con lotes (más reciente primero), más el actual.
   const monthOptions = useMemo(() => {
@@ -54,9 +55,7 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
     });
   }, [list, query, month]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const rows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const { cardRef, areaRef, cardStyle, visible, page, setPage, size, total, paged } = usePagedRows(filtered, { rowHeight: 44, headerHeight: 32, resetKey: `${query}|${month}` });
 
   const columns = [
     { key: "id", label: "ID", render: (b) => <span className="t-row-name tabular-nums">{b.dailyBatchNumber}</span> },
@@ -103,37 +102,31 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
   let body;
   if (loading && !list.length) body = <EmptyState title="Cargando lotes diarios…" />;
   else if (error) body = <EmptyState title="No se pudieron cargar los lotes diarios" description={error} />;
-  else body = <DataTable columns={columns} rows={rows} empty={list.length ? "Ningún lote diario coincide con los filtros." : "No hay lotes diarios."} />;
+  else body = <DataTable columns={columns} rows={visible} empty={list.length ? "Ningún lote diario coincide con los filtros." : "No hay lotes diarios."} />;
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-[18px] py-[13px]">
+    <section ref={cardRef} style={cardStyle} className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-soft px-[18px] py-[13px]">
         <SearchInput
           value={query}
-          onChange={(v) => {
-            setQuery(v);
-            setPage(1);
-          }}
+          onChange={setQuery}
           placeholder="Buscar producto"
           className="w-full sm:w-[260px]"
         />
-        <FilterSelect
-          value={month}
-          onChange={(e) => {
-            setMonth(e.target.value);
-            setPage(1);
-          }}
-          options={monthOptions}
-          className={filterSelectClass}
-        />
+        <FilterSelect value={month} onChange={(e) => setMonth(e.target.value)} options={monthOptions} className={filterSelectClass} />
       </div>
-      {body}
-      <div className="flex h-[38px] items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-[18px]">
-        <p className="t-aux tabular-nums">
-          {fmtNumber(filtered.length)} de {fmtNumber(list.length)} lotes diarios
-        </p>
-        <Pagination page={currentPage} pageCount={pageCount} onPage={setPage} />
+      <div ref={areaRef} className="min-h-0 flex-1 overflow-y-auto">
+        {body}
       </div>
+      {paged ? (
+        <Pagination page={page} size={size} total={total} noun="lotes diarios" onChange={setPage} />
+      ) : (
+        <div className="flex h-[38px] shrink-0 items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-[18px]">
+          <p className="t-aux tabular-nums">
+            {fmtNumber(filtered.length)} de {fmtNumber(list.length)} lotes diarios
+          </p>
+        </div>
+      )}
     </section>
   );
 }
