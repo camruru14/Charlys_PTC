@@ -127,6 +127,12 @@ const ICONS = {
       <Path d="M16 2v4M8 2v4M3 10h18" />
     </>
   ),
+  clock: () => (
+    <>
+      <Circle cx="12" cy="12" r="9" />
+      <Path d="M12 7v5l3 2" />
+    </>
+  ),
   plus: () => <Path d="M12 5v14M5 12h14" />,
   menu: () => <Path d="M4 6h16M4 12h16M4 18h16" />,
   close: () => <Path d="M18 6 6 18M6 6l12 12" />,

@@ -11,6 +11,17 @@ export function initials(name = "") {
   return (first + last).toUpperCase();
 }
 
+const PERSON_TONES = ["blue", "green", "amber", "purple", "teal", "rose"];
+
+// Mismo tono para la misma persona en cualquier pantalla (personTone del
+// Avatar de la web: hash del _id, o del nombre si no hay).
+export function personTone(person) {
+  const key = String(person?._id || `${person?.name || ""}${person?.lastName || ""}`);
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return PERSON_TONES[hash % PERSON_TONES.length];
+}
+
 // Círculo con las iniciales, con el fondo y el texto del tono.
 export default function Avatar({ name, tone = "blue", size = 36, style }) {
   const palette = getTone(tone);

@@ -5,17 +5,6 @@ export function formatNumber(value) {
   return Number(value || 0).toLocaleString("es-SV");
 }
 
-export function formatDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("es-SV", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 // Utilidades para los date pickers de la Fase 3 (startDate/endDate de lotes,
 // date de lotes diarios y transacciones): el valor de formulario se guarda
 // como "yyyy-mm-dd" (mismo criterio que todayInput()/toDateInput() de
@@ -37,16 +26,6 @@ export function toDateInputValue(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
-}
-
-// Hora local (ej. "07:32 a. m."), usada por Marcar Asistencia (Fase 4) para
-// mostrar checkIn/checkOut. A diferencia de formatDate, estos sí son
-// instantes reales (new Date() al marcar), así que se leen en el huso local.
-export function formatTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ---- Formatos portados de Web/private/frontend/src/lib/format.js ----
@@ -92,6 +71,34 @@ export function formatShortDate(value) {
   const d = toDate(value);
   if (!d) return "—";
   return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+}
+
+const WEEKDAYS_LONG = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MONTHS_LONG = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+// "vie 19 sep" (fmtWeekdayDate de la web)
+export function formatWeekdayDate(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return `${WEEKDAYS_LONG[d.getDay()].slice(0, 3)} ${formatShortDate(d)}`;
+}
+
+// "Viernes 19 de septiembre" (fmtDayLong de la web)
+export function formatDayLong(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  const weekday = WEEKDAYS_LONG[d.getDay()];
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d.getDate()} de ${MONTHS_LONG[d.getMonth()]}`;
+}
+
+// "septiembre" (fmtMonth de la web)
+export function formatMonth(value) {
+  const d = toDate(value);
+  if (!d) return "—";
+  return MONTHS_LONG[d.getMonth()];
 }
 
 // "19 sep 2026"

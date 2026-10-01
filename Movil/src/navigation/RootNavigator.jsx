@@ -17,6 +17,7 @@ import PedidoDetalleScreen from "../screens/PedidoDetalleScreen";
 import BatchHistoryScreen from "../screens/BatchHistoryScreen";
 import LoteDetalleScreen from "../screens/LoteDetalleScreen";
 import RutaDetalleScreen from "../screens/RutaDetalleScreen";
+import EmpleadoDetalleScreen from "../screens/EmpleadoDetalleScreen";
 import HistorialTransaccionesScreen from "../screens/HistorialTransaccionesScreen";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import DetailHeader from "../components/ui/DetailHeader";
@@ -74,6 +75,13 @@ export default function RootNavigator() {
           {/* Seguimiento de una ruta de Logística: recogidas, salida y
               entregas parada por parada. */}
           <Stack.Screen name="RutaDetalle" component={RutaDetalleScreen} options={{ ...detailHeader, title: "Ruta" }} />
+
+          {/* Ficha de un empleado: horas y asistencia del mes, y sus datos. */}
+          <Stack.Screen
+            name="EmpleadoDetalle"
+            component={EmpleadoDetalleScreen}
+            options={{ ...detailHeader, title: "Empleado" }}
+          />
 
           {/* Historial de lotes / de transacciones (Fase 5): también
               push normal, drill-down desde el "Ver todo" del Dashboard (y,

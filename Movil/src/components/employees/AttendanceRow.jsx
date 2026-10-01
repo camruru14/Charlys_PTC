@@ -1,30 +1,46 @@
-import { StyleSheet, Text } from "react-native";
-import Card from "../ui/Card";
+import { StyleSheet, Text, View } from "react-native";
+import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
-import { formatDate, formatTime } from "../../lib/format";
+import { fonts } from "../../lib/typography";
+import { formatClock } from "../../lib/format";
+import { attendanceStatus, fmtHours, recordHours } from "../../lib/attendance";
+import { statusTone } from "../../lib/statusTones";
 
-// Fila de una marcación en el tab "Asistencia" de Empleados (vista RRHH: de
-// TODOS los empleados, a diferencia de AsistenciaScreen que solo muestra las
-// del empleado logueado).
-export default function AttendanceRow({ record }) {
+const DASH = "—";
+
+// Fila de un día de asistencia de un empleado (ficha y «Esta semana»), para
+// ir dentro de un ListGroup: día, entrada – salida, horas (opcional) y el
+// estado (Completo, Con extra, Tarde). Sin `record` es un día Ausente, con
+// fondo rowAlert, como en la tabla de la ficha de la web.
+export default function AttendanceRow({ dayLabel, record, schedule, showHours = true, dayWidth = 84 }) {
+  const status = record ? attendanceStatus(record, schedule) : "Ausente";
+  const times = record
+    ? `${record.checkIn ? formatClock(record.checkIn) : DASH} – ${record.checkOut ? formatClock(record.checkOut) : DASH}`
+    : `${DASH} – ${DASH}`;
+
   return (
-    <Card style={styles.card}>
-      <Text style={styles.name} numberOfLines={1}>{record.employeeName}</Text>
-      <Text style={styles.date}>{formatDate(record.date)}</Text>
-      <Text style={styles.detail}>
-        Entrada {formatTime(record.checkIn)} · Salida {formatTime(record.checkOut)}
+    <View style={[styles.row, !record && styles.absent]}>
+      <Text style={[styles.day, { width: dayWidth }]} numberOfLines={1}>
+        {dayLabel}
       </Text>
-      <Text style={styles.detail}>
-        {Number(record.workedHours || 0).toLocaleString("es-SV")} h trabajadas
-        {record.overtimeHours ? ` · ${Number(record.overtimeHours).toLocaleString("es-SV")} h extra` : ""}
+      <Text style={styles.times} numberOfLines={1}>
+        {times}
       </Text>
-    </Card>
+      {showHours ? (
+        <Text style={styles.hours}>{record ? fmtHours(recordHours(record, schedule).worked) : DASH}</Text>
+      ) : null}
+      <View style={styles.pill}>
+        <Pill label={status} tone={statusTone(status, "asistencia")} />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 10 },
-  name: { fontSize: 14, fontWeight: "700", color: colors.text },
-  date: { marginTop: 2, fontSize: 12, fontWeight: "600", color: colors.slate500 },
-  detail: { marginTop: 2, fontSize: 12, color: colors.slate500 },
+  row: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 15, paddingVertical: 9 },
+  absent: { backgroundColor: colors.rowAlert },
+  day: { fontFamily: fonts.bold, fontSize: 13, color: colors.ink },
+  times: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2, fontVariant: ["tabular-nums"] },
+  hours: { minWidth: 30, textAlign: "right", fontFamily: fonts.bold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
+  pill: { minWidth: 84, alignItems: "flex-end" },
 });
