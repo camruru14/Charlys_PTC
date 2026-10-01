@@ -19,7 +19,7 @@ const TABS = [
   { key: "despacho", label: "Para despacho" },
 ];
 const FILTERS = ["todos", "listos", "incompletos", "recoleccion"];
-const ROUTE_FILTERS = ["todas", "porSalir", "transito", "completadas", "retraso"];
+const ROUTE_FILTERS = ["todas", "pendiente", "transito", "completadas"];
 
 // Refresco automático de los datos de Logística (cambios de otras pantallas, computadoras o la app móvil).
 const REFRESH_MS = 15000;

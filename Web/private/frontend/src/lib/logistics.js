@@ -275,33 +275,34 @@ export function departBlocker(route, orders) {
 // --- Jerarquía de «En tránsito» (rutas) ---------------------------------------
 
 export const ROUTE_GROUPS = [
-  { key: "porSalir", label: "Por salir", chip: "Por salir", tone: "blue" },
+  { key: "pendiente", label: "Pendiente", chip: "Pendiente", tone: "blue" },
   { key: "transito", label: "En tránsito", chip: "En tránsito", tone: "teal" },
   { key: "completadas", label: "Completadas", chip: "Completadas", tone: "green" },
 ];
 
-// Una ruta con retraso (route.delayed) que todavía no se completa.
+// Una ruta demorada (route.delayed) que todavía no se completa: solo sube al
+// principio de «En tránsito»; no tiene chip ni filtro.
 export const isRouteDelayed = (route) => Boolean(route.delayed) && route.status !== "Completada";
 
 /*
   Grupo de una ruta:
     completadas  status Completada
     transito     ya salió (En tránsito, o con departedAt) y no se completó
-    porSalir     Pendiente o Recolectando, sin salir
+    pendiente    Pendiente o Recolectando, sin salir
 */
 export function routeGroup(route) {
   if (route.status === "Completada") return "completadas";
   if (route.status === "En tránsito" || route.departedAt) return "transito";
-  return "porSalir";
+  return "pendiente";
 }
 
 const stamp = (...values) => values.map(timeOf).find((t) => t != null) ?? 0;
 
-// Orden dentro de cada grupo: por salir, la más reciente primero; en tránsito,
+// Orden dentro de cada grupo: pendiente, la más reciente primero; en tránsito,
 // las demoradas arriba y después la que salió primero; completadas, la que se
 // completó más recientemente primero.
 const ROUTE_COMPARE = {
-  porSalir: (a, b) => stamp(b.createdAt, b.date) - stamp(a.createdAt, a.date) || (b.number || 0) - (a.number || 0),
+  pendiente: (a, b) => stamp(b.createdAt, b.date) - stamp(a.createdAt, a.date) || (b.number || 0) - (a.number || 0),
   transito: (a, b) =>
     Number(isRouteDelayed(b)) - Number(isRouteDelayed(a)) ||
     stamp(a.departedAt, a.createdAt) - stamp(b.departedAt, b.createdAt) ||
@@ -310,16 +311,15 @@ const ROUTE_COMPARE = {
     stamp(b.completedAt, b.departedAt, b.updatedAt) - stamp(a.completedAt, a.departedAt, a.updatedAt) || (b.number || 0) - (a.number || 0),
 };
 
-// filter: "todas", la clave de un grupo o "retraso" (solo las demoradas).
+// filter: "todas" o la clave de un grupo.
 export function groupRoutes(routes, filter = "todas") {
-  const list = filter === "retraso" ? routes.filter(isRouteDelayed) : routes;
-  return ROUTE_GROUPS.filter((g) => filter === "todas" || filter === "retraso" || filter === g.key)
-    .map((g) => ({ ...g, items: list.filter((r) => routeGroup(r) === g.key).sort(ROUTE_COMPARE[g.key]) }))
+  return ROUTE_GROUPS.filter((g) => filter === "todas" || filter === g.key)
+    .map((g) => ({ ...g, items: routes.filter((r) => routeGroup(r) === g.key).sort(ROUTE_COMPARE[g.key]) }))
     .filter((g) => g.items.length);
 }
 
 export function routeCounts(routes) {
-  const counts = { todas: routes.length, retraso: routes.filter(isRouteDelayed).length };
+  const counts = { todas: routes.length };
   ROUTE_GROUPS.forEach((g) => (counts[g.key] = 0));
   routes.forEach((r) => (counts[routeGroup(r)] += 1));
   return counts;

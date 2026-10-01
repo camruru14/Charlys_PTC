@@ -17,11 +17,10 @@ import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/for
 import { IconTruck } from "../../lib/icons";
 import { ROUTE_GROUPS, groupRoutes, routeCounts, routeGroup, routeProgress, progressNote, personName } from "../../lib/logistics";
 
-// Chips de «Rutas de hoy»: «Todas» más uno por grupo; «Con retraso» solo si hay.
+// Chips de «Rutas de hoy»: «Todas» más uno por grupo (Pendiente, En tránsito, Completadas).
 const ROUTE_CHIPS = [
   { key: "todas", label: "Todas", tone: "gray" },
   ...ROUTE_GROUPS.map((g) => ({ key: g.key, label: g.chip, tone: g.tone })),
-  { key: "retraso", label: "Con retraso", tone: "rose" },
 ];
 
 // Cliente y Dirección se reparten el espacio (con truncate); con min-w-[680px]
@@ -254,7 +253,7 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
               showEmpty
               value={filter}
               onChange={onFilter}
-              options={ROUTE_CHIPS.filter((c) => c.key !== "retraso" || counts.retraso > 0 || filter === "retraso").map((c) => ({ ...c, count: counts[c.key] }))}
+              options={ROUTE_CHIPS.map((c) => ({ ...c, count: counts[c.key] }))}
             />
           </>
         }
