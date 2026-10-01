@@ -11,6 +11,10 @@ import ordersRoutes from "./src/routes/orders.js";
 
 const app = express();
 
+// Render pone un proxy delante: confiar en 1 salto para que req.ip,
+// el limitador de peticiones y las cookies secure vean la IP y el https reales.
+app.set("trust proxy", 1);
+
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
   : [
