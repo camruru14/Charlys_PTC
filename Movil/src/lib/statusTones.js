@@ -146,16 +146,6 @@ export function paymentStatusTone(status) {
   return statusTone(status, "pago");
 }
 
-// La web ya no distingue un mapeo "global" y otro exclusivo de la lista de
-// Pedidos: los dos usan el dominio "pedido".
-export function orderStatusTone(status) {
-  return statusTone(status, "pedido");
-}
-
-export function orderStatusToneDetailed(status) {
-  return statusTone(status, "pedido");
-}
-
 export function inventoryStockTone(item) {
   const min = Number(item?.minStock || 0);
   const stock = Number(item?.stock || 0);
@@ -163,22 +153,4 @@ export function inventoryStockTone(item) {
   if (stock <= 0) return "rose";
   if (stock <= min) return "amber";
   return "gray";
-}
-
-// dispatchStatus de la entrega de un pedido. No tiene dominio propio en la
-// web; se usa el mismo criterio que "ruta": en tránsito = teal, pasando
-// ahora = azul, demorado = rose.
-export function dispatchStatusTone(status) {
-  switch (status) {
-    case "Saliendo":
-      return "blue";
-    case "A tiempo":
-      return "teal";
-    case "Demorado":
-      return "rose";
-    case "Entregado":
-      return "green";
-    default:
-      return "gray";
-  }
 }

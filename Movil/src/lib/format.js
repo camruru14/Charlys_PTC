@@ -151,6 +151,18 @@ export function formatAge(value, now = new Date()) {
   return days < 7 ? `hace ${days} días` : formatShortDate(d);
 }
 
+// Tiempo transcurrido: "hace 2 h 10 min" (fmtElapsed de la web).
+export function formatElapsed(value, now = Date.now()) {
+  const d = toDate(value);
+  if (!d) return "—";
+  const minutes = Math.max(0, Math.floor((now - d.getTime()) / 60000));
+  if (minutes < 1) return "hace un momento";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `hace ${m} min`;
+  return m ? `hace ${h} h ${m} min` : `hace ${h} h`;
+}
+
 // Formatea un DUI de 9 dígitos guardados sin guión (ver
 // EmpleadoFormScreen.handleDuiChange) al formato "########-#" que usa el
 // panel web. Si no son 9 dígitos, se muestra tal cual.
