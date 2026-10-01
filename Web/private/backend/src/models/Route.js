@@ -6,6 +6,8 @@ import { Schema, model } from "mongoose";
   parada por parada. El estado se recalcula en cada cambio (lib/routes.js):
     Pendiente → Recolectando (motorista + vehículo + al menos un pedido)
     → En tránsito (al salir) → Completada (todas las paradas entregadas).
+  Cada ruta tiene un código único que no se reinicia: R-AAAA-NNNN (año de
+  creación + consecutivo del año), como ORD-AAAA-NNNN en los pedidos.
 */
 
 const pickupSchema = new Schema({ confirmedAt: { type: Date } }, { _id: false });
@@ -25,9 +27,16 @@ const deliverySchema = new Schema(
 
 const routeSchema = new Schema(
   {
-    // Correlativo por día, empezando en 1.
-    number: { type: Number, required: true, min: 1 },
-    // Día de la ruta: medianoche UTC de la fecha YYYY-MM-DD (hora de El Salvador).
+    // Código único de la ruta: R-AAAA-NNNN. Las rutas anteriores a este campo
+    // no lo tienen hasta correr scripts/migrate-route-codes.js (índice sparse).
+    code: { type: String, trim: true },
+    // OBSOLETO: antes era el correlativo por día (se reiniciaba cada día y dejó
+    // de ser único). Ya no se calcula por día ni se usa en código nuevo; solo
+    // identifica a las rutas viejas sin código. Las rutas nuevas guardan aquí
+    // el consecutivo del código, únicamente para que la app móvil (que todavía
+    // muestra «Ruta N») no vea un número vacío: quitar al actualizar el móvil.
+    number: { type: Number, min: 1 },
+    // Día en que se creó la ruta: medianoche UTC de la fecha YYYY-MM-DD (hora de El Salvador).
     date: { type: Date, required: true },
     zone: { type: String, required: true, trim: true },
     driver: { type: Schema.Types.ObjectId, ref: "Employee" },
@@ -51,6 +60,9 @@ const routeSchema = new Schema(
   { timestamps: true },
 );
 
-routeSchema.index({ date: 1, number: 1 }, { unique: true });
+// Único solo entre las rutas que ya tienen código (las viejas no lo tienen).
+routeSchema.index({ code: 1 }, { unique: true, sparse: true });
+routeSchema.index({ date: 1 });
+routeSchema.index({ status: 1, completedAt: 1 });
 
 export default model("Route", routeSchema);

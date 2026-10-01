@@ -1,6 +1,6 @@
 import { fmtNumber, fmtTime, fmtDate, fmtRelativeDay, formatBatchNumber } from "./format";
 import { isBelowMinimum } from "./stockLevel";
-import { dispatchInfo, isOrderDelivered } from "./logistics";
+import { dispatchInfo, isOrderDelivered, routeLabel } from "./logistics";
 import { productLabel } from "./batchFlow";
 
 /*
@@ -62,7 +62,7 @@ function incompleteAlerts(orders) {
       return {
         key: `pedido-${o._id}`,
         tone: "amber",
-        title: `${o.orderNumber} incompleto en Ruta ${route.number ?? "—"}`,
+        title: `${o.orderNumber} incompleto en ${routeLabel(route)}`,
         detail: [`faltan ${info.missing} de ${info.total}`, info.detail].filter(Boolean).join(" · "),
         to: `/logistica?tab=despacho&ruta=${route._id}`,
       };

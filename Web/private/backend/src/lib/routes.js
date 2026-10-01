@@ -75,8 +75,15 @@ function applyRouteStatus(route, orders, at = new Date()) {
   else route.completedAt = undefined;
 }
 
-function routeLabel(route) {
-  return `la Ruta ${route.number} (${route.zone})`;
+// Código para mostrar: «R-2026-0042». Una ruta vieja que todavía no tiene
+// código usa «Ruta N» (respaldo temporal hasta correr migrate-route-codes).
+export function routeLabel(route) {
+  return route.code || `Ruta ${route.number}`;
+}
+
+// Cómo se nombra la ruta dentro de los mensajes: «la Ruta R-2026-0042 (Zona Norte)».
+function routeRef(route) {
+  return `la Ruta ${route.code || route.number} (${route.zone})`;
 }
 
 export async function loadRoute(id, session) {
@@ -111,9 +118,9 @@ function syncOrder(order, route) {
   setDelivery(order, { route: route._id, driver: route.driver || undefined, vehicle: route.vehicle || undefined });
 }
 
-// Motorista válido (activo, área Logística) y libre ese día; vehículo de
-// Configuración y libre ese día. Libre = no está en otra ruta del mismo día
-// que no esté Completada.
+// Motorista válido (activo, área Logística) y libre; vehículo de Configuración
+// y libre. Libre = no está en ninguna otra ruta que no esté Completada, sea del
+// día que sea (la misma regla de availability()).
 async function assertDriver(route, driverId, session) {
   if (!mongoose.isValidObjectId(driverId)) throw new HttpError(400, "Motorista inválido");
   const driver = await employeeModel.findById(driverId).session(session);
@@ -121,9 +128,9 @@ async function assertDriver(route, driverId, session) {
     throw new HttpError(400, "El motorista debe ser un empleado activo del área Logística");
   }
   const other = await routeModel
-    .findOne({ _id: { $ne: route._id }, date: route.date, status: { $ne: "Completada" }, driver: driver._id })
+    .findOne({ _id: { $ne: route._id }, status: { $ne: "Completada" }, driver: driver._id })
     .session(session);
-  if (other) throw new HttpError(409, `${driver.name} ${driver.lastName} ya va en ${routeLabel(other)}`);
+  if (other) throw new HttpError(409, `${driver.name} ${driver.lastName} ya va en ${routeRef(other)}`);
   return driver;
 }
 
@@ -131,9 +138,9 @@ async function assertVehicle(route, plate, session) {
   const vehicle = await vehicleModel.findOne({ plate }).session(session);
   if (!vehicle) throw new HttpError(400, `El vehículo ${plate} no está en Configuración > Vehículos`);
   const other = await routeModel
-    .findOne({ _id: { $ne: route._id }, date: route.date, status: { $ne: "Completada" }, vehicle: plate })
+    .findOne({ _id: { $ne: route._id }, status: { $ne: "Completada" }, vehicle: plate })
     .session(session);
-  if (other) throw new HttpError(409, `El vehículo ${plate} ya va en ${routeLabel(other)}`);
+  if (other) throw new HttpError(409, `El vehículo ${plate} ya va en ${routeRef(other)}`);
 }
 
 // Asigna motorista/vehículo si llegan en `fields` ("" o null los quita).
@@ -163,12 +170,27 @@ function pick(body, keys) {
 
 // --- Acciones -----------------------------------------------------------------
 
+// Siguiente código R-AAAA-NNNN: el último del año + 1 (el consecutivo reinicia
+// cada año, no cada día). Si dos rutas toman el mismo a la vez, el índice único
+// rechaza una y el controlador reintenta.
+export async function nextRouteCode(session, year = localDayKey().slice(0, 4)) {
+  const last = await routeModel
+    .findOne({ code: { $regex: `^R-${year}-\\d+$` } })
+    .collation({ locale: "en", numericOrdering: true })
+    .sort({ code: -1 })
+    .select("code")
+    .session(session);
+  const seq = last ? Number(last.code.split("-")[2]) + 1 : 1;
+  return { code: `R-${year}-${String(seq).padStart(4, "0")}`, seq };
+}
+
 export async function createRoute(body, session) {
   const zone = typeof body?.zone === "string" ? body.zone.trim() : "";
   if (!zone) throw new HttpError(400, "Escribe la zona de la ruta");
   const date = parseDay();
-  const last = await routeModel.findOne({ date }).sort({ number: -1 }).session(session);
-  const route = new routeModel({ number: (last?.number || 0) + 1, date, zone });
+  const { code, seq } = await nextRouteCode(session);
+  // `number` solo por compatibilidad con la app móvil (ver models/Route.js).
+  const route = new routeModel({ code, number: seq, date, zone });
   await applyCrew(route, pick(body, ["driver", "vehicle"]), session);
   applyRouteStatus(route, []);
   await route.save({ session });
@@ -177,7 +199,7 @@ export async function createRoute(body, session) {
 
 export async function updateRoute(id, body, session) {
   const route = await loadRoute(id, session);
-  if (route.status === "Completada") throw new HttpError(409, `${routeLabel(route)} ya se completó`);
+  if (route.status === "Completada") throw new HttpError(409, `${routeRef(route)} ya se completó`);
   const fields = pick(body, ["zone", "driver", "vehicle", "delayed"]);
 
   if ("zone" in fields) {
@@ -207,26 +229,26 @@ export async function updateRoute(id, body, session) {
 export async function deleteRoute(id, session) {
   const route = await loadRoute(id, session);
   if (route.orders.length || route.deliveries.length) {
-    if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió; no se puede eliminar`);
-    throw new HttpError(409, `${routeLabel(route)} tiene pedidos; quítalos antes de eliminarla`);
+    if (route.departedAt) throw new HttpError(409, `${routeRef(route)} ya salió; no se puede eliminar`);
+    throw new HttpError(409, `${routeRef(route)} tiene pedidos; quítalos antes de eliminarla`);
   }
   // Una ruta que salió solo se elimina si ya se completó y quedó vacía (sus
   // pedidos se eliminaron del panel).
-  if (route.departedAt && route.status !== "Completada") throw new HttpError(409, `${routeLabel(route)} ya salió; no se puede eliminar`);
+  if (route.departedAt && route.status !== "Completada") throw new HttpError(409, `${routeRef(route)} ya salió; no se puede eliminar`);
   await routeModel.deleteOne({ _id: route._id }, { session });
 }
 
 export async function addOrder(id, orderId, session) {
   const route = await loadRoute(id, session);
-  if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió; no se le agregan pedidos`);
+  if (route.departedAt) throw new HttpError(409, `${routeRef(route)} ya salió; no se le agregan pedidos`);
   const order = await loadOrder(orderId, session);
 
   if (order.delivery?.route) {
     if (String(order.delivery.route) === String(route._id)) {
-      throw new HttpError(409, `${order.orderNumber} ya está en ${routeLabel(route)}`);
+      throw new HttpError(409, `${order.orderNumber} ya está en ${routeRef(route)}`);
     }
     const other = await routeModel.findById(order.delivery.route).session(session);
-    if (other && other.status !== "Completada") throw new HttpError(409, `${order.orderNumber} ya está en ${routeLabel(other)}`);
+    if (other && other.status !== "Completada") throw new HttpError(409, `${order.orderNumber} ya está en ${routeRef(other)}`);
   }
   if (order.status === "Entregado") throw new HttpError(409, `${order.orderNumber} ya se entregó`);
   if (order.status === "En Tránsito") throw new HttpError(409, `${order.orderNumber} ya está en tránsito`);
@@ -262,12 +284,31 @@ export async function addOrder(id, orderId, session) {
   return route;
 }
 
+// Por qué un pedido no se puede quitar de su ruta (o null si sí). Misma regla
+// que canRemoveFromRoute / removeBlocker de Web/private/frontend/src/lib/
+// logistics.js y de Movil/src/lib/logistics.js: debe mantenerse igual.
+//   - la ruta ya salió (departedAt), o
+//   - ya se confirmó la recogida de alguno de los lugares donde están
+//     empacados los productos del pedido (Almacén y/o Fabricación).
+export function removeBlocker(order, route) {
+  if (route.departedAt) return "La ruta ya salió";
+  const confirmed = orderPickups(order).filter((l) => isConfirmed(route, l));
+  if (confirmed.length) {
+    return `Ya se confirmó la recolección de este pedido en ${confirmed.join(" y ")}; no se puede quitar`;
+  }
+  return null;
+}
+
 export async function removeOrder(id, orderId, session) {
   const route = await loadRoute(id, session);
-  if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió; no se le quitan pedidos`);
   const order = await loadOrder(orderId, session);
   const index = route.orders.findIndex((o) => String(o) === String(order._id));
-  if (index < 0) throw new HttpError(409, `${order.orderNumber} no está en ${routeLabel(route)}`);
+  if (index < 0) {
+    if (route.departedAt) throw new HttpError(409, "La ruta ya salió");
+    throw new HttpError(409, `${order.orderNumber} no está en ${routeRef(route)}`);
+  }
+  const blocker = removeBlocker(order, route);
+  if (blocker) throw new HttpError(409, blocker);
 
   route.orders.splice(index, 1);
   order.delivery = undefined;
@@ -297,13 +338,13 @@ function markPicked(order, route, at) {
 export async function confirmPickup(id, location, session) {
   if (!PICKUP_KEY[location]) throw new HttpError(400, "Ubicación inválida: usa «Almacén» o «Fabricación»");
   const route = await loadRoute(id, session);
-  if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió`);
+  if (route.departedAt) throw new HttpError(409, `${routeRef(route)} ya salió`);
   if (route.status !== "Recolectando") {
     throw new HttpError(409, "Asigna motorista, vehículo y al menos un pedido antes de confirmar recogidas");
   }
   const orders = await loadRouteOrders(route, session);
   if (!requiredPickups(orders).includes(location)) {
-    throw new HttpError(409, `${routeLabel(route)} no tiene productos empacados en ${location}`);
+    throw new HttpError(409, `${routeRef(route)} no tiene productos empacados en ${location}`);
   }
   if (isConfirmed(route, location)) throw new HttpError(409, `La recogida en ${location} ya está confirmada`);
 
@@ -330,7 +371,7 @@ export async function applyPickup(route, orders, location, at, session) {
 
 export async function depart(id, session) {
   const route = await loadRoute(id, session);
-  if (route.departedAt) throw new HttpError(409, `${routeLabel(route)} ya salió`);
+  if (route.departedAt) throw new HttpError(409, `${routeRef(route)} ya salió`);
   if (!route.driver) throw new HttpError(409, "Asigna un motorista antes de salir");
   if (!route.vehicle) throw new HttpError(409, "Asigna un vehículo antes de salir");
   const orders = await loadRouteOrders(route, session);
@@ -359,10 +400,10 @@ export async function depart(id, session) {
 // la entrega (por defecto, ahora; los scripts de corrección pasan la real).
 export async function deliverOrder(id, orderId, session, at = new Date()) {
   const route = await loadRoute(id, session);
-  if (route.status !== "En tránsito") throw new HttpError(409, `${routeLabel(route)} no está en tránsito`);
+  if (route.status !== "En tránsito") throw new HttpError(409, `${routeRef(route)} no está en tránsito`);
   const order = await loadOrder(orderId, session);
   const position = route.orders.findIndex((o) => String(o) === String(order._id));
-  if (position < 0) throw new HttpError(409, `${order.orderNumber} no es una parada de ${routeLabel(route)}`);
+  if (position < 0) throw new HttpError(409, `${order.orderNumber} no es una parada de ${routeRef(route)}`);
   if (isOrderDelivered(order)) throw new HttpError(409, `${order.orderNumber} ya se entregó`);
   const lines = (order.items || []).filter((i) => i.pickedUpAt && !i.deliveredAt);
   if (!lines.length) throw new HttpError(409, `${order.orderNumber} no tiene productos recogidos por entregar`);
@@ -398,7 +439,7 @@ export async function undeliverOrder(id, orderId, session) {
   const route = await loadRoute(id, session);
   const order = await loadOrder(orderId, session);
   const entryIndex = route.deliveries.map((d) => String(d.order)).lastIndexOf(String(order._id));
-  if (entryIndex < 0) throw new HttpError(409, `${order.orderNumber} no tiene una entrega registrada en ${routeLabel(route)}`);
+  if (entryIndex < 0) throw new HttpError(409, `${order.orderNumber} no tiene una entrega registrada en ${routeRef(route)}`);
   const entry = route.deliveries[entryIndex];
   if (localDayKey(entry.at) !== localDayKey()) throw new HttpError(409, "Solo se puede deshacer una entrega el mismo día");
 
@@ -436,19 +477,20 @@ export async function undeliverOrder(id, orderId, session) {
   return route;
 }
 
-// Motoristas (activos, área Logística) y vehículos con su disponibilidad del día.
-export async function availability(dateValue) {
-  const date = parseDay(dateValue);
+// Motoristas (activos, área Logística) y vehículos con su disponibilidad. No
+// depende del día: están ocupados si tienen CUALQUIER ruta sin completar; al
+// completarse la ruta quedan libres.
+export async function availability() {
   const [routes, drivers, vehicles] = await Promise.all([
-    routeModel.find({ date, status: { $ne: "Completada" } }),
+    routeModel.find({ status: { $ne: "Completada" } }),
     employeeModel.find({ isActive: true, department: "Logística" }).select("name lastName phone").sort({ name: 1 }),
     vehicleModel.find().sort({ plate: 1 }),
   ]);
-  const brief = (r) => ({ _id: r._id, number: r.number, zone: r.zone, status: r.status });
+  const brief = (r) => ({ _id: r._id, code: r.code, number: r.number, zone: r.zone, status: r.status });
   const byDriver = new Map(routes.filter((r) => r.driver).map((r) => [String(r.driver), brief(r)]));
   const byVehicle = new Map(routes.filter((r) => r.vehicle).map((r) => [r.vehicle, brief(r)]));
   return {
-    date: localDayKeyOfStored(date),
+    date: localDayKey(), // solo informativo
     drivers: drivers.map((d) => ({
       _id: d._id,
       name: d.name,
@@ -469,4 +511,55 @@ export async function availability(dateValue) {
 // Route.date (medianoche UTC) -> "YYYY-MM-DD".
 export function localDayKeyOfStored(date) {
   return new Date(date).toISOString().slice(0, 10);
+}
+
+// --- Listado por rango --------------------------------------------------------
+
+// El Salvador no usa horario de verano: UTC−6 todo el año.
+const SV_UTC_OFFSET_MS = 6 * 3600000;
+const DAY_MS = 86400000;
+
+// Inicio y fin (instantes) de un día "YYYY-MM-DD" en hora de El Salvador.
+function dayBounds(key) {
+  const start = parseDay(key).getTime() + SV_UTC_OFFSET_MS;
+  return [new Date(start), new Date(start + DAY_MS - 1)];
+}
+
+// «Esta semana»: lunes a hoy, igual que el rango «Esta semana» de Finanzas y
+// del resto del panel (context/DateRangeContext.jsx: del lunes a las 00:00 al
+// final de hoy). Devuelve { from, to } como "YYYY-MM-DD" de El Salvador.
+export function weekRangeKeys(now = new Date()) {
+  const to = localDayKey(now);
+  const weekday = new Date(`${to}T00:00:00.000Z`).getUTCDay(); // 0 = domingo
+  const from = new Date(Date.parse(`${to}T00:00:00.000Z`) - ((weekday + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
+  return { from, to };
+}
+
+/*
+  Filtro de GET /routes?from=YYYY-MM-DD&to=YYYY-MM-DD (fechas de El Salvador):
+    a) TODAS las rutas sin completar (Pendiente, Recolectando, En tránsito), sin
+       importar su fecha, y
+    b) las Completadas cuya fecha de completado (completedAt; si no tiene, su
+       date) cae dentro del rango.
+  Sin from/to, el rango es esta semana. Un solo extremo: from sin to llega
+  hasta hoy; to sin from parte de 1970.
+  COMPATIBILIDAD: ?date=YYYY-MM-DD equivale a from=to=date; se conserva hasta
+  que la app móvil use el rango y se puede quitar después.
+*/
+export function routesFilter(query = {}, now = new Date()) {
+  let { from, to } = query;
+  if (!from && !to && query.date) from = to = query.date;
+  if (!from && !to) ({ from, to } = weekRangeKeys(now));
+  from = from || "1970-01-01";
+  to = to || localDayKey(now);
+  const [start] = dayBounds(from);
+  const [, end] = dayBounds(to);
+  if (start > end) throw new HttpError(400, "Rango inválido: «desde» es posterior a «hasta»");
+  return {
+    $or: [
+      { status: { $ne: "Completada" } },
+      { status: "Completada", completedAt: { $gte: start, $lte: end } },
+      { status: "Completada", completedAt: null, date: { $gte: parseDay(from), $lte: parseDay(to) } },
+    ],
+  };
 }

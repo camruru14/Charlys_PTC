@@ -3,7 +3,7 @@ const routesController = {};
 import routeModel from "../models/Route.js";
 import { sendError, withTransaction } from "../lib/stock.js";
 import {
-  parseDay,
+  routesFilter,
   createRoute,
   updateRoute,
   deleteRoute,
@@ -37,20 +37,22 @@ function routeAction(fn) {
   };
 }
 
-// GET /routes?date=YYYY-MM-DD (por defecto, hoy)
+// GET /routes?from=YYYY-MM-DD&to=YYYY-MM-DD: todas las rutas sin completar más
+// las completadas dentro del rango (por defecto, esta semana); ver routesFilter.
+// ?date= se conserva por compatibilidad con la app móvil.
 routesController.getRoutes = async (req, res) => {
   try {
-    const date = parseDay(req.query.date);
-    res.json(await populateRoute(routeModel.find({ date }).sort({ number: 1 })));
+    res.json(await populateRoute(routeModel.find(routesFilter(req.query)).sort({ createdAt: 1 })));
   } catch (error) {
     sendError(res, error);
   }
 };
 
-// GET /routes/availability?date=YYYY-MM-DD
+// GET /routes/availability (no depende del día; ?date= se acepta y se ignora
+// por compatibilidad).
 routesController.getAvailability = async (req, res) => {
   try {
-    res.json(await availability(req.query.date));
+    res.json(await availability());
   } catch (error) {
     sendError(res, error);
   }
@@ -67,16 +69,16 @@ routesController.getRoute = async (req, res) => {
   }
 };
 
-// POST /routes { zone, driver?, vehicle? }. El número es correlativo por
-// día: si otra ruta toma el mismo número a la vez (índice único), se reintenta.
+// POST /routes { zone, driver?, vehicle? }. El código R-AAAA-NNNN es el último
+// del año + 1: si otra ruta toma el mismo a la vez (índice único), se reintenta.
 routesController.createRoute = async (req, res) => {
   try {
     let route;
-    for (let attempt = 0; attempt < 3 && !route; attempt += 1) {
+    for (let attempt = 0; attempt < 5 && !route; attempt += 1) {
       try {
         route = await withTransaction((session) => createRoute(req.body, session));
       } catch (error) {
-        if (error?.code !== 11000 || attempt === 2) throw error;
+        if (error?.code !== 11000 || attempt === 4) throw error;
       }
     }
     await sendRoute(res.status(201), route._id);

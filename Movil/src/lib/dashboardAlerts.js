@@ -1,6 +1,6 @@
 import { formatNumber, formatClock, formatShortDate, formatRelativeDay } from "./format";
 import { isBelowMinimum } from "./stockLevel";
-import { dispatchInfo, isOrderDelivered } from "./logistics";
+import { dispatchInfo, isOrderDelivered, routeLabel } from "./logistics";
 import { productLabel } from "./batchFlow";
 
 // Alertas del Dashboard, portadas de
@@ -70,7 +70,7 @@ function incompleteAlerts(orders) {
         key: `pedido-${o._id}`,
         kind: "incomplete",
         tone: "amber",
-        title: `${o.orderNumber} incompleto en Ruta ${route.number ?? "—"}`,
+        title: `${o.orderNumber} incompleto en ${routeLabel(route)}`,
         detail: [`faltan ${info.missing} de ${info.total}`, info.detail].filter(Boolean).join(" · "),
         screen: "Logistica",
       };

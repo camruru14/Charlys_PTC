@@ -27,7 +27,7 @@ import {
 // flecha desplegable de Inventario > Pedidos muestra meta y producido).
 const BATCH_FIELDS = "batchNumber status targetQuantity producedQuantity";
 // Campos de la ruta de Logística al poblar delivery.route («Zona · Ruta N»).
-const ROUTE_FIELDS = "number zone status date";
+const ROUTE_FIELDS = "code number zone status date";
 
 // Un pedido en una ruta conserva su delivery (motorista, vehículo y ruta los
 // maneja la ruta; ver lib/routes.js), aunque su status cambie a mano.

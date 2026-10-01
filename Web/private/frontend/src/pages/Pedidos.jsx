@@ -1,3 +1,4 @@
+import { routeLabel } from "../lib/logistics";
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
@@ -106,7 +107,7 @@ function OrderDetail({ order, canDelete, onDelete }) {
           <StatTile label="Entrega">
             <p className="break-words text-[13px] text-ink">{address || "—"}</p>
             <p className="t-aux mt-0.5 tabular-nums">
-              {order.delivery?.route?.number ? `${order.delivery.route.zone} · Ruta ${order.delivery.route.number}` : "sin asignar"}
+              {order.delivery?.route?.code || order.delivery?.route?.number != null ? `${order.delivery.route.zone} · ${routeLabel(order.delivery.route)}` : "sin asignar"}
             </p>
           </StatTile>
           <StatTile label="Fechas">

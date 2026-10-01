@@ -31,11 +31,12 @@ import {
   orderLineApi,
   packableLines,
   progressLabel,
-  routeLabel,
+  routeNote,
   runAll,
   stockOptionsFor,
   suggestWarehouse,
 } from "../lib/inventoryOrders";
+import { routeLabel } from "../lib/logistics";
 
 // Texto de existencia de una parte de la línea (existenceText de
 // PedidosInventario.jsx en la web).
@@ -125,7 +126,7 @@ function ProductLine({ order, item, index, stockMap, busy, actions }) {
                 style={styles.lineAction}
               />
             ) : part.status === "Empacado" ? (
-              <Text style={styles.lineNote}>{routeLabel(order) || "Esperando motorista"}</Text>
+              <Text style={styles.lineNote}>{routeNote(order) || "Esperando motorista"}</Text>
             ) : part.status === "Sin existencia" ? (
               <Button
                 title="Enviar a fabricación"
@@ -400,8 +401,8 @@ export default function PedidoDetalleScreen({ navigation, route }) {
   const packable = packableLines(order);
   const last = lastStatusEntry(order);
   const address = order.delivery?.address || order.customer?.address;
-  const routeInfo = order.delivery?.route?.number
-    ? `${order.delivery.route.zone} · Ruta ${order.delivery.route.number}`
+  const routeInfo = order.delivery?.route?.code || order.delivery?.route?.number != null
+    ? `${order.delivery.route.zone} · ${routeLabel(order.delivery.route)}`
     : "sin asignar";
 
   // Acciones del pedido completo (en la web: «Verificar todo» y «Empacar

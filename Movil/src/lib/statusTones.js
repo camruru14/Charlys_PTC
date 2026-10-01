@@ -69,6 +69,17 @@ export const STATUS_DOMAINS = {
     // Pedido que volvió de una entrega parcial
     "Entrega parcial": "amber",
   },
+  // Lo que le falta a un pedido incompleto en Para despacho (mismos tonos que
+  // el estado del lote o de la línea de la que viene cada texto).
+  falta: {
+    detenido: "rose",
+    "en proceso": "blue",
+    programado: "amber",
+    "completado sin empacar": "green",
+    "en fabricación": "blue",
+    "verificado sin empacar": "green",
+    "sin verificar": "gray",
+  },
   stock: {
     Suficiente: "green",
     Estable: "blue",

@@ -18,6 +18,7 @@ import { colors, tones } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
 import { formatClock, formatElapsed, formatMoney, formatNumber } from "../lib/format";
 import {
+  canRemoveFromRoute,
   departBlocker,
   dispatchInfo,
   incompleteText,
@@ -27,7 +28,9 @@ import {
   pickupDetail,
   progressNote,
   requiredPickups,
+  routeLabel,
   routeProgress,
+  routeRef,
 } from "../lib/logistics";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
@@ -81,7 +84,10 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
   } = useRoutes();
   const { orders: allOrders, refresh: refreshOrders } = useOrders();
 
-  const [busy, setBusy] = useState(false);
+  // Acciones en curso, por clave («order:<id>», «pickup:<lugar>», «depart»,
+  // «crew»): cada botón solo se bloquea mientras corre SU acción.
+  const [pending, setPending] = useState(() => new Set());
+  const isBusy = (key) => pending.has(key);
   const [crewOpen, setCrewOpen] = useState(false);
   // Pedidos incompletos que se llevan como están («Llevar lo que hay»).
   const [takeAsIs, setTakeAsIs] = useState(() => new Set());
@@ -108,7 +114,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
 
   const confirmDelete = useCallback(() => {
     if (!route) return;
-    Alert.alert("Eliminar ruta", `¿Eliminar la Ruta ${route.number} · ${route.zone}?`, [
+    Alert.alert("Eliminar ruta", `¿Eliminar ${routeRef(route)} · ${route.zone}?`, [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Eliminar",
@@ -116,7 +122,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
         onPress: async () => {
           try {
             await eliminar(route._id);
-            toast.show(`Ruta ${route.number} eliminada`);
+            toast.show(`${routeLabel(route)} eliminada`);
             navigation.goBack();
           } catch (err) {
             Alert.alert("No se pudo eliminar", err.message);
@@ -129,7 +135,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
   useLayoutEffect(() => {
     if (!route) return;
     navigation.setOptions({
-      title: `Ruta ${route.number} · ${route.zone}`,
+      title: `${routeLabel(route)} · ${route.zone}`,
       headerBackTitle: "Rutas",
       headerStatus: { label: route.status, tone: statusTone(route.status, "ruta") },
       headerSubtitle: [personName(route.driver) || "Sin motorista", route.driver?.phone, route.vehicle]
@@ -143,7 +149,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
                 icon="more"
                 accessibilityLabel="Más acciones de la ruta"
                 onPress={() =>
-                  Alert.alert(`Ruta ${route.number}`, undefined, [
+                  Alert.alert(routeLabel(route), undefined, [
                     { text: "Eliminar ruta", style: "destructive", onPress: confirmDelete },
                     { text: "Cancelar", style: "cancel" },
                   ])
@@ -155,8 +161,8 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
   }, [navigation, route, empty, departed, confirmDelete]);
 
   // Acción directa: si hay `undo`, el Toast ofrece «Deshacer».
-  async function act(run, message, undo) {
-    setBusy(true);
+  async function act(run, message, undo, key = "global") {
+    setPending((prev) => new Set(prev).add(key));
     try {
       await run();
       refreshOrders();
@@ -178,14 +184,37 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
       Alert.alert("No se pudo completar", err.message);
       reloadAll();
     } finally {
-      setBusy(false);
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
   }
+
+  // Quitar un pedido de la ruta (solo antes de salir y de recoger su lugar):
+  // confirma y el pedido vuelve a Para despacho.
+  const removeFromRoute = (order) => {
+    Alert.alert("Quitar de la ruta", `¿Quitar ${order.orderNumber} de ${routeRef(route)}? El pedido volverá a Para despacho.`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Quitar",
+        style: "destructive",
+        onPress: () =>
+          act(
+            () => removeOrder(route._id, order._id),
+            `${order.orderNumber} quitado de ${routeRef(route)}`,
+            () => addOrder(route._id, order._id),
+            `order:${order._id}`,
+          ),
+      },
+    ]);
+  };
 
   if (!route) {
     if (loading) return <LoadingState />;
     if (error) return <ErrorState message={error} onRetry={refresh} />;
-    return <ErrorState message="Esta ruta no es de hoy o ya no existe." />;
+    return <ErrorState message="Esta ruta no está en el rango de fechas elegido o ya no existe." />;
   }
 
   const r = route;
@@ -200,8 +229,9 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
     const label = field === "driver" ? "Motorista" : "Vehículo";
     act(
       () => actualizar(r._id, { [field]: value }),
-      `${label} de la Ruta ${r.number} actualizado`,
+      `${label} de ${routeRef(r)} actualizado`,
       () => actualizar(r._id, { [field]: previous || null }),
+      "crew",
     );
   };
 
@@ -278,9 +308,9 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
                           title="Confirmar recogido"
                           variant="secondary"
                           size="small"
-                          disabled={busy || r.status !== "Recolectando"}
+                          disabled={isBusy(`pickup:${location}`) || r.status !== "Recolectando"}
                           onPress={() =>
-                            act(() => confirmPickup(r._id, location), `Recogida en ${location} confirmada`)
+                            act(() => confirmPickup(r._id, location), `Recogida en ${location} confirmada`, undefined, `pickup:${location}`)
                           }
                         />
                       )}
@@ -294,19 +324,15 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
               <View key={o._id} style={styles.warning}>
                 <Text style={styles.warningText}>{incompleteText(o)}</Text>
                 <View style={styles.warningActions}>
-                  <Button
-                    title="Quitar de la ruta"
-                    variant="secondary"
-                    size="small"
-                    disabled={busy}
-                    onPress={() =>
-                      act(
-                        () => removeOrder(r._id, o._id),
-                        `${o.orderNumber} quitado de la Ruta ${r.number}`,
-                        () => addOrder(r._id, o._id),
-                      )
-                    }
-                  />
+                  {canRemoveFromRoute(o, r) ? (
+                    <Button
+                      title="Quitar de la ruta"
+                      variant="secondary"
+                      size="small"
+                      disabled={isBusy(`order:${o._id}`)}
+                      onPress={() => removeFromRoute(o)}
+                    />
+                  ) : null}
                   <Button
                     title="Llevar lo que hay"
                     variant="secondary"
@@ -339,12 +365,13 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
                     title="Entregado"
                     variant="success"
                     size="small"
-                    disabled={busy}
+                    disabled={isBusy(`order:${order._id}`)}
                     onPress={() =>
                       act(
                         () => deliver(r._id, order._id),
                         `${order.customer?.name || order.orderNumber} entregado`,
                         () => undeliver(r._id, order._id),
+                        `order:${order._id}`,
                       )
                     }
                   />
@@ -354,7 +381,18 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
               } else if (!departed) {
                 const ready = dispatchInfo(order).ready;
                 right = (
-                  <Pill label={ready ? "Listo" : "Incompleto"} tone={statusTone(ready ? "Listo" : "Incompleto", "parada")} />
+                  <View style={styles.stopRight}>
+                    <Pill label={ready ? "Listo" : "Incompleto"} tone={statusTone(ready ? "Listo" : "Incompleto", "parada")} />
+                    {canRemoveFromRoute(order, r) ? (
+                      <Button
+                        title="Quitar"
+                        variant="secondary"
+                        size="small"
+                        disabled={isBusy(`order:${order._id}`)}
+                        onPress={() => removeFromRoute(order)}
+                      />
+                    ) : null}
+                  </View>
                 );
               } else {
                 right = <Text style={styles.dash}>—</Text>;
@@ -382,7 +420,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
             title={hasCrew ? "Reasignar motorista o vehículo" : "Asignar motorista y vehículo"}
             icon="users"
             variant="secondary"
-            disabled={busy}
+            disabled={isBusy("crew")}
             onPress={() => setCrewOpen(true)}
             style={styles.crewButton}
           />
@@ -396,8 +434,8 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
             {
               title: "Salir a ruta",
               icon: "truck",
-              disabled: busy || Boolean(blocker),
-              onPress: () => act(() => depart(r._id), `Ruta ${r.number} salió`),
+              disabled: isBusy("depart") || Boolean(blocker),
+              onPress: () => act(() => depart(r._id), `${routeLabel(r)} salió`, undefined, "depart"),
             },
           ]}
         />
@@ -406,7 +444,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
       <CrewSheet
         route={crewOpen ? r : null}
         availability={availability}
-        busy={busy}
+        busy={isBusy("crew")}
         onClose={() => setCrewOpen(false)}
         onChange={changeCrew}
       />
@@ -422,6 +460,7 @@ const styles = StyleSheet.create({
   tile: { flex: 1 },
   sectionTitle: { marginTop: 10, marginBottom: 8 },
   aux: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 10 },
+  stopRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   row: {
     minHeight: 58,
     flexDirection: "row",

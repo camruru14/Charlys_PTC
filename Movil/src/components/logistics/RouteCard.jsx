@@ -4,7 +4,8 @@ import LevelMeter from "../ui/LevelMeter";
 import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
-import { personName, routeProgress } from "../../lib/logistics";
+import { formatShortDate } from "../../lib/format";
+import { personName, routeDate, routeLabel, routeProgress } from "../../lib/logistics";
 import { statusTone } from "../../lib/statusTones";
 
 // Tarjeta de una ruta de hoy (RouteListRow de EnTransito.jsx en la web):
@@ -21,9 +22,14 @@ export default function RouteCard({ route, onPress }) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        <Text style={styles.title} numberOfLines={1}>
-          Ruta {route.number} · {route.zone}
-        </Text>
+        <View style={styles.titles}>
+          <Text style={styles.title} numberOfLines={1}>
+            {routeLabel(route)} · {route.zone}
+          </Text>
+          <Text style={styles.date}>
+            {route.status === "Completada" ? "Completada" : "Creada"} {formatShortDate(routeDate(route))}
+          </Text>
+        </View>
         <Pill label={route.status} tone={tone} />
       </View>
 
@@ -59,7 +65,9 @@ const styles = StyleSheet.create({
   },
   pressed: { backgroundColor: colors.surface2 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  title: { flex: 1, fontFamily: fonts.extrabold, fontSize: 15, color: colors.ink },
+  titles: { flex: 1, gap: 1 },
+  title: { fontFamily: fonts.extrabold, fontSize: 15, color: colors.ink },
+  date: { fontFamily: fonts.regular, fontSize: 11.5, color: colors.muted },
   driver: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   driverName: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
   muted: { color: colors.muted },

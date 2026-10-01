@@ -4,7 +4,7 @@ import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
-import { dispatchInfo, isPartialReturn, lotNote, orderPickups, routeIdOf, shortName } from "../../lib/logistics";
+import { canRemoveFromRoute, routeLabel, dispatchInfo, isPartialReturn, lotNote, missingBreakdown, orderPickups, pickupNote, routeIdOf, shortName } from "../../lib/logistics";
 import { statusTone } from "../../lib/statusTones";
 
 const LOCATION_ICON = { "Almacén": "warehouse", "Fabricación": "factory" };
@@ -25,19 +25,24 @@ function PickupChip({ location }) {
 //   - un lote lo retiene: nota en cursiva («lote LOTE-XXXX programado»);
 //   - hay una ruta armándose: «+ Ruta N» para agregarlo;
 //   - si no: «Armar ruta».
-export default function DispatchOrderCard({ order, buildingRoute, busy, onAdd, onOpenRoute, onNewRoute, onPress }) {
+// `group` (lib/logistics.js, dispatchGroup) agrega lo propio de cada grupo:
+// en «Incompletos», qué falta; en «En recolección», la ruta y qué recogidas
+// faltan (`route` es esa ruta de /routes, con sus recogidas confirmadas).
+export default function DispatchOrderCard({ order, group, route, buildingRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute, onPress }) {
   const info = dispatchInfo(order);
   const assigned = order.delivery?.route;
   const note = lotNote(order);
+  const missing = group === "incompletos" ? missingBreakdown(order) : [];
+  const pickup = group === "recoleccion" ? pickupNote(order, route) : null;
 
   let action;
-  if (assigned?.number) {
+  if (assigned?.code || assigned?.number != null) {
     const isBuilding = buildingRoute && routeIdOf(order) === String(buildingRoute._id);
     const driver = order.delivery?.driver ? shortName(order.delivery.driver) : null;
     action = (
       <Pressable onPress={() => onOpenRoute(routeIdOf(order))} hitSlop={8} accessibilityRole="link">
         <Text style={styles.routeLink}>
-          Ruta {assigned.number}
+          {routeLabel(assigned)}
           {!isBuilding && driver ? ` · ${driver}` : ""}
         </Text>
       </Pressable>
@@ -51,7 +56,7 @@ export default function DispatchOrderCard({ order, buildingRoute, busy, onAdd, o
   } else if (buildingRoute) {
     action = (
       <Button
-        title={`Ruta ${buildingRoute.number}`}
+        title={routeLabel(buildingRoute)}
         icon="plus"
         variant="soft"
         size="small"
@@ -60,7 +65,7 @@ export default function DispatchOrderCard({ order, buildingRoute, busy, onAdd, o
       />
     );
   } else {
-    action = <Button title="Armar ruta" variant="soft" size="small" disabled={busy} onPress={onNewRoute} />;
+    action = <Button title="Armar ruta" variant="soft" size="small" onPress={onNewRoute} />;
   }
 
   return (
@@ -79,6 +84,26 @@ export default function DispatchOrderCard({ order, buildingRoute, busy, onAdd, o
         </Text>
         {assigned?.zone ? <Text numberOfLines={1} style={styles.zone}>{assigned.zone}</Text> : null}
       </View>
+
+      {missing.length ? (
+        <View style={styles.missing}>
+          <Text style={styles.missingLabel}>Falta:</Text>
+          {missing.map((m) => (
+            <Pill key={m.label} label={m.label} tone={m.tone} dot={false} />
+          ))}
+        </View>
+      ) : null}
+      {pickup ? (
+        <View style={styles.pickupRow}>
+          <Text style={[styles.pickupNote, styles.pickupText]}>
+            {assigned?.code || assigned?.number != null ? `${routeLabel(assigned)} · ${assigned.zone} · ` : ""}
+            {pickup}
+          </Text>
+          {canRemoveFromRoute(order, route) ? (
+            <Button title="Quitar de la ruta" variant="secondary" size="small" disabled={busy} onPress={() => onRemove(order, route)} />
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={[styles.row, styles.bottom]}>
         <View style={styles.chips}>
@@ -108,6 +133,11 @@ const styles = StyleSheet.create({
   number: { fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink, fontVariant: ["tabular-nums"] },
   customer: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
   zone: { maxWidth: "40%", fontFamily: fonts.regular, fontSize: 11.5, color: colors.subtle },
+  missing: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  missingLabel: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  pickupRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  pickupText: { flex: 1 },
+  pickupNote: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
   bottom: { marginTop: 4, minHeight: 34 },
   chips: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {

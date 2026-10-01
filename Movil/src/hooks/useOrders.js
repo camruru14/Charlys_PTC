@@ -7,7 +7,7 @@ import { useApi } from "./useApi";
 // las de los lotes de pedido en lib/batchActions.js y el despacho (rutas) en
 // hooks/useRoutes.js.
 export function useOrders() {
-  const { data, loading, refreshing, error, refresh, eliminar } = useApi("/orders");
+  const { data, loading, refreshing, error, refresh, refreshQuiet, eliminar } = useApi("/orders");
 
   return {
     orders: Array.isArray(data) ? data : [],
@@ -15,6 +15,7 @@ export function useOrders() {
     refreshing,
     error,
     refresh,
+    refreshQuiet,
     eliminar,
   };
 }

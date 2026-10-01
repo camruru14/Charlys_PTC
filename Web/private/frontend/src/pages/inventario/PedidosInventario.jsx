@@ -32,7 +32,7 @@ import {
   hasPackedLines,
   lastStatusAt,
   isDispatched,
-  routeLabel,
+  routeNote,
 } from "../../lib/inventoryOrders";
 
 /*
@@ -237,7 +237,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
           </Button>
         );
       case "Empacado":
-        return <span className="truncate text-[11.5px] tabular-nums text-muted">{routeLabel(order) || "Esperando motorista"}</span>;
+        return <span className="truncate text-[11.5px] tabular-nums text-muted">{routeNote(order) || "Esperando motorista"}</span>;
       case "Existencia parcial":
         return (
           <Button variant="start" size="row" disabled={busy} onClick={stop(() => setOpenBox({ orderId: order._id, index, kind: "resolve" }))}>
@@ -442,7 +442,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
             <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-2">
               {[
                 ["Empacado", "Esperando motorista"],
-                ["Empacado", "Ruta N · motorista"],
+                ["Empacado", "R-AAAA-NNNN · motorista"],
                 ["En Tránsito", "Recogido HH:MM"],
                 ["Entregado", "Entregado"],
               ].map(([status, caption], i) => (

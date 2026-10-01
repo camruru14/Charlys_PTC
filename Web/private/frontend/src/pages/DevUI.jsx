@@ -124,7 +124,7 @@ function DevUI() {
               <p className="t-page-title">Título de página 26/700</p>
               <p className="t-page-sub">Subtítulo de página 13px muted</p>
               <p className="t-card-title">Título de tarjeta 15/700</p>
-              <p className="t-detail-title">LOT-0416 · Ruta 4 · Zona Norte</p>
+              <p className="t-detail-title">LOT-0416 · R-2026-0004 · Zona Norte</p>
               <p className="t-label">Etiqueta de sección</p>
               <p className="t-row-name">Nombre principal de fila</p>
               <p className="t-row">Texto de fila 13px</p>

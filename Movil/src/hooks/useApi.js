@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api as privateApi } from "../lib/api";
 
 // Hook genérico de lectura (GET), mismo patrón que usePokemonData.js del
@@ -11,6 +11,11 @@ import { api as privateApi } from "../lib/api";
 // (recarga por pull-to-refresh, spinner nativo del FlatList/SectionList) —
 // así una recarga manual no tapa la lista con el texto de "Cargando…".
 //
+// `refreshQuiet` es la lectura en segundo plano (useAutoRefresh): no toca
+// `loading`, `refreshing` ni `error` (si falla se queda con lo que ya había), no
+// se lanza si ya hay una lectura en curso y descarta su respuesta si mientras
+// tanto empezó otra lectura (p. ej. la que sigue a una acción).
+//
 // `mutatePath` (Fase 3): ruta base para crear/actualizar/eliminar, si es
 // distinta de la de lectura (ej. useCatalog lee de "/products/admin/all"
 // pero crea/edita/borra contra "/products").
@@ -20,21 +25,33 @@ export function useApi(path, { client = privateApi, mutatePath } = {}) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  // generation: sube con cada lectura; pending: lecturas en curso.
+  const generation = useRef(0);
+  const pending = useRef(0);
 
   const load = useCallback(
-    async ({ silent = false } = {}) => {
-      if (silent) setRefreshing(true);
-      else setLoading(true);
-      setError(null);
+    async ({ silent = false, quiet = false } = {}) => {
+      if (quiet && pending.current > 0) return;
+      const mine = ++generation.current;
+      pending.current += 1;
+      if (!quiet) {
+        if (silent) setRefreshing(true);
+        else setLoading(true);
+        setError(null);
+      }
 
       try {
         const result = await client.get(path);
+        if (quiet && mine !== generation.current) return;
         setData(result);
       } catch (e) {
-        setError(e.message || "No se pudo cargar la información");
+        if (!quiet) setError(e.message || "No se pudo cargar la información");
       } finally {
-        if (silent) setRefreshing(false);
-        else setLoading(false);
+        pending.current -= 1;
+        if (!quiet) {
+          if (silent) setRefreshing(false);
+          else setLoading(false);
+        }
       }
     },
     [path, client],
@@ -47,6 +64,7 @@ export function useApi(path, { client = privateApi, mutatePath } = {}) {
   // Pull-to-refresh: recarga "silenciosa" (no vuelve a mostrar el texto de
   // carga inicial, solo el spinner nativo de RefreshControl).
   const refresh = useCallback(() => load({ silent: true }), [load]);
+  const refreshQuiet = useCallback(() => load({ quiet: true }), [load]);
 
   // Crear/actualizar/eliminar (Fase 3): llaman al backend y, si sale bien,
   // recargan la lista — mismo criterio que `crearPedido` del proyecto de
@@ -80,7 +98,7 @@ export function useApi(path, { client = privateApi, mutatePath } = {}) {
     [client, base, load],
   );
 
-  return { data, loading, refreshing, error, refresh, crear, actualizar, eliminar };
+  return { data, loading, refreshing, error, refresh, refreshQuiet, crear, actualizar, eliminar };
 }
 
 export default useApi;

@@ -136,6 +136,34 @@ export function missingBreakdown(order) {
 // Toda la clasificación sale de estas funciones puras (la lista, los chips y
 // los conteos las comparten); se recalcula con cada dato nuevo.
 
+// --- Código de la ruta ---------------------------------------------------------
+
+// «R-2026-0042». Una ruta vieja que todavía no tiene código usa «Ruta N»
+// (respaldo temporal hasta correr scripts/migrate-route-codes.js del backend).
+export const routeLabel = (route) => route?.code || (route?.number != null ? `Ruta ${route.number}` : "Ruta");
+
+// Cómo se nombra la ruta dentro de una frase: «la ruta R-2026-0042» / «la Ruta 3».
+export const routeRef = (route) => (route?.code ? `la ruta ${route.code}` : `la ${routeLabel(route)}`);
+
+// Clave para ordenar rutas por código (las viejas, por su número, antes).
+const routeSortKey = (route) => route?.code || (route?.number != null ? `0-${String(route.number).padStart(6, "0")}` : "");
+
+// Texto en el que busca el buscador de Logística: código (completo o parcial,
+// «0042»), zona, motorista y vehículo.
+export const routeSearchText = (route) =>
+  [routeLabel(route), route?.zone, personName(route?.driver), route?.vehicle].filter(Boolean).join(" ").toLowerCase();
+
+export const matchesQuery = (text, query) => !query.trim() || text.includes(query.trim().toLowerCase());
+
+// «YYYY-MM-DD» en hora local del navegador (para ?from= y ?to= de /routes).
+export const dayKey = (date) => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Fecha que muestra la tarjeta de una ruta: cuándo se completó, o cuándo se creó.
+export const routeDate = (route) => (route.status === "Completada" && route.completedAt) || route.createdAt || route.date;
+
 export const DISPATCH_GROUPS = [
   { key: "listos", label: "Listos para ruta", chip: "Listos", tone: "green" },
   { key: "incompletos", label: "Incompletos", chip: "Incompletos", tone: "amber" },
@@ -175,9 +203,7 @@ export function waitingSince(order) {
 
 // Más antiguo primero (en recolección: por ruta y, dentro de la ruta, igual).
 function compareDispatch(a, b) {
-  const routeA = a.delivery?.route?.number ?? 0;
-  const routeB = b.delivery?.route?.number ?? 0;
-  return routeA - routeB || waitingSince(a) - waitingSince(b) || String(a.orderNumber).localeCompare(String(b.orderNumber));
+  return routeSortKey(a.delivery?.route).localeCompare(routeSortKey(b.delivery?.route), "es", { numeric: true }) || waitingSince(a) - waitingSince(b) || String(a.orderNumber).localeCompare(String(b.orderNumber));
 }
 
 // Pedidos agrupados y ordenados: [{ ...grupo, items }] sin grupos vacíos.
@@ -296,19 +322,20 @@ export function routeGroup(route) {
   return "pendiente";
 }
 
+const byCode = (a, b) => routeSortKey(a).localeCompare(routeSortKey(b), "es", { numeric: true });
 const stamp = (...values) => values.map(timeOf).find((t) => t != null) ?? 0;
 
 // Orden dentro de cada grupo: pendiente, la más reciente primero; en tránsito,
 // las demoradas arriba y después la que salió primero; completadas, la que se
 // completó más recientemente primero.
 const ROUTE_COMPARE = {
-  pendiente: (a, b) => stamp(b.createdAt, b.date) - stamp(a.createdAt, a.date) || (b.number || 0) - (a.number || 0),
+  pendiente: (a, b) => stamp(b.createdAt, b.date) - stamp(a.createdAt, a.date) || byCode(b, a),
   transito: (a, b) =>
     Number(isRouteDelayed(b)) - Number(isRouteDelayed(a)) ||
     stamp(a.departedAt, a.createdAt) - stamp(b.departedAt, b.createdAt) ||
-    (a.number || 0) - (b.number || 0),
+    byCode(a, b),
   completadas: (a, b) =>
-    stamp(b.completedAt, b.departedAt, b.updatedAt) - stamp(a.completedAt, a.departedAt, a.updatedAt) || (b.number || 0) - (a.number || 0),
+    stamp(b.completedAt, b.departedAt, b.updatedAt) - stamp(a.completedAt, a.departedAt, a.updatedAt) || byCode(b, a),
 };
 
 // filter: "todas" o la clave de un grupo.
@@ -324,3 +351,21 @@ export function routeCounts(routes) {
   routes.forEach((r) => (counts[routeGroup(r)] += 1));
   return counts;
 }
+
+// --- Quitar un pedido de su ruta ---------------------------------------------
+
+// Por qué un pedido no se puede quitar de su ruta (o null si sí). Misma regla
+// que removeBlocker del backend (Web/private/backend/src/lib/routes.js) y que
+// canRemoveFromRoute de Movil/src/lib/logistics.js: debe mantenerse igual.
+//   - la ruta ya salió (departedAt, En tránsito o Completada), o
+//   - ya se confirmó la recogida de alguno de los lugares donde están
+//     empacados los productos del pedido (Almacén y/o Fabricación).
+export function removeBlocker(order, route) {
+  if (!route) return "El pedido no está en una ruta";
+  if (route.departedAt || route.status === "En tránsito" || route.status === "Completada") return "La ruta ya salió";
+  const confirmed = orderPickups(order).filter((l) => isConfirmed(route, l));
+  if (confirmed.length) return `Ya se confirmó la recolección de este pedido en ${confirmed.join(" y ")}; no se puede quitar`;
+  return null;
+}
+
+export const canRemoveFromRoute = (order, route) => !removeBlocker(order, route);

@@ -15,6 +15,14 @@ function daysAgo(n) {
   return d;
 }
 
+// Lunes de esta semana a las 00:00 (igual que «Esta semana» de la web).
+function startOfWeek() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
 function monthsAgo(n) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -30,6 +38,7 @@ function endOfToday() {
 
 const PRESETS = {
   all: { label: "Todo" },
+  week: { week: true, label: "Esta semana" },
   "7d": { days: 7, label: "Últimos 7 días" },
   "30d": { days: 30, label: "Últimos 30 días" },
   "3m": { months: 3, label: "Últimos 3 meses" },
@@ -46,8 +55,14 @@ export function rangeLabel(range) {
   return `${f} – ${t}`;
 }
 
+// Rango con el que arranca la app (y al que vuelve reset): esta semana, como
+// en la web (DEFAULT_PRESET de context/dateRange.js). No es «Todo».
+function weekRange() {
+  return { from: startOfWeek(), to: endOfToday(), preset: "week" };
+}
+
 export function DateRangeProvider({ children }) {
-  const [range, setRange] = useState({ from: null, to: null, preset: "all" });
+  const [range, setRange] = useState(weekRange);
 
   const value = useMemo(
     () => ({
@@ -61,12 +76,12 @@ export function DateRangeProvider({ children }) {
           setRange({ from: null, to: null, preset });
           return;
         }
-        const from = p.months ? monthsAgo(p.months) : daysAgo(p.days);
+        const from = p.week ? startOfWeek() : p.months ? monthsAgo(p.months) : daysAgo(p.days);
         setRange({ from, to: endOfToday(), preset });
       },
       // from/to son objetos Date (inicio y fin de día).
       setCustom: (from, to) => setRange({ from, to, preset: null }),
-      reset: () => setRange({ from: null, to: null, preset: "all" }),
+      reset: () => setRange(weekRange()),
     }),
     [range],
   );

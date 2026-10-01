@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import { useRememberedSelection } from "../../hooks/useRememberedSelection";
+import { useDateRange, rangeLabel } from "../../context/dateRange";
 import { useMovedIds } from "../../hooks/useMovedIds";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
@@ -9,13 +10,28 @@ import EmptyState from "../../components/ui/EmptyState";
 import Avatar from "../../components/ui/Avatar";
 import PillSelector from "../../components/ui/PillSelector";
 import FilterChips from "../../components/ui/FilterChips";
+import SearchInput from "../../components/ui/SearchInput";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { statusTone } from "../../lib/statusDomains";
 import { TONE_DOT } from "../../lib/tones";
 import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/format";
 import { IconTruck } from "../../lib/icons";
-import { ROUTE_GROUPS, groupRoutes, routeCounts, routeGroup, routeProgress, progressNote, personName } from "../../lib/logistics";
+import {
+  ROUTE_GROUPS,
+  canRemoveFromRoute,
+  groupRoutes,
+  matchesQuery,
+  routeCounts,
+  routeDate,
+  routeGroup,
+  routeLabel,
+  routeProgress,
+  routeRef,
+  routeSearchText,
+  progressNote,
+  personName,
+} from "../../lib/logistics";
 
 // Chips de «Rutas de hoy»: «Todas» más uno por grupo (Pendiente, En tránsito, Completadas).
 const ROUTE_CHIPS = [
@@ -41,8 +57,13 @@ function RouteListRow({ route, selected, moved, onSelect }) {
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col gap-2 px-3.5 py-3">
         <span className="flex items-center justify-between gap-3">
-          <span className="truncate text-[14px] font-bold text-ink">
-            Ruta {route.number} · {route.zone}
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-[14px] font-bold text-ink">
+              {routeLabel(route)} · {route.zone}
+            </span>
+            <span className="t-aux tabular-nums">
+              {route.status === "Completada" ? "Completada" : "Creada"} {fmtDate(routeDate(route))}
+            </span>
           </span>
           <StatusPill status={route.status} domain="ruta" variant="dot" />
         </span>
@@ -76,7 +97,7 @@ function StopNumber({ n, state }) {
   return <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold tabular-nums ${cls}`}>{n}</span>;
 }
 
-function RouteDetail({ route, availability, busy, act }) {
+function RouteDetail({ route, availability, isBusy, act, onRemove }) {
   const [reassign, setReassign] = useState(false);
   const { stops, delivered, total, current, deliveredValue, totalValue } = routeProgress(route);
   const departed = Boolean(route.departedAt);
@@ -98,8 +119,9 @@ function RouteDetail({ route, availability, busy, act }) {
     if (value === previous) return;
     act(
       () => api.patch(routeUrl, { [field]: value }),
-      `${label} de la Ruta ${route.number} actualizado`,
+      `${label} de ${routeRef(route)} actualizado`,
       () => api.patch(routeUrl, { [field]: previous || null }),
+      `crew:${route._id}`,
     );
   }
 
@@ -110,7 +132,7 @@ function RouteDetail({ route, availability, busy, act }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2.5">
               <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">
-                Ruta {route.number} · {route.zone}
+                {routeLabel(route)} · {route.zone}
               </h2>
               <StatusPill status={route.status} domain="ruta" size="lg" />
             </div>
@@ -200,16 +222,21 @@ function RouteDetail({ route, availability, busy, act }) {
                           <Button
                             variant="pack"
                             size="row"
-                            disabled={busy}
+                            disabled={isBusy(`order:${order._id}`)}
                             onClick={() =>
                               act(
                                 () => api.patch(`${routeUrl}/orders/${order._id}/deliver`),
                                 `${order.orderNumber} entregado`,
                                 () => api.patch(`${routeUrl}/orders/${order._id}/undeliver`),
+                                `order:${order._id}`,
                               )
                             }
                           >
                             Entregado
+                          </Button>
+                        ) : !stop.delivered && canRemoveFromRoute(order, route) ? (
+                          <Button variant="secondary" size="row" disabled={isBusy(`order:${order._id}`)} onClick={() => onRemove(order, route)}>
+                            Quitar
                           </Button>
                         ) : null}
                       </span>
@@ -229,11 +256,15 @@ function RouteDetail({ route, availability, busy, act }) {
   Logística > En tránsito: rutas de hoy (maestro) y el seguimiento de la
   ruta abierta (detalle), parada por parada.
 */
-function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, filter, onFilter, availability, busy, act }) {
+function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, filter, onFilter, availability, isBusy, act, onRemove }) {
+  const range = useDateRange();
+  const [query, setQuery] = useState("");
   const selected = routes.find((r) => r._id === selectedId) || null;
-  // Grupos, orden, chips y conteos se recalculan con cada lectura de datos.
-  const counts = useMemo(() => routeCounts(routes), [routes]);
-  const groups = useMemo(() => groupRoutes(routes, filter), [routes, filter]);
+  // Grupos, orden, chips y conteos se recalculan con cada lectura de datos y
+  // con la búsqueda (por código, completo o parcial, zona, motorista o placa).
+  const found = useMemo(() => routes.filter((r) => matchesQuery(routeSearchText(r), query)), [routes, query]);
+  const counts = useMemo(() => routeCounts(found), [found]);
+  const groups = useMemo(() => groupRoutes(found, filter), [found, filter]);
   const moved = useMovedIds(routes, routeGroup);
   const ordered = useMemo(() => groupRoutes(routes).flatMap((g) => g.items), [routes]);
   useRememberedSelection("logistica/transito", { selectedId, setSelectedId: onSelect, ids: ordered.map((r) => r._id), ready: !loading });
@@ -242,12 +273,16 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
       <ListPanel
         header={
           <>
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[15px] font-bold text-ink">Rutas de hoy</h2>
-              <span className="t-aux tabular-nums">
-                {fmtDate(new Date())} · {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
-              </span>
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-bold text-ink">Rutas</h2>
+                <span className="t-aux tabular-nums">
+                  {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
+                </span>
+              </div>
+              <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
             </div>
+            <SearchInput value={query} onChange={setQuery} placeholder="Buscar por código, zona o motorista" />
             <FilterChips
               compact
               showEmpty
@@ -273,9 +308,9 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
         ) : error ? (
           <EmptyState title="No se pudieron cargar las rutas" description={error} />
         ) : routes.length === 0 ? (
-          <EmptyState icon={IconTruck} title="Todavía no hay rutas hoy." description="Arma una con «Armar ruta»." />
+          <EmptyState icon={IconTruck} title="No hay rutas en este rango." description="Cambia el rango de fechas o arma una con «Armar ruta»." />
         ) : groups.length === 0 ? (
-          <EmptyState title="Ninguna ruta coincide con el filtro." />
+          <EmptyState title="Ninguna ruta coincide con el filtro o la búsqueda." />
         ) : (
           groups.map((g) => (
             <Fragment key={g.key}>
@@ -289,7 +324,7 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
       </ListPanel>
 
       {selected ? (
-        <RouteDetail key={selected._id} route={selected} availability={availability} busy={busy} act={act} />
+        <RouteDetail key={selected._id} route={selected} availability={availability} isBusy={isBusy} act={act} onRemove={onRemove} />
       ) : (
         <DetailPanel>
           <EmptyState icon={IconTruck} title={selectedId && !loading ? "Esta ruta no es de hoy o ya no existe" : "Selecciona una ruta"} description="Sigue sus paradas y marca cada entrega." />

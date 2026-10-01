@@ -38,7 +38,7 @@ import {
   IconUsers,
 } from "../lib/icons";
 import { fmtNumber, fmtElapsed, fmtRelativeDay } from "../lib/format";
-import { personName } from "../lib/logistics";
+import { personName, routeLabel } from "../lib/logistics";
 
 // Datos de la empresa: viven en el backend (/settings/company, compartidos
 // por todos los usuarios), igual que el horario laboral
@@ -540,7 +540,7 @@ function Configuracion() {
     const driver = route ? routeDrivers.get(String(route._id)) : null;
     const item = { id: v._id, label: v.plate };
     const blocked = route ? "No se puede eliminar: el vehículo está en ruta" : null;
-    const detail = route ? [`Ruta ${route.number}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ") : "sin asignar";
+    const detail = route ? [`${routeLabel(route)}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ") : "sin asignar";
     return (
       <ListRow key={v._id}>
         <RowIcon icon={IconTruck} />

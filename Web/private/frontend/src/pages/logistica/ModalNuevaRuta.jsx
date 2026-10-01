@@ -5,7 +5,7 @@ import Modal from "../../components/ui/Modal";
 import PillSelector from "../../components/ui/PillSelector";
 import { Field } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
-import { personName } from "../../lib/logistics";
+import { personName, routeLabel } from "../../lib/logistics";
 
 const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
 
@@ -14,7 +14,7 @@ const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
   opcionales al crear; son obligatorios para salir. Se monta solo mientras
   está abierto.
 */
-function ModalNuevaRuta({ nextNumber, availability, onClose, onCreated }) {
+function ModalNuevaRuta({ availability, onClose, onCreated }) {
   const [zone, setZone] = useState("");
   const [driver, setDriver] = useState("");
   const [vehicle, setVehicle] = useState("");
@@ -29,7 +29,7 @@ function ModalNuevaRuta({ nextNumber, availability, onClose, onCreated }) {
     setSaving(true);
     try {
       const route = await api.post("/routes", { zone: zone.trim(), driver: driver || undefined, vehicle: vehicle || undefined });
-      toast.success(`Ruta ${route.number} creada`);
+      toast.success(`${routeLabel(route)} creada`);
       onCreated(route);
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
@@ -45,7 +45,7 @@ function ModalNuevaRuta({ nextNumber, availability, onClose, onCreated }) {
       title="Nueva ruta"
       subtitle={
         <>
-          Se creará como <strong className="font-semibold text-ink">Ruta {nextNumber}</strong> · número asignado automáticamente
+          Se le asignará un código único <strong className="font-semibold text-ink">R-AAAA-NNNN</strong> al crearla
         </>
       }
       footer={
@@ -54,7 +54,7 @@ function ModalNuevaRuta({ nextNumber, availability, onClose, onCreated }) {
             Cancelar
           </button>
           <button type="submit" form="new-route-form" disabled={saving || !zone.trim()} className={buttonClass("primary", "modal")}>
-            Crear Ruta {nextNumber}
+            Crear ruta
           </button>
         </>
       }
@@ -79,7 +79,7 @@ function ModalNuevaRuta({ nextNumber, availability, onClose, onCreated }) {
         </div>
         <p className="text-[11.5px] text-muted">
           Los pedidos se agregan después, uno por uno, desde <strong className="font-semibold text-ink-2">Para despacho</strong> con el botón
-          «+ Ruta {nextNumber}» en cada pedido listo.
+          «+ Ruta» en cada pedido listo.
         </p>
       </form>
     </Modal>

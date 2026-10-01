@@ -1,3 +1,4 @@
+import { routeLabel } from "./logistics";
 import { api } from "./api";
 
 // Preparación de pedidos a partir de /orders y /inventory, portado de
@@ -178,13 +179,13 @@ export function packableLines(order) {
   });
 }
 
-// «Ruta 4 · Mario Pérez» para una línea empacada de un pedido en ruta (o null).
-export function routeLabel(order) {
+// «R-2026-0042 · Mario Pérez» para una línea empacada de un pedido en ruta (o null).
+export function routeNote(order) {
   const route = order.delivery?.route;
-  if (!route?.number) return null;
+  if (!route?.code && route?.number == null) return null;
   const driver = order.delivery?.driver;
   const name = driver?.name ? `${driver.name} ${driver.lastName || ""}`.trim() : "sin motorista";
-  return `Ruta ${route.number} · ${name}`;
+  return `${routeLabel(route)} · ${name}`;
 }
 
 // ---- Acciones por línea (mismos endpoints que PedidosInventario.jsx) ----

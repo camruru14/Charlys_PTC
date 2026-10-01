@@ -13,7 +13,7 @@ import Pill from "../components/ui/Pill";
 import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
-import { personName } from "../lib/logistics";
+import { personName, routeLabel } from "../lib/logistics";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
 
@@ -94,7 +94,7 @@ export default function ConfigVehiculosScreen({ navigation }) {
             const route = vehicleRoutes.get(String(v._id));
             const driver = route ? routeDrivers.get(String(route._id)) : null;
             const detail = route
-              ? [`Ruta ${route.number}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ")
+              ? [`${routeLabel(route)}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ")
               : "sin asignar";
             const status = route ? "En ruta" : "Disponible";
             return (

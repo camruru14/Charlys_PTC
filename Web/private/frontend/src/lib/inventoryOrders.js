@@ -1,3 +1,4 @@
+import { routeLabel } from "./logistics";
 import { formatBatchNumber } from "./format";
 
 /*
@@ -161,13 +162,13 @@ export function isDispatched(order) {
   return carried.length > 0 && carried.every((i) => i.pickedUpAt);
 }
 
-// «Ruta 4 · Mario Pérez» para una línea empacada de un pedido en ruta (o null).
-export function routeLabel(order) {
+// «R-2026-0042 · Mario Pérez» para una línea empacada de un pedido en ruta (o null).
+export function routeNote(order) {
   const route = order.delivery?.route;
-  if (!route?.number) return null;
+  if (!route?.code && route?.number == null) return null;
   const driver = order.delivery?.driver;
   const name = driver?.name ? `${driver.name} ${driver.lastName || ""}`.trim() : "sin motorista";
-  return `Ruta ${route.number} · ${name}`;
+  return `${routeLabel(route)} · ${name}`;
 }
 
 // Fecha del último cambio de status (para «Despachados, últimos 30 días»).

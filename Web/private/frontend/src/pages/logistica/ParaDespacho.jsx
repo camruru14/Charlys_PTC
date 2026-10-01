@@ -8,6 +8,7 @@ import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
 import FilterChips from "../../components/ui/FilterChips";
+import SearchInput from "../../components/ui/SearchInput";
 import PillSelector from "../../components/ui/PillSelector";
 import ActionsMenu from "../../components/ui/ActionsMenu";
 import ConfirmModal from "../../components/ui/ConfirmModal";
@@ -25,6 +26,10 @@ import {
   groupDispatchOrders,
   missingBreakdown,
   pickupNote,
+  canRemoveFromRoute,
+  matchesQuery,
+  routeLabel,
+  routeRef,
   incompleteText,
   lotNote,
   isPartialReturn,
@@ -53,7 +58,7 @@ function PickupChip({ location }) {
   );
 }
 
-function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onOpenRoute, onNewRoute }) {
+function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute }) {
   const info = dispatchInfo(order);
   const assigned = order.delivery?.route;
   const note = lotNote(order);
@@ -61,9 +66,9 @@ function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onOpenRo
   const pickup = group === "recoleccion" ? pickupNote(order, route) : null;
 
   let action;
-  if (assigned?.number) {
+  if (assigned?.code || assigned?.number != null) {
     const isOpen = openRoute && routeIdOf(order) === String(openRoute._id);
-    const label = isOpen ? `Ruta ${assigned.number}` : `Ruta ${assigned.number}${order.delivery?.driver ? ` · ${shortName(order.delivery.driver)}` : ""}`;
+    const label = isOpen ? routeLabel(assigned) : `${routeLabel(assigned)}${order.delivery?.driver ? ` · ${shortName(order.delivery.driver)}` : ""}`;
     action = (
       <button type="button" onClick={() => onOpenRoute(routeIdOf(order))} className="shrink-0 text-[11.5px] font-semibold tabular-nums text-primary hover:underline">
         {label}
@@ -74,12 +79,12 @@ function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onOpenRo
   } else if (openRoute) {
     action = (
       <Button variant="soft" size="row" icon={IconPlus} disabled={busy} onClick={() => onAdd(order)} className="!h-6 !px-2 !text-[11.5px]">
-        Ruta {openRoute.number}
+        {routeLabel(openRoute)}
       </Button>
     );
   } else {
     action = (
-      <Button variant="soft" size="row" disabled={busy} onClick={onNewRoute} className="!h-6 !px-2 !text-[11.5px]">
+      <Button variant="soft" size="row" onClick={onNewRoute} className="!h-6 !px-2 !text-[11.5px]">
         Armar ruta
       </Button>
     );
@@ -111,10 +116,17 @@ function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onOpenRo
         </div>
       ) : null}
       {pickup ? (
-        <p className="t-aux">
-          {assigned?.number ? `Ruta ${assigned.number} · ${assigned.zone} · ` : ""}
-          {pickup}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="t-aux min-w-0">
+            {assigned?.code || assigned?.number != null ? `${routeLabel(assigned)} · ${assigned.zone} · ` : ""}
+            {pickup}
+          </p>
+          {canRemoveFromRoute(order, route) ? (
+            <Button variant="secondary" size="row" disabled={busy} onClick={() => onRemove(order, route)} className="!h-6 shrink-0 !px-2 !text-[11.5px]">
+              Quitar de la ruta
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex items-center justify-between gap-3">
         <span className="flex flex-wrap gap-1">
@@ -141,7 +153,7 @@ function TimelineDot({ done, children }) {
   );
 }
 
-function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
+function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, onDeleted }) {
   const { confirm, confirmProps } = useConfirm();
   // Pedidos incompletos que se llevan como están («Llevar lo que hay»).
   const [takeAsIs, setTakeAsIs] = useState(() => new Set());
@@ -165,8 +177,11 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
 
   function change(field, value, previous, label) {
     if (value === previous) return;
-    act(() => api.patch(routeUrl, { [field]: value }), `${label} de la Ruta ${route.number} actualizado`, () =>
-      api.patch(routeUrl, { [field]: previous || null }),
+    act(
+      () => api.patch(routeUrl, { [field]: value }),
+      `${label} de ${routeRef(route)} actualizado`,
+      () => api.patch(routeUrl, { [field]: previous || null }),
+      `crew:${route._id}`,
     );
   }
 
@@ -180,10 +195,10 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
   }
 
   async function removeRoute() {
-    if (!(await confirm(`¿Eliminar la Ruta ${route.number} · ${route.zone}?`, { danger: true, confirmLabel: "Eliminar" }))) return;
+    if (!(await confirm(`¿Eliminar ${routeRef(route)} · ${route.zone}?`, { danger: true, confirmLabel: "Eliminar" }))) return;
     try {
       await api.del(routeUrl);
-      toast.success(`Ruta ${route.number} eliminada`);
+      toast.success(`${routeLabel(route)} eliminada`);
       onDeleted();
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
@@ -204,7 +219,7 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
           <div className="flex min-w-0 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2.5">
               <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">
-                Ruta {route.number} · {route.zone}
+                {routeLabel(route)} · {route.zone}
               </h2>
               <StatusPill status={route.status} domain="ruta" size="lg" />
             </div>
@@ -214,9 +229,9 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
             <div className="flex flex-col items-end gap-1">
               <Button
                 size="detail"
-                disabled={busy || Boolean(blocker)}
+                disabled={isBusy(`depart:${route._id}`) || Boolean(blocker)}
                 className="disabled:!bg-primary-disabled disabled:!opacity-100"
-                onClick={() => act(() => api.patch(`${routeUrl}/depart`), `Ruta ${route.number} salió`)}
+                onClick={() => act(() => api.patch(`${routeUrl}/depart`), `${routeLabel(route)} salió`, undefined, `depart:${route._id}`)}
               >
                 Salir a ruta
               </Button>
@@ -274,8 +289,10 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
                     <Button
                       variant="secondary"
                       size="row"
-                      disabled={busy || route.status !== "Recolectando"}
-                      onClick={() => act(() => api.patch(`${routeUrl}/pickup`, { location }), `Recogida en ${location} confirmada`)}
+                      disabled={isBusy(`pickup:${route._id}:${location}`) || route.status !== "Recolectando"}
+                      onClick={() =>
+                        act(() => api.patch(`${routeUrl}/pickup`, { location }), `Recogida en ${location} confirmada`, undefined, `pickup:${route._id}:${location}`)
+                      }
                     >
                       Confirmar recogido
                     </Button>
@@ -292,14 +309,8 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
                 <Button
                   variant="warning"
                   size="row"
-                  disabled={busy}
-                  onClick={() =>
-                    act(
-                      () => api.del(`${routeUrl}/orders/${o._id}`),
-                      `${o.orderNumber} quitado de la Ruta ${route.number}`,
-                      () => api.post(`${routeUrl}/orders`, { orderId: o._id }),
-                    )
-                  }
+                  disabled={isBusy(`order:${o._id}`)}
+                  onClick={() => onRemove(o, route)}
                 >
                   Quitar de la ruta
                 </Button>
@@ -330,6 +341,18 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
                 </p>
               </div>
               <StatusPill status={dispatchInfo(o).ready ? "Listo" : "Incompleto"} domain="parada" />
+              {canRemoveFromRoute(o, route) ? (
+                <button
+                  type="button"
+                  title="Quitar de la ruta"
+                  aria-label={`Quitar ${o.orderNumber} de la ruta`}
+                  disabled={isBusy(`order:${o._id}`)}
+                  onClick={() => onRemove(o, route)}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[15px] leading-none text-muted transition hover:bg-tone-rose hover:text-tone-rose-text disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              ) : null}
             </div>
           ))}
         </div>
@@ -343,7 +366,7 @@ function RoutePanel({ route, ordersById, availability, busy, act, onDeleted }) {
   Logística > Para despacho: pedidos con algo empacado que todavía no salen
   (maestro) y la ruta abierta que se está armando (panel derecho).
 */
-function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, busy, act, onNewRoute }) {
+function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, isBusy, act, onRemove, onNewRoute }) {
   const ordersById = useMemo(() => new Map(orders.map((o) => [String(o._id), o])), [orders]);
   const pendingRoutes = routes.filter((r) => !r.departedAt);
   const openRoute = routes.find((r) => r._id === openRouteId) || null;
@@ -352,8 +375,17 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
   useRememberedSelection("logistica/despacho", { selectedId: openRouteId, setSelectedId: onOpenRoute, ids: pendingRoutes.map((r) => r._id) });
 
   // Todo se recalcula con cada lectura de datos: grupos, orden, chips y conteos.
-  const counts = useMemo(() => dispatchCounts(orders), [orders]);
-  const groups = useMemo(() => groupDispatchOrders(orders, filter), [orders, filter]);
+  const [query, setQuery] = useState("");
+  // La búsqueda mira el pedido, el cliente y la ruta (por código, completo o parcial).
+  const found = useMemo(
+    () =>
+      orders.filter((o) =>
+        matchesQuery([o.orderNumber, o.customer?.name, o.delivery?.route ? `${routeLabel(o.delivery.route)} ${o.delivery.route.zone || ""}` : ""].filter(Boolean).join(" ").toLowerCase(), query),
+      ),
+    [orders, query],
+  );
+  const counts = useMemo(() => dispatchCounts(found), [found]);
+  const groups = useMemo(() => groupDispatchOrders(found, filter), [found, filter]);
   const moved = useMovedIds(orders, dispatchGroup);
   const routesById = useMemo(() => new Map(routes.map((r) => [String(r._id), r])), [routes]);
 
@@ -361,8 +393,9 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
     const url = `/routes/${buildingRoute._id}/orders`;
     act(
       () => api.post(url, { orderId: order._id }),
-      `${order.orderNumber} agregado a la Ruta ${buildingRoute.number}`,
+      `${order.orderNumber} agregado a ${routeRef(buildingRoute)}`,
       () => api.del(`${url}/${order._id}`),
+      `order:${order._id}`,
     );
   }
 
@@ -377,6 +410,7 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
                 {fmtDate(new Date())} · {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
               </span>
             </div>
+            <SearchInput value={query} onChange={setQuery} placeholder="Buscar por pedido, cliente o ruta" />
             <FilterChips compact value={filter} onChange={onFilter} showEmpty options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
           </>
         }
@@ -386,7 +420,7 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
         ) : ordersError ? (
           <EmptyState title="No se pudieron cargar los pedidos" description={ordersError} />
         ) : groups.length === 0 ? (
-          <EmptyState title={orders.length ? "Ningún pedido coincide con el filtro." : "No hay pedidos empacados por despachar."} />
+          <EmptyState title={orders.length ? "Ningún pedido coincide con el filtro o la búsqueda." : "No hay pedidos empacados por despachar."} />
         ) : (
           groups.map((g) => (
             <Fragment key={g.key}>
@@ -399,8 +433,9 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
                   route={routesById.get(routeIdOf(o))}
                   moved={moved.has(String(o._id))}
                   openRoute={buildingRoute}
-                  busy={busy}
+                  busy={isBusy(`order:${o._id}`)}
                   onAdd={add}
+                  onRemove={onRemove}
                   onOpenRoute={onOpenRoute}
                   onNewRoute={onNewRoute}
                 />
@@ -415,7 +450,7 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
           <div className="flex flex-wrap items-center gap-2">
             <span className="t-label">Rutas por salir</span>
             <PillSelector
-              options={pendingRoutes.map((r) => ({ value: r._id, label: `Ruta ${r.number} · ${r.zone}` }))}
+              options={pendingRoutes.map((r) => ({ value: r._id, label: `${routeLabel(r)} · ${r.zone}` }))}
               value={buildingRoute?._id || ""}
               onChange={onOpenRoute}
             />
@@ -428,15 +463,16 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
               route={buildingRoute}
               ordersById={ordersById}
               availability={availability}
-              busy={busy}
+              isBusy={isBusy}
               act={act}
+              onRemove={onRemove}
               onDeleted={() => onOpenRoute(null)}
             />
           ) : (
             <DetailPanel>
               <EmptyState
                 icon={IconOrders}
-                title={openRoute ? `La Ruta ${openRoute.number} ya salió` : "Ninguna ruta abierta"}
+                title={openRoute ? `${routeLabel(openRoute)} ya salió` : "Ninguna ruta abierta"}
                 description={openRoute ? "Síguela en En tránsito." : "Abre una ruta por salir o arma una nueva para agregarle pedidos."}
                 action={
                   openRoute ? null : (

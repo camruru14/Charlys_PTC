@@ -7,7 +7,7 @@ import PillSelector from "../ui/PillSelector";
 import { FieldLabel } from "../ui/fieldStyles";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
-import { crewOptions } from "../../lib/logistics";
+import { crewOptions, routeLabel } from "../../lib/logistics";
 
 function CrewPicker({ label, options, value, onChange, emptyText, disabled }) {
   return (
@@ -29,7 +29,7 @@ const NO_VEHICLES = "No hay vehículos en Configuración.";
 // vehículo opcionales al crear (son obligatorios para salir). Tocar de nuevo
 // una píldora seleccionada la quita. `onCreate(body)` hace el POST /routes y
 // devuelve la ruta creada.
-export function NewRouteSheet({ visible, nextNumber, availability, onClose, onCreate }) {
+export function NewRouteSheet({ visible, availability, onClose, onCreate }) {
   const [zone, setZone] = useState("");
   const [driver, setDriver] = useState("");
   const [vehicle, setVehicle] = useState("");
@@ -41,12 +41,6 @@ export function NewRouteSheet({ visible, nextNumber, availability, onClose, onCr
     setDriver("");
     setVehicle("");
   }, [visible]);
-
-  // El número se congela mientras la hoja se cierra (la lista se recarga
-  // con la ruta nueva antes de que termine la animación).
-  const shownNumber = useRef(nextNumber);
-  if (visible && !saving) shownNumber.current = nextNumber;
-  const number = shownNumber.current;
 
   const { drivers, vehicles } = crewOptions(availability);
 
@@ -68,12 +62,12 @@ export function NewRouteSheet({ visible, nextNumber, availability, onClose, onCr
       onClose={onClose}
       dismissable={!saving}
       title="Nueva ruta"
-      subtitle={`Se creará como Ruta ${number} · número automático`}
+      subtitle="Se le asignará un código único R-AAAA-NNNN al crearla"
       footer={
         <View style={styles.footer}>
           <Button title="Cancelar" variant="secondary" disabled={saving} onPress={onClose} style={styles.flex} />
           <Button
-            title={`Crear Ruta ${number}`}
+            title="Crear ruta"
             loading={saving}
             disabled={!zone.trim()}
             onPress={submit}
@@ -97,7 +91,7 @@ export function NewRouteSheet({ visible, nextNumber, availability, onClose, onCr
         onChange={(v) => setVehicle(v === vehicle ? "" : v)}
         emptyText={NO_VEHICLES}
       />
-      <Text style={styles.note}>Después agregas los pedidos con «+ Ruta {number}» desde la lista.</Text>
+      <Text style={styles.note}>Después agregas los pedidos con «+ Ruta» desde la lista.</Text>
     </BottomSheet>
   );
 }
@@ -119,7 +113,7 @@ export function CrewSheet({ route, availability, busy, onClose, onChange }) {
       visible={Boolean(route)}
       onClose={onClose}
       title="Motorista y vehículo"
-      subtitle={current ? `Ruta ${current.number} · ${current.zone}` : undefined}
+      subtitle={current ? `${routeLabel(current)} · ${current.zone}` : undefined}
       footer={<Button title="Listo" variant="secondary" onPress={onClose} />}
     >
       <CrewPicker
