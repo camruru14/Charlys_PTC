@@ -11,7 +11,7 @@ import Employee from "../src/models/Employee.js";
 import Vehicle from "../src/models/Vehicle.js";
 import ctl from "../src/controller/routesController.js";
 import { nextRouteCode, localDayKey, weekRangeKeys } from "../src/lib/routes.js";
-import { migrateRouteCodes } from "../scripts/migrate-route-codes.js";
+import { assignRouteCodes, planRouteCodes } from "../scripts/assign-route-codes.js";
 import ordersCtl from "../src/controller/ordersController.js";
 import { migrateDeliveryRoutes } from "../scripts/migrate-delivery-routes.js";
 import { closeMigratedRoutes } from "../scripts/close-migrated-routes.js";
@@ -544,23 +544,47 @@ test("disponibilidad sin día: motorista y placa con una ruta activa de ayer sig
   assert.equal(r.status, 200);
 });
 
-test("migrar códigos: rutas viejas por orden cronológico, continúa el consecutivo y es idempotente", async () => {
+test("asignar códigos: rutas viejas por orden cronológico, continúa el consecutivo, respalda y es idempotente", async () => {
   const mk = (number, daysAgo, extra = {}) =>
-    Route.collection.insertOne({ zone: "Z", number, status: "Completada", date: day(shiftDay(localDayKey(), -daysAgo), 0), createdAt: day(shiftDay(localDayKey(), -daysAgo)), updatedAt: new Date(), orders: [], deliveries: [], pickups: {}, ...extra });
+    Route.collection.insertOne({ zone: "Z", number, status: "Completada", date: dateOnly(shiftDay(localDayKey(), -daysAgo)), createdAt: day(shiftDay(localDayKey(), -daysAgo)), updatedAt: new Date(), orders: [], deliveries: [], pickups: {}, ...extra });
   await mk(1, 3);
   await mk(1, 2); // mismo número otro día: el caso que repetía
   await mk(2, 2);
   await mk(1, 1, { code: `R-${YEAR}-0005` }); // ya tiene código
   const quiet = { log: () => {} };
+  const db = mongoose.connection.db;
+  const backups = [];
+  const fs = await import("node:fs");
 
-  let summary = await migrateRouteCodes({ dryRun: true, ...quiet });
+  let summary = await assignRouteCodes(db, { dryRun: true, ...quiet });
   assert.equal(summary.assigned, 3);
   assert.equal(await Route.countDocuments({ code: { $exists: true } }), 1, "--dry-run no escribe");
 
-  summary = await migrateRouteCodes(quiet);
+  summary = await assignRouteCodes(db, { dryRun: false, ...quiet });
   assert.equal(summary.assigned, 3);
+  assert.ok(summary.backupDir && fs.existsSync(summary.backupDir + "/routes.json") && fs.existsSync(summary.backupDir + "/manifest.json"), "respaldo de routes");
+  backups.push(summary.backupDir);
   const codes = (await Route.find().sort({ createdAt: 1, number: 1 })).map((r) => r.code);
   assert.deepEqual(codes, [`R-${YEAR}-0006`, `R-${YEAR}-0007`, `R-${YEAR}-0008`, `R-${YEAR}-0005`]);
-  summary = await migrateRouteCodes(quiet);
+  const doc = await Route.collection.findOne({ code: `R-${YEAR}-0006` });
+  assert.equal(doc.zone, "Z", "solo cambia code");
+  assert.ok((await Route.collection.indexes()).some((i) => i.key?.code === 1 && i.unique), "índice único de code");
+
+  summary = await assignRouteCodes(db, { dryRun: false, ...quiet });
   assert.equal(summary.assigned, 0, "idempotente");
+  assert.equal(summary.backupDir, null, "sin cambios no respalda");
+  for (const dir of backups) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("asignar códigos: reinicia por año según createdAt, empata por _id y detecta duplicados", () => {
+  const route = (id, createdAt, extra = {}) => ({ _id: id, zone: "Z", status: "Completada", date: new Date(createdAt), createdAt: new Date(createdAt), ...extra });
+  const plan = planRouteCodes([
+    route("b", "2025-12-30T20:00:00Z"),
+    route("a", "2025-12-30T20:00:00Z"), // mismo instante: desempata por _id
+    route("c", "2026-01-02T20:00:00Z"),
+    route("d", "2026-01-03T20:00:00Z", { code: "R-2026-0009" }),
+  ]);
+  assert.deepEqual(plan.assignments.map((x) => [x._id, x.code]), [["a", "R-2025-0001"], ["b", "R-2025-0002"], ["c", "R-2026-0010"]]);
+  assert.deepEqual(plan.problems, []);
+  assert.ok(planRouteCodes([route("x", "2026-01-01T12:00:00Z", { code: "R-2026-0001" }), route("y", "2026-01-02T12:00:00Z", { code: "R-2026-0001" })]).problems.length > 0, "código repetido");
 });

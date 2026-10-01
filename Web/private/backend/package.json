@@ -10,7 +10,7 @@
     "migrate:orders": "node scripts/migrate-order-status-history.js",
     "migrate:batches": "node scripts/migrate-reported-batches.js",
     "migrate:routes": "node scripts/migrate-delivery-routes.js",
-    "migrate:route-codes": "node scripts/migrate-route-codes.js",
+    "assign:route-codes": "node scripts/assign-route-codes.js",
     "close:routes": "node scripts/close-migrated-routes.js"
   },
   "keywords": [],

@@ -50,6 +50,13 @@
 // semilla, el dry-run y la corrida real generan los mismos datos (salvo lo
 // que depende de la hora en que se corra).
 //
+// Rutas: cada una lleva su código R-AAAA-NNNN (el que asigna createRoute del
+// backend, con el consecutivo del año) y se generan a lo largo de ~15 semanas:
+// completadas de semanas anteriores (despacho automático martes y viernes), las
+// de esta semana, y activas creadas un día antes (una En tránsito y una
+// Pendiente), para probar el rango de fechas de Logística. Un motorista o una
+// placa nunca están en dos rutas activas a la vez (disponibilidad sin fecha).
+//
 // Moneda: dólares (USD). La tienda, el panel ($) y el catálogo ya trabajan
 // en USD; los montos siguen los precios reales del catálogo.
 
@@ -61,6 +68,7 @@ import mongoose from "mongoose";
 import { MongoClient } from "mongodb";
 import { EJSON } from "bson";
 import bcryptjs from "bcryptjs";
+import { backupCollections } from "./lib/backup.js";
 
 const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SEED = 20260926;
@@ -787,7 +795,7 @@ async function simulate(catalog) {
         });
       });
     }
-    for (let o = SIM_START + 3; o < back(2); o += 1) if ([2, 5].includes(weekday(o))) dispatchDay(o);
+    for (let o = SIM_START + 3; o <= back(2); o += 1) if ([2, 5].includes(weekday(o))) dispatchDay(o);
 
     // --- Finanzas: gastos del período --------------------------------------
     const expense = (t, concept, category, amount, status = "Completado") =>
@@ -1001,23 +1009,24 @@ async function simulate(catalog) {
     await stepAt(sv(0, 8, 50), () => call(routesCtl.deliverOrder, { params: { id: r1, orderId: created.r1b } }, "entregar"));
     await stepAt(sv(0, 9, 10), async () => {
       r2 = await mkRoute(ZONES.ST, ["r2a", "r2b", "r2c"], [drivers[0], "P-512-KLM"]);
+    });
+    // La Ruta de Oriente se creó y salió AYER y sigue En tránsito: una ruta
+    // activa de un día anterior (debe seguir apareciendo en Logística).
+    await stepAt(sv(back(1), 15, 30), async () => {
       r3 = await mkRoute(ZONES.OR, ["r3a", "r3b"], [drivers[1], "C-208-RTS"]);
     });
-    await stepAt(sv(0, 9, 35), async () => {
-      await call(routesCtl.confirmPickup, { params: { id: r2 }, body: { location: "Almacén" } }, "recoger");
-      await call(routesCtl.confirmPickup, { params: { id: r3 }, body: { location: "Almacén" } }, "recoger");
-    });
-    await stepAt(sv(0, 9, 55), async () => {
-      await call(routesCtl.depart, { params: { id: r2 } }, "salir");
-      await call(routesCtl.depart, { params: { id: r3 } }, "salir");
-    });
+    await stepAt(sv(back(1), 15, 50), () => call(routesCtl.confirmPickup, { params: { id: r3 }, body: { location: "Almacén" } }, "recoger"));
+    await stepAt(sv(back(1), 16, 15), () => call(routesCtl.depart, { params: { id: r3 } }, "salir"));
+    await stepAt(sv(0, 9, 35), () => call(routesCtl.confirmPickup, { params: { id: r2 }, body: { location: "Almacén" } }, "recoger"));
+    await stepAt(sv(0, 9, 55), () => call(routesCtl.depart, { params: { id: r2 } }, "salir"));
     await stepAt(sv(0, 11, 5), () => call(routesCtl.deliverOrder, { params: { id: r2, orderId: created.r2a } }, "entregar"));
     await stepAt(sv(0, 12, 30), () => call(routesCtl.updateRoute, { params: { id: r3 }, body: { delayed: true } }, "demorada"));
     await stepAt(sv(0, 12, 40), async () => {
       r4 = await mkRoute(ZONES.AM, ["r4a", "r4b"], [drivers[2], "P-731-BNX"]);
       await call(routesCtl.confirmPickup, { params: { id: r4 }, body: { location: "Almacén" } }, "recoger");
     });
-    await stepAt(sv(0, 13, 0), () => mkRoute(ZONES.OC, ["r5a"], null));
+    // Ruta Pendiente (sin motorista ni vehículo) creada AYER: otra ruta activa de un día anterior.
+    await stepAt(sv(back(1), 16, 20), () => mkRoute(ZONES.OC, ["r5a"], null));
 
     // Pedidos de hoy en Inventario (sin verificar / verificando / listo para empacar).
     await scripted("pendiente1", sv(0, 8, 15), C("Licuados y Batidos Tropicana"), [
@@ -1230,10 +1239,10 @@ async function checkGenerated(docs, adminId) {
     }
   }
   for (const r of docs.routes) {
-    for (const id of r.orders) if (!orders.has(String(id))) miss(`ruta ${r.number} orders`, id);
-    for (const d of r.deliveries) if (!orders.has(String(d.order))) miss(`ruta ${r.number} deliveries.order`, d.order);
-    if (r.driver && !employees.has(String(r.driver))) miss(`ruta ${r.number} driver`, r.driver);
-    if (r.vehicle && !plates.has(r.vehicle)) miss(`ruta ${r.number} vehicle`, r.vehicle);
+    for (const id of r.orders) if (!orders.has(String(id))) miss(`ruta ${r.code} orders`, id);
+    for (const d of r.deliveries) if (!orders.has(String(d.order))) miss(`ruta ${r.code} deliveries.order`, d.order);
+    if (r.driver && !employees.has(String(r.driver))) miss(`ruta ${r.code} driver`, r.driver);
+    if (r.vehicle && !plates.has(r.vehicle)) miss(`ruta ${r.code} vehicle`, r.vehicle);
   }
   for (const b of docs.productionbatches) {
     if (b.operator && !employees.has(String(b.operator))) miss(`lote ${b.batchNumber} operator`, b.operator);
@@ -1317,10 +1326,52 @@ async function checkGenerated(docs, adminId) {
   const byId = new Map(docs.orders.map((o) => [String(o._id), o]));
   for (const r of docs.routes) {
     const rs = computeRouteStatus(r, r.orders.map((id) => byId.get(String(id))).filter(Boolean));
-    if (rs !== r.status) problems.push(`ruta ${r.number} (${r.date.toISOString().slice(0, 10)}): status ${r.status} ≠ calculado ${rs}`);
+    if (rs !== r.status) problems.push(`ruta ${r.code} (${r.date.toISOString().slice(0, 10)}): status ${r.status} ≠ calculado ${rs}`);
+  }
+  // Código de ruta R-AAAA-NNNN único, y disponibilidad sin fecha: ningún
+  // motorista ni placa en dos rutas activas (sin completar) a la vez.
+  const codes = docs.routes.map((r) => r.code);
+  for (const r of docs.routes) if (!/^R-\d{4}-\d{4,}$/.test(r.code || "")) problems.push(`ruta ${r._id}: código inválido «${r.code}»`);
+  if (new Set(codes).size !== codes.length) problems.push("códigos de ruta repetidos");
+  const crew = { motorista: new Map(), vehículo: new Map() };
+  for (const r of docs.routes.filter((x) => x.status !== "Completada")) {
+    for (const [kind, value] of [["motorista", r.driver && String(r.driver)], ["vehículo", r.vehicle]]) {
+      if (!value) continue;
+      if (crew[kind].has(value)) problems.push(`${kind} ${value} en dos rutas activas (${crew[kind].get(value)} y ${r.code})`);
+      crew[kind].set(value, r.code);
+    }
   }
   for (const i of docs.inventoryitems) if (i.stock < 0) problems.push(`stock negativo: ${i.name} ${i.color ?? ""}`);
   return problems;
+}
+
+// Resumen de las rutas generadas: códigos, fechas y estados (para probar el
+// rango de fechas de Logística).
+function routeSummary(routes) {
+  const iso = (d) => new RealDate(d).toISOString().slice(0, 10);
+  const svDay = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador", year: "numeric", month: "2-digit", day: "2-digit" }).format(new RealDate(d));
+  const monday = (key) => iso(+new RealDate(`${key}T00:00:00Z`) - ((new RealDate(`${key}T00:00:00Z`).getUTCDay() + 6) % 7) * 86400000);
+  const today = dayKey(0);
+  const thisMonday = monday(today);
+  const byCode = [...routes].sort((a, b) => String(a.code).localeCompare(String(b.code), "es", { numeric: true }));
+  const lines = [`${routes.length} rutas · códigos ${byCode[0].code} … ${byCode.at(-1).code}`];
+  const dates = routes.map((r) => +new RealDate(r.date));
+  lines.push(`días de las rutas (date): ${iso(Math.min(...dates))} → ${iso(Math.max(...dates))}`);
+  const status = routes.reduce((m, r) => ((m[r.status] = (m[r.status] || 0) + 1), m), {});
+  lines.push(`por estado: ${Object.entries(status).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
+  const weeks = new Map();
+  for (const r of routes.filter((x) => x.status === "Completada")) {
+    const week = monday(svDay(r.completedAt || r.date));
+    weeks.set(week, (weeks.get(week) || 0) + 1);
+  }
+  const thisWeek = weeks.get(thisMonday) || 0;
+  const earlier = [...weeks.entries()].filter(([w]) => w < thisMonday).reduce((s, [, n]) => s + n, 0);
+  lines.push(`completadas esta semana (desde el lunes ${thisMonday}): ${thisWeek} · de semanas anteriores: ${earlier} en ${weeks.size - (thisWeek ? 1 : 0)} semanas`);
+  lines.push(`completadas por semana (lunes MM-DD:n): ${[...weeks.entries()].sort().map(([w, n]) => `${w.slice(5)}:${n}`).join(" ")}`);
+  for (const r of byCode.filter((x) => x.status !== "Completada")) {
+    lines.push(`activa ${r.code} · ${r.status} · creada ${iso(r.date)}${iso(r.date) < today ? " (de un día anterior)" : ""} · ${r.zone}${r.driver ? "" : " · sin motorista"}`);
+  }
+  return lines;
 }
 
 // Estados que se verán en el panel (dominios de StatusPill).
@@ -1380,8 +1431,8 @@ function preview(name, docs, all) {
     case "dailybatches":
       return docs.map((d) => `${d.dailyBatchNumber} · ${new Date(d.date).toISOString().slice(0, 10)} · ${d.product} ${d.color}`);
     case "routes":
-      return sample([...docs].sort((a, b) => a.date - b.date || a.number - b.number), 10).map(
-        (r) => `Ruta ${r.number} · ${new Date(r.date).toISOString().slice(0, 10)} · ${r.zone} · ${r.vehicle ?? "sin vehículo"} · ${r.orders.length} pedidos · ${r.deliveries.length} entregas · ${r.status}${r.delayed ? " (demorada)" : ""}`,
+      return sample([...docs].sort((a, b) => a.createdAt - b.createdAt), 10).map(
+        (r) => `${r.code} · ${new Date(r.date).toISOString().slice(0, 10)} · ${r.zone} · ${r.vehicle ?? "sin vehículo"} · ${r.orders.length} pedidos · ${r.deliveries.length} entregas · ${r.status}${r.delayed ? " (demorada)" : ""}`,
       );
     case "transactions":
       return sample([...docs].sort((a, b) => a.date - b.date), 10).map((t) => `${t.reference} · ${d10(t.date)} · ${t.type} · ${t.category} · ${t.concept} · ${money(t.amount)} · ${t.status}`);
@@ -1418,27 +1469,8 @@ function preview(name, docs, all) {
 /* Respaldo (EJSON) y corrida real                                             */
 /* -------------------------------------------------------------------------- */
 
-async function backup(db, names) {
-  const stamp = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/El_Salvador", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
-    .format(new RealDate())
-    .replace(" ", "-")
-    .replace(":", "");
-  const dir = path.join(BACKEND_DIR, "backups", `pre-reset-${stamp}`);
-  fs.mkdirSync(dir, { recursive: true });
-  const manifest = { database: db.databaseName, createdAt: new RealDate().toISOString(), collections: {} };
-  for (const name of names) {
-    const col = db.collection(name);
-    const docs = await col.find().toArray();
-    const file = path.join(dir, `${name}.json`);
-    fs.writeFileSync(file, EJSON.stringify(docs, { relaxed: false }, 0));
-    const back = EJSON.parse(fs.readFileSync(file, "utf8"), { relaxed: false });
-    const count = await col.countDocuments();
-    if (back.length !== docs.length || back.length !== count) throw new Error(`respaldo de ${name} incompleto (${back.length} de ${count})`);
-    manifest.collections[name] = { documents: count, indexes: await col.indexes() };
-  }
-  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
-  return dir;
-}
+// Respaldo compartido con assign-route-codes.js (scripts/lib/backup.js).
+const backup = (db, names) => backupCollections(db, names, { prefix: "pre-reset" });
 
 // Colecciones, tipos, índices y validadores, para comparar antes/después.
 async function structure(db) {
@@ -1542,6 +1574,8 @@ async function main() {
     console.log(`Finanzas del período: ingresos ${money(income)} · gastos ${money(spend)} · neto ${money(income - spend)}`);
     console.log("\n=== Estados que se verán en el panel ===");
     for (const [k, v] of Object.entries(await coverage(docs))) console.log(`- ${k}: ${Object.entries(v).map(([s, n]) => `${s} ${n}`).join(" · ")}`);
+    console.log("\n=== Rutas generadas (códigos, fechas y estados) ===");
+    for (const line of routeSummary(docs.routes)) console.log(`- ${line}`);
     console.log("\n=== Productos en los datos generados (solo deben ser subcategorías) ===");
     const distinct = (label, names) => {
       const counts = names.reduce((m, n) => ((m[n] = (m[n] || 0) + 1), m), {});
