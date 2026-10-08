@@ -5,7 +5,7 @@ import Modal from "../../components/ui/Modal";
 import PillSelector from "../../components/ui/PillSelector";
 import { Field } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
-import { personName, routeLabel } from "../../lib/logistics";
+import { personName, routeLabel, vehicleLabel } from "../../lib/logistics";
 
 const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
 
@@ -21,7 +21,7 @@ function ModalNuevaRuta({ availability, onClose, onCreated }) {
   const [saving, setSaving] = useState(false);
 
   const drivers = (availability?.drivers || []).map((d) => ({ value: d._id, label: personName(d), busy: d.busy }));
-  const vehicles = (availability?.vehicles || []).map((v) => ({ value: v.plate, label: v.plate, busy: v.busy }));
+  const vehicles = (availability?.vehicles || []).map((v) => ({ value: v.plate, label: vehicleLabel(v), busy: v.busy }));
 
   async function submit(e) {
     e.preventDefault();

@@ -10,14 +10,18 @@ import EmptyState from "../../components/ui/EmptyState";
 import FilterChips from "../../components/ui/FilterChips";
 import SearchInput from "../../components/ui/SearchInput";
 import PillSelector from "../../components/ui/PillSelector";
+import Avatar from "../../components/ui/Avatar";
+import Modal from "../../components/ui/Modal";
+import VehiclePhoto from "../../components/ui/VehiclePhoto";
 import ActionsMenu from "../../components/ui/ActionsMenu";
 import ConfirmModal from "../../components/ui/ConfirmModal";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
+import { buttonClass } from "../../lib/buttonStyles";
 import { toastUndo } from "../../lib/toastUndo";
 import { TONE_SOFT } from "../../lib/tones";
 import { fmtNumber, fmtDate, fmtTime } from "../../lib/format";
-import { IconCheck, IconFactory, IconWarehouse, IconOrders, IconPlus } from "../../lib/icons";
+import { IconCheck, IconEdit, IconFactory, IconWarehouse, IconOrders, IconPlus } from "../../lib/icons";
 import {
   DISPATCH_GROUPS,
   dispatchCounts,
@@ -41,6 +45,7 @@ import {
   departBlocker,
   personName,
   shortName,
+  vehicleLabel,
 } from "../../lib/logistics";
 
 // Chips: «Todos» más uno por grupo de la jerarquía (lib/logistics.js).
@@ -153,15 +158,73 @@ function TimelineDot({ done, children }) {
   );
 }
 
+/*
+  Ficha de la unidad de la ruta: foto, modelo y placa del vehículo, y el
+  motorista. «Cambiar» (o «Asignar», si falta alguno) abre el modal con los
+  selectores. Los datos del vehículo salen de availability por la placa; si la
+  placa ya no existe en Configuración, solo se muestra la placa.
+*/
+function CrewCard({ route, unit, onEdit }) {
+  const plate = route.vehicle || "";
+  const driver = route.driver?.name ? route.driver : null;
+  const incomplete = !plate || !driver;
+
+  return (
+    <div className="relative rounded-[12px] border border-line-soft bg-surface-2 p-3.5">
+      <Button variant="secondary" size="row" icon={IconEdit} onClick={onEdit} className="absolute right-3 top-3 z-10">
+        {incomplete ? "Asignar" : "Cambiar"}
+      </Button>
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+        {plate ? (
+          <VehiclePhoto url={unit?.imageUrl} className="aspect-[176/108] w-full max-w-[360px] rounded-[10px] sm:h-[108px] sm:w-[176px]" iconSize={44} />
+        ) : (
+          <div className="flex aspect-[176/108] w-full max-w-[360px] items-center justify-center rounded-[10px] border border-dashed border-line px-3 text-center text-[12.5px] text-muted sm:h-[108px] sm:w-[176px] sm:shrink-0">
+            Sin vehículo asignado
+          </div>
+        )}
+
+        {plate ? (
+          <div className="min-w-0 sm:pr-5">
+            <p className="t-label">Vehículo</p>
+            {unit?.model ? <p className="mt-1 truncate text-[17px] font-bold leading-snug text-ink">{unit.model}</p> : null}
+            <span className="mt-1.5 inline-block rounded-[8px] border border-line bg-surface px-2.5 py-1 text-[13px] font-bold tabular-nums text-ink">{plate}</span>
+          </div>
+        ) : null}
+
+        <span className="h-px w-full bg-line sm:h-[72px] sm:w-px sm:shrink-0" aria-hidden="true" />
+
+        <div className="min-w-0 sm:flex-1">
+          <p className="t-label">Motorista</p>
+          {driver ? (
+            <div className="mt-2 flex items-center gap-2.5">
+              <Avatar person={driver} size={40} tone="color" />
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-bold text-ink">{personName(driver)}</p>
+                {driver.phone ? <p className="t-aux tabular-nums">{driver.phone}</p> : null}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-[13px] text-muted">Sin motorista asignado</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, onDeleted }) {
   const { confirm, confirmProps } = useConfirm();
   // Pedidos incompletos que se llevan como están («Llevar lo que hay»).
   const [takeAsIs, setTakeAsIs] = useState(() => new Set());
+  // Modal «Motorista y vehículo».
+  const [crewOpen, setCrewOpen] = useState(false);
   const orders = (route.orders || []).map((o) => ordersById.get(String(o._id)) || o);
   const pickups = requiredPickups(orders);
   const blocker = departBlocker(route, orders);
   const routeUrl = `/routes/${route._id}`;
   const driverId = String(route.driver?._id || route.driver || "");
+  const unit = (availability?.vehicles || []).find((v) => v.plate === route.vehicle);
   const empty = !route.orders?.length && !route.deliveries?.length;
 
   const driverOptions = (availability?.drivers || []).map((d) => ({
@@ -171,7 +234,7 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
   }));
   const vehicleOptions = (availability?.vehicles || []).map((v) => ({
     value: v.plate,
-    label: v.plate,
+    label: vehicleLabel(v),
     busy: v.busy && String(v.route?._id) !== String(route._id),
   }));
 
@@ -243,24 +306,7 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
       }
     >
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-2.5 rounded-[12px] border border-line-soft bg-surface-2 px-3.5 py-3">
-          <div className="flex items-start gap-3">
-            <span className="t-label w-[72px] shrink-0 pt-1.5">Motorista</span>
-            {driverOptions.length ? (
-              <PillSelector options={driverOptions} value={driverId} onChange={(v) => change("driver", v, driverId, "Motorista")} />
-            ) : (
-              <span className="t-aux pt-1">No hay empleados activos del área Logística.</span>
-            )}
-          </div>
-          <div className="flex items-start gap-3">
-            <span className="t-label w-[72px] shrink-0 pt-1.5">Vehículo</span>
-            {vehicleOptions.length ? (
-              <PillSelector options={vehicleOptions} value={route.vehicle || ""} onChange={(v) => change("vehicle", v, route.vehicle, "Vehículo")} />
-            ) : (
-              <span className="t-aux pt-1">No hay vehículos en Configuración.</span>
-            )}
-          </div>
-        </div>
+        <CrewCard route={route} unit={unit} onEdit={() => setCrewOpen(true)} />
 
         <div className="relative flex flex-col gap-4">
           <span className="absolute bottom-3 left-[13px] top-3 w-[2px] bg-line" aria-hidden="true" />
@@ -357,6 +403,37 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
           ))}
         </div>
       </div>
+      <Modal
+        open={crewOpen}
+        onClose={() => setCrewOpen(false)}
+        title={`Motorista y vehículo · ${routeLabel(route)}`}
+        subtitle="Cada cambio se guarda al momento."
+        size="lg"
+        footer={
+          <button type="button" onClick={() => setCrewOpen(false)} className={buttonClass("primary", "modal")}>
+            Listo
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Motorista</span>
+            {driverOptions.length ? (
+              <PillSelector options={driverOptions} value={driverId} onChange={(v) => change("driver", v, driverId, "Motorista")} />
+            ) : (
+              <p className="t-aux">No hay empleados activos del área Logística.</p>
+            )}
+          </div>
+          <div>
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Vehículo</span>
+            {vehicleOptions.length ? (
+              <PillSelector options={vehicleOptions} value={route.vehicle || ""} onChange={(v) => change("vehicle", v, route.vehicle, "Vehículo")} />
+            ) : (
+              <p className="t-aux">No hay vehículos en Configuración.</p>
+            )}
+          </div>
+        </div>
+      </Modal>
       <ConfirmModal {...confirmProps} />
     </DetailPanel>
   );

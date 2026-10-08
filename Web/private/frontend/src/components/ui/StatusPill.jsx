@@ -7,6 +7,8 @@ import { normalizeStatus, statusTone } from "../../lib/statusDomains";
     <StatusPill status="Empacado" domain="pedido" />
     size:    "sm" (filas) | "lg" (encabezados de detalle)
     variant: "pill" (con fondo) | "dot" (solo punto + texto, listas maestro)
+    label:   texto a mostrar si es distinto del estado (p. ej. «En ruta · R-2026-0042»);
+             el color sigue saliendo de `status`
 */
 
 const TONES = {
@@ -19,7 +21,7 @@ const TONES = {
   teal: { bg: "bg-tone-teal", text: "text-tone-teal-text", dot: "bg-tone-teal-dot", border: "border-tone-teal-dot/30" },
 };
 
-function StatusPill({ status, domain, size = "sm", variant = "pill" }) {
+function StatusPill({ status, domain, size = "sm", variant = "pill", label: text }) {
   const label = normalizeStatus(status);
   const tone = TONES[statusTone(label, domain)];
 
@@ -27,7 +29,7 @@ function StatusPill({ status, domain, size = "sm", variant = "pill" }) {
     return (
       <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px] font-semibold ${tone.text}`}>
         <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${tone.dot}`} />
-        {label}
+        {text ?? label}
       </span>
     );
   }
@@ -40,7 +42,7 @@ function StatusPill({ status, domain, size = "sm", variant = "pill" }) {
   return (
     <span className={`inline-flex items-center whitespace-nowrap font-semibold ${sizing} ${tone.bg} ${tone.text}`}>
       <span className={`shrink-0 rounded-full ${size === "lg" ? "h-[7px] w-[7px]" : "h-1.5 w-1.5"} ${tone.dot}`} />
-      {label}
+      {text ?? label}
     </span>
   );
 }

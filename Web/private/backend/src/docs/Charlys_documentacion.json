@@ -3122,7 +3122,17 @@
                           },
                           "route": {
                             "type": "object",
-                            "nullable": true
+                            "nullable": true,
+                            "description": "Ruta sin completar en la que va. Incluye departedAt (null si todavia no sale) y driverName.",
+                            "properties": {
+                              "_id": {"type": "string"},
+                              "code": {"type": "string"},
+                              "number": {"type": "integer"},
+                              "zone": {"type": "string"},
+                              "status": {"type": "string"},
+                              "departedAt": {"type": "string", "format": "date-time", "nullable": true},
+                              "driverName": {"type": "string", "nullable": true}
+                            }
                           }
                         }
                       }
@@ -3132,15 +3142,37 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "_id": {
+                            "type": "string"
+                          },
                           "plate": {
                             "type": "string"
+                          },
+                          "model": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "imageUrl": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "URL de la foto del vehiculo (Cloudinary)"
                           },
                           "busy": {
                             "type": "boolean"
                           },
                           "route": {
                             "type": "object",
-                            "nullable": true
+                            "nullable": true,
+                            "description": "Ruta sin completar en la que va. Incluye departedAt (null si todavia no sale) y driverName.",
+                            "properties": {
+                              "_id": {"type": "string"},
+                              "code": {"type": "string"},
+                              "number": {"type": "integer"},
+                              "zone": {"type": "string"},
+                              "status": {"type": "string"},
+                              "departedAt": {"type": "string", "format": "date-time", "nullable": true},
+                              "driverName": {"type": "string", "nullable": true}
+                            }
                           }
                         }
                       }

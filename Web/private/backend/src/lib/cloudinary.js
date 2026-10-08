@@ -40,6 +40,34 @@ export function uploadLogoBuffer(buffer) {
   });
 }
 
+// Foto del vehículo (Configuración > Vehículos): una sola imagen de hasta 5 MB.
+export const uploadVehicleImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype?.startsWith("image/")) return cb(null, true);
+    const error = new Error("La foto debe ser una imagen");
+    error.status = 400;
+    cb(error);
+  },
+});
+
+// Sube el buffer a "industrias-charly/vehiculos". JPEG (como los productos):
+// re-codifica cualquier entrada, HEIC incluido.
+export function uploadVehicleImageBuffer(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "industrias-charly/vehiculos",
+        format: "jpg",
+        transformation: [{ width: 1200, height: 1200, crop: "limit" }],
+      },
+      (error, result) => (error ? reject(error) : resolve(result)),
+    );
+    stream.end(buffer);
+  });
+}
+
 // Fotos de producto del Catálogo: hasta 6 por envío (campo "images"), de
 // hasta 10 MB cada una (las de celular suelen pasar de 5 MB).
 export const PRODUCT_IMAGE_MAX_MB = 10;

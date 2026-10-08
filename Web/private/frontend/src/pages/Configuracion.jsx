@@ -10,6 +10,7 @@ import { useSubcategories } from "../hooks/useSubcategories";
 import { useAuth } from "../hooks/useAuth";
 import LineasProduccion from "./configuracion/LineasProduccion";
 import Subcategorias from "./configuracion/Subcategorias";
+import Vehiculos from "./configuracion/Vehiculos";
 import PersonalPermisos from "./configuracion/PersonalPermisos";
 import MiCuenta from "./configuracion/MiCuenta";
 import ConfirmPasswordModal from "./configuracion/ConfirmPasswordModal";
@@ -18,8 +19,7 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import PageHeader from "../components/ui/PageHeader";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
-import StatusPill from "../components/ui/StatusPill";
-import { InlineName, ListCard, ListRow, RowAction, RowIcon, RowText } from "./configuracion/SettingsList";
+import { InlineName, ListCard, ListRow, RowAction, RowIcon } from "./configuracion/SettingsList";
 import { useFillHeight } from "../hooks/useFillHeight";
 import { Field } from "../components/ui/Field";
 import { buttonClass } from "../lib/buttonStyles";
@@ -28,7 +28,6 @@ import {
   IconBox,
   IconBuilding,
   IconCheck,
-  IconEdit,
   IconFactory,
   IconPlus,
   IconTag,
@@ -38,7 +37,6 @@ import {
   IconUsers,
 } from "../lib/icons";
 import { fmtNumber, fmtElapsed, fmtRelativeDay } from "../lib/format";
-import { personName, routeLabel } from "../lib/logistics";
 
 // Datos de la empresa: viven en el backend (/settings/company, compartidos
 // por todos los usuarios), igual que el horario laboral
@@ -175,26 +173,21 @@ function SectionMenu({ value, onChange, counts, companyName, updatedAt }) {
 }
 
 /*
-  Modal para agregar una bodega o un vehículo, o editar la placa de un
-  vehículo (un solo campo). Eliminar se hace desde el ícono de la fila; el
-  nombre de una bodega se edita en la misma fila (InlineName).
+  Modal para agregar una bodega. Eliminar se hace desde el ícono de la fila y
+  el nombre se edita en la misma fila (InlineName). Los vehículos tienen su
+  propia sección con lista y detalle (configuracion/Vehiculos.jsx).
 */
-function EntityModal({ state, onClose, onSubmit }) {
-  const [value, setValue] = useState(state?.item?.label || "");
+function WarehouseModal({ onClose, onSubmit }) {
+  const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  if (!state) return null;
-  const { kind, item } = state;
-  const isWarehouse = kind === "warehouse";
-  const noun = isWarehouse ? "bodega" : "vehículo";
 
   async function submit(e) {
     e.preventDefault();
     const trimmed = value.trim();
-    if (!trimmed) return toast.error(isWarehouse ? "Escribe el nombre de la bodega" : "Escribe la placa del vehículo");
-    if (item && trimmed === item.label) return onClose();
+    if (!trimmed) return toast.error("Escribe el nombre de la bodega");
     setBusy(true);
     try {
-      await onSubmit(kind, item, trimmed);
+      await onSubmit(trimmed);
       onClose();
     } catch (err) {
       toast.error(err.message);
@@ -207,28 +200,20 @@ function EntityModal({ state, onClose, onSubmit }) {
     <Modal
       open
       onClose={onClose}
-      title={item ? `Editar ${noun}` : isWarehouse ? "Nueva bodega" : "Nuevo vehículo"}
+      title="Nueva bodega"
       footer={
         <>
           <button type="button" onClick={onClose} className={buttonClass("secondary", "modal")}>
             Cancelar
           </button>
-          <button type="submit" form="entity-form" disabled={busy} className={buttonClass("primary", "modal")}>
-            {busy ? "Guardando…" : item ? "Guardar" : "Agregar"}
+          <button type="submit" form="warehouse-form" disabled={busy} className={buttonClass("primary", "modal")}>
+            {busy ? "Guardando…" : "Agregar"}
           </button>
         </>
       }
     >
-      <form id="entity-form" onSubmit={submit} className="flex flex-col gap-2">
-        <Field
-          label={isWarehouse ? "Nombre de la bodega" : "Placa"}
-          name="value"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={isWarehouse ? "Ej. Bodega Central" : "Ej. P123-456"}
-          autoFocus
-          required
-        />
+      <form id="warehouse-form" onSubmit={submit} className="flex flex-col gap-2">
+        <Field label="Nombre de la bodega" name="value" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Ej. Bodega Central" autoFocus required />
       </form>
     </Modal>
   );
@@ -240,10 +225,9 @@ function Configuracion() {
 
   const { data: companyData, error: companyError, mutate: mutateCompany } = useFetch("/settings/company");
   const { data: warehousesData, loading: warehousesLoading, error: warehousesError, refetch: refetchWarehouses } = useFetch("/warehouses");
-  const { data: vehiclesData, loading: vehiclesLoading, error: vehiclesError, refetch: refetchVehicles } = useFetch("/vehicles");
+  const { data: vehiclesData, loading: vehiclesLoading, error: vehiclesError, mutate: mutateVehicles } = useFetch("/vehicles");
   const { data: inventoryData, refetch: refetchInventory } = useFetch("/inventory");
   const { data: availability, refetch: refetchAvailability } = useFetch("/routes/availability");
-  const { data: routesData } = useFetch("/routes");
   const { schedule, loading: scheduleLoading, refetch: refetchSchedule } = useWorkSchedule();
   const { lines, loading: linesLoading, error: linesError, refetch: refetchLines } = useProductionLines();
   const { subcategories, loading: subcategoriesLoading, error: subcategoriesError, refetch: refetchSubcategories } = useSubcategories();
@@ -267,8 +251,8 @@ function Configuracion() {
   const [passwordPrompt, setPasswordPrompt] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  // Modal de bodega/vehículo: { kind: "warehouse" | "vehicle", item? } (sin item = agregar).
-  const [entityModal, setEntityModal] = useState(null);
+  // Modal «Nueva bodega».
+  const [warehouseModal, setWarehouseModal] = useState(false);
   const logoInputRef = useRef(null);
   const layoutRef = useRef(null);
   const layoutHeight = useFillHeight(layoutRef);
@@ -306,17 +290,6 @@ function Configuracion() {
     });
     return map;
   }, [inventoryData]);
-
-  const vehicleRoutes = useMemo(
-    () => new Map((availability?.vehicles || []).filter((v) => v.busy).map((v) => [String(v._id), v.route])),
-    [availability],
-  );
-
-  // Motorista de cada ruta de hoy (availability solo trae número y zona).
-  const routeDrivers = useMemo(
-    () => new Map((Array.isArray(routesData) ? routesData : []).map((r) => [String(r._id), personName(r.driver)])),
-    [routesData],
-  );
 
   function handleCompanyChange(e) {
     setCompanyDraft({ ...company, [e.target.name]: e.target.value });
@@ -474,42 +447,24 @@ function Configuracion() {
     }
   }
 
-  // Bodegas y vehículos: agregar (modal), renombrar una bodega (en la fila)
-  // o cambiar la placa de un vehículo (modal).
-  async function saveEntity(kind, item, value) {
-    if (kind === "warehouse") {
-      if (item) await api.put(`/warehouses/${item.id}`, { name: value });
-      else await api.post("/warehouses", { name: value });
-      toast.success(item ? "Bodega actualizada" : "Bodega agregada");
-      refetchWarehouses();
-      return;
-    }
-    if (item) await api.put(`/vehicles/${item.id}`, { plate: value });
-    else await api.post("/vehicles", { plate: value });
-    toast.success(item ? "Vehículo actualizado" : "Vehículo agregado");
-    refetchVehicles();
-    refetchAvailability();
+  // Bodegas: agregar (modal) o renombrar (en la fila).
+  async function saveWarehouse(item, name) {
+    if (item) await api.put(`/warehouses/${item.id}`, { name });
+    else await api.post("/warehouses", { name });
+    toast.success(item ? "Bodega actualizada" : "Bodega agregada");
+    refetchWarehouses();
   }
 
-  async function deleteEntity(kind, item) {
-    const isWarehouse = kind === "warehouse";
-    const message = isWarehouse
-      ? `¿Eliminar la bodega «${item.label}»? Ya no se podrá elegir para enviar lotes ni verificar pedidos.`
-      : `¿Eliminar el vehículo «${item.label}»? Ya no se podrá elegir al armar rutas.`;
-    if (!(await confirm(message, { danger: true }))) return;
+  async function deleteWarehouse(item) {
+    if (!(await confirm(`¿Eliminar la bodega «${item.label}»? Ya no se podrá elegir para enviar lotes ni verificar pedidos.`, { danger: true }))) return;
     try {
-      await api.del(`/${isWarehouse ? "warehouses" : "vehicles"}/${item.id}`);
-      toast.success(isWarehouse ? "Bodega eliminada" : "Vehículo eliminado");
+      await api.del(`/warehouses/${item.id}`);
+      toast.success("Bodega eliminada");
     } catch (err) {
       toast.error(err.message);
     } finally {
-      if (isWarehouse) {
-        refetchWarehouses();
-        refetchInventory();
-      } else {
-        refetchVehicles();
-        refetchAvailability();
-      }
+      refetchWarehouses();
+      refetchInventory();
     }
   }
 
@@ -528,32 +483,14 @@ function Configuracion() {
     return (
       <ListRow key={w._id}>
         <RowIcon icon={IconBox} />
-        <InlineName value={w.name} detail={detail} label="nombre de la bodega" onSave={(name) => saveEntity("warehouse", item, name)} />
-        <RowAction icon={IconTrash} label={`Eliminar ${w.name}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => deleteEntity("warehouse", item)} />
+        <InlineName value={w.name} detail={detail} label="nombre de la bodega" onSave={(name) => saveWarehouse(item, name)} />
+        <RowAction icon={IconTrash} label={`Eliminar ${w.name}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => deleteWarehouse(item)} />
       </ListRow>
     );
   };
 
-  // Vehículos: editar (modal con la placa) y eliminar, cada uno con su ícono.
-  const renderVehicle = (v) => {
-    const route = vehicleRoutes.get(String(v._id));
-    const driver = route ? routeDrivers.get(String(route._id)) : null;
-    const item = { id: v._id, label: v.plate };
-    const blocked = route ? "No se puede eliminar: el vehículo está en ruta" : null;
-    const detail = route ? [`${routeLabel(route)}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ") : "sin asignar";
-    return (
-      <ListRow key={v._id}>
-        <RowIcon icon={IconTruck} />
-        <RowText title={v.plate} detail={detail} />
-        <StatusPill status={route ? "En ruta" : "Disponible"} domain="vehiculo" />
-        <RowAction icon={IconEdit} label={`Editar ${v.plate}`} onClick={() => setEntityModal({ kind: "vehicle", item })} />
-        <RowAction icon={IconTrash} label={`Eliminar ${v.plate}`} danger disabled={Boolean(blocked)} reason={blocked} onClick={() => deleteEntity("vehicle", item)} />
-      </ListRow>
-    );
-  };
-
-  const addButton = (kind) => (
-    <Button variant="soft" size="detail" icon={IconPlus} onClick={() => setEntityModal({ kind })}>
+  const addButton = (
+    <Button variant="soft" size="detail" icon={IconPlus} onClick={() => setWarehouseModal(true)}>
       Agregar
     </Button>
   );
@@ -562,27 +499,13 @@ function Configuracion() {
     <ListCard
       title="Bodegas"
       subtitle="Destinos disponibles al reportar inventario · clic en el nombre para cambiarlo"
-      action={addButton("warehouse")}
+      action={addButton}
       items={warehouses}
       renderRow={renderWarehouse}
       loading={warehousesLoading}
       error={warehousesError}
       emptyText="No hay bodegas registradas."
       noun="bodegas"
-    />
-  );
-
-  const vehiclesCard = (
-    <ListCard
-      title="Vehículos"
-      subtitle="Flota disponible para armar rutas"
-      action={addButton("vehicle")}
-      items={vehicles}
-      renderRow={renderVehicle}
-      loading={vehiclesLoading}
-      error={vehiclesError}
-      emptyText="No hay vehículos registrados."
-      noun="vehículos"
     />
   );
 
@@ -705,7 +628,14 @@ function Configuracion() {
           ) : section === "bodegas" ? (
             warehousesCard
           ) : section === "vehiculos" ? (
-            vehiclesCard
+            <Vehiculos
+              vehicles={vehicles}
+              loading={vehiclesLoading}
+              error={vehiclesError}
+              mutate={mutateVehicles}
+              availability={availability}
+              refetchAvailability={refetchAvailability}
+            />
           ) : section === "lineas" ? (
             <LineasProduccion lines={lines} loading={linesLoading} error={linesError} refetch={refetchLines} />
           ) : section === "subcategorias" ? (
@@ -725,14 +655,7 @@ function Configuracion() {
         </div>
       </div>
 
-      {entityModal ? (
-        <EntityModal
-          key={`${entityModal.kind}-${entityModal.item?.id || "new"}`}
-          state={entityModal}
-          onClose={() => setEntityModal(null)}
-          onSubmit={saveEntity}
-        />
-      ) : null}
+      {warehouseModal ? <WarehouseModal onClose={() => setWarehouseModal(false)} onSubmit={(name) => saveWarehouse(null, name)} /> : null}
       <ConfirmPasswordModal
         state={passwordPrompt}
         busy={saving}

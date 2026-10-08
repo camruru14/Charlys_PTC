@@ -34,12 +34,17 @@ export function MasterDetail({ listWidth = 360, className = "", children }) {
   );
 }
 
-export function ListPanel({ header, footer, children }) {
+// bodyRef: ref del cuerpo con scroll, para medir cuántas filas caben
+// (useFitPageSize). rawFooter: el pie ya trae su propio fondo, borde y relleno
+// (p. ej. <Pagination />) y se pone tal cual.
+export function ListPanel({ header, footer, bodyRef, rawFooter = false, children }) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
       {header ? <div className="flex flex-col gap-2.5 border-b border-line-soft p-3">{header}</div> : null}
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      {footer ? <div className="border-t border-line-soft bg-surface-2 px-4 py-2.5">{footer}</div> : null}
+      <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
+        {children}
+      </div>
+      {footer ? rawFooter ? footer : <div className="border-t border-line-soft bg-surface-2 px-4 py-2.5">{footer}</div> : null}
     </section>
   );
 }

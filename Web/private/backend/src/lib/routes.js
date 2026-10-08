@@ -481,7 +481,20 @@ export async function availability() {
     employeeModel.find({ isActive: true, department: "Logística" }).select("name lastName phone").sort({ name: 1 }),
     vehicleModel.find().sort({ plate: 1 }),
   ]);
-  const brief = (r) => ({ _id: r._id, code: r.code, number: r.number, zone: r.zone, status: r.status });
+  // Nombre del motorista de cada ruta (puede no estar entre los activos de Logística).
+  const crew = await employeeModel
+    .find({ _id: { $in: routes.map((r) => r.driver).filter(Boolean) } })
+    .select("name lastName");
+  const driverNames = new Map(crew.map((e) => [String(e._id), `${e.name} ${e.lastName || ""}`.trim()]));
+  const brief = (r) => ({
+    _id: r._id,
+    code: r.code,
+    number: r.number,
+    zone: r.zone,
+    status: r.status,
+    departedAt: r.departedAt || null,
+    driverName: (r.driver && driverNames.get(String(r.driver))) || null,
+  });
   const byDriver = new Map(routes.filter((r) => r.driver).map((r) => [String(r.driver), brief(r)]));
   const byVehicle = new Map(routes.filter((r) => r.vehicle).map((r) => [r.vehicle, brief(r)]));
   return {
@@ -497,6 +510,8 @@ export async function availability() {
     vehicles: vehicles.map((v) => ({
       _id: v._id,
       plate: v.plate,
+      model: v.model || null,
+      imageUrl: v.image?.url || null,
       busy: byVehicle.has(v.plate),
       route: byVehicle.get(v.plate) || null,
     })),

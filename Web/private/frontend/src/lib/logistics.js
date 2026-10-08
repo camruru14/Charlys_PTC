@@ -28,6 +28,8 @@ export function orderPickups(order) {
 
 export const isOrderDelivered = (order) => order.status === "Entregado" || Boolean(order.delivery?.deliveredAt);
 export const personName = (p) => (p?.name ? `${p.name} ${p.lastName || ""}`.trim() : null);
+// «P123-456 · Isuzu NPR» (solo la placa si el vehículo no tiene modelo).
+export const vehicleLabel = (vehicle) => (vehicle?.model ? `${vehicle.plate} · ${vehicle.model}` : vehicle?.plate || "");
 // «J. Menjívar»
 export const shortName = (p) => (p?.name ? `${p.name.trim()[0]}. ${p.lastName || ""}`.trim() : null);
 
