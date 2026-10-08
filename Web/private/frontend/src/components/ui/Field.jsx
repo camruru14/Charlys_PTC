@@ -16,7 +16,7 @@
   - TextareaField: área de texto.
 */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IconChevronDown, IconEye, IconEyeOff } from "../../lib/icons";
 
 const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
@@ -138,12 +138,36 @@ function useDropdown() {
   return { open, setOpen, rect, rootRef, triggerRef, toggleOpen };
 }
 
+// La lista de opciones muestra como máximo 4 filas de 36 px (más el relleno
+// vertical de 4 px arriba y abajo y el borde de 1 px); con más opciones hace scroll.
+const OPTION_HEIGHT = 36;
+const VISIBLE_OPTIONS = 4;
+const LIST_PADDING = 4;
+const LIST_MAX_HEIGHT = VISIBLE_OPTIONS * OPTION_HEIGHT + LIST_PADDING * 2 + 2;
+
 // Panel flotante de opciones, compartido por SelectField y FilterSelect.
 function DropdownOptions({ rect, options, value, onSelect }) {
+  const listRef = useRef(null);
+  const selectedRef = useRef(null);
+
+  // Al abrir, si la opción seleccionada queda fuera de las filas visibles, la
+  // lista se desplaza hasta mostrarla (sin animación). Se ajusta scrollTop de
+  // la propia lista, no scrollIntoView, para no mover el modal ni la página.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const item = selectedRef.current;
+    if (!list || !item) return;
+    const top = item.offsetTop;
+    const bottom = top + item.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top - LIST_PADDING;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight + LIST_PADDING;
+  }, []);
+
   return (
     <div
-      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}
-      className="z-[60] max-h-52 overflow-y-auto rounded-[10px] border border-line bg-surface py-1 shadow-modal"
+      ref={listRef}
+      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, maxHeight: LIST_MAX_HEIGHT }}
+      className="z-[60] overflow-y-auto overscroll-contain rounded-[10px] border border-line bg-surface py-1 shadow-modal"
     >
       {options.length === 0 ? (
         <p className="px-3.5 py-2 text-[13px] text-faint">Sin opciones</p>
@@ -153,19 +177,22 @@ function DropdownOptions({ rect, options, value, onSelect }) {
           const text = typeof opt === "string" ? opt : opt.label;
           // Una opción { value, label, disabled: true } se ve pero no se puede elegir.
           const disabled = typeof opt !== "string" && Boolean(opt.disabled);
+          const selected = val === value;
           return (
             <button
               key={val}
+              ref={selected ? selectedRef : undefined}
               type="button"
               disabled={disabled}
+              title={text}
               onClick={() => onSelect(opt)}
-              className={`block w-full px-3.5 py-2 text-left text-[13px] ${
+              className={`flex h-9 w-full items-center px-3.5 text-left text-[13px] ${
                 disabled
                   ? "cursor-not-allowed text-faint"
-                  : `hover:bg-surface-2 ${val === value ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"}`
+                  : `hover:bg-surface-2 ${selected ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"}`
               }`}
             >
-              {text}
+              <span className="block min-w-0 flex-1 truncate">{text}</span>
             </button>
           );
         })
