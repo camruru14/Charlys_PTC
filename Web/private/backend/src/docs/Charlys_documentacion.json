@@ -567,6 +567,13 @@
             "type": "string",
             "example": "Azul"
           },
+          "targetQuantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999999,
+            "example": 5000,
+            "description": "Meta (unidades a producir). Pasa a targetQuantity del lote de fabricación al programarlo. Los lotes diarios anteriores no la tienen."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -593,9 +600,16 @@
           "color": {
             "type": "string",
             "example": "Azul"
+          },
+          "targetQuantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999999,
+            "example": 5000,
+            "description": "Meta (unidades a producir). Obligatoria al crear y al editar; acepta también un string numérico."
           }
         },
-        "required": ["date", "product"]
+        "required": ["date", "product", "targetQuantity"]
       },
       "DailyBatchCreatedResponse": {
         "type": "object",
@@ -5222,7 +5236,7 @@
       "patch": {
         "tags": ["Lotes Diarios"],
         "summary": "Programar lote diario para enviarlo a fabricación",
-        "description": "Convierte el lote diario en un lote de fabricación activo con categoría `Diario` y estado `Programado`, eliminándolo de la lista de lotes diarios.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
+        "description": "Convierte el lote diario en un lote de fabricación activo con categoría `Diario` y estado `Programado`, eliminándolo de la lista de lotes diarios. El lote diario debe tener meta (`targetQuantity`): el lote de fabricación se crea con esa meta.\n\n**Roles permitidos:** `admin`, `gerente`, `operario`.",
         "security": [
           {
             "cookieAuth": []
@@ -5240,6 +5254,19 @@
           }
         ],
         "responses": {
+          "400": {
+            "description": "El lote diario no tiene meta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Agrega la meta de LTE-DIARIO-0001 antes de programarlo."
+                }
+              }
+            }
+          },
           "200": {
             "description": "Lote diario programado a fabricación",
             "content": {

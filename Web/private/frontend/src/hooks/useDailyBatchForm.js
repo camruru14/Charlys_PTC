@@ -10,7 +10,20 @@ export const emptyDailyBatchForm = {
   date: "",
   product: "", // nombre de un producto del Catálogo (ProductSelect); sin valor por defecto
   color: "Rojo",
+  targetQuantity: "", // Meta (unidades): entero de 1 a 9 999 999, obligatoria
 };
+
+const MAX_TARGET = 9999999;
+
+// Mismos mensajes que el backend (dailyBatchesController). Devuelve el mensaje
+// del error, o null si la meta es válida.
+export function targetError(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "Escribe la meta del lote (unidades).";
+  const n = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isInteger(n) || n < 1 || n > MAX_TARGET) return "La meta debe ser un número entero entre 1 y 9 999 999.";
+  return null;
+}
 
 // Vista previa del próximo ID de lote diario (el backend genera el definitivo al guardar)
 export function previewDailyBatchNumber(list) {
@@ -48,6 +61,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
       date: batch.date ? new Date(batch.date).toISOString().slice(0, 10) : "",
       product: batch.product || "",
       color: batch.color || "",
+      targetQuantity: batch.targetQuantity != null ? String(batch.targetQuantity) : "",
     });
     setModalOpen(true);
   }
@@ -60,11 +74,17 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
       toast.error("Elige la categoría y el producto");
       return;
     }
+    const invalidTarget = targetError(form.targetQuantity);
+    if (invalidTarget) {
+      toast.error(invalidTarget);
+      return;
+    }
     setSaving(true);
     const { dailyBatchNumber, ...rest } = form;
     const payload = {
       ...rest,
       date: form.date || undefined,
+      targetQuantity: Number(form.targetQuantity),
     };
     try {
       if (editingId) {
@@ -77,7 +97,7 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
       setModalOpen(false);
       refetch();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message, { duration: 6000 });
     } finally {
       setSaving(false);
     }
@@ -102,7 +122,8 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
       refetch();
       onScheduled?.();
     } catch (err) {
-      toast.error(err.message);
+      // El backend explica por qué no se pudo (p. ej. el lote no tiene meta).
+      toast.error(err.message, { duration: 6000 });
     }
   }
 

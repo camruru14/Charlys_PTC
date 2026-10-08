@@ -18,6 +18,20 @@ async function generateDailyBatchNumber() {
   return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
+const MAX_TARGET = 9999999;
+
+// Valida la meta (unidades a producir): entero entre 1 y 9 999 999. Acepta un
+// número o un string numérico. Devuelve { value } o { error } con el mensaje del 400.
+function parseTarget(raw) {
+  const text = typeof raw === "string" ? raw.trim() : raw;
+  if (text === undefined || text === null || text === "") return { error: "Escribe la meta del lote (unidades)." };
+  const value = typeof text === "string" ? (/^\d+$/.test(text) ? Number(text) : NaN) : text;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_TARGET) {
+    return { error: "La meta debe ser un número entero entre 1 y 9 999 999." };
+  }
+  return { value };
+}
+
 // SELECT - todos los lotes diarios
 dailyBatchesController.getBatches = async (req, res) => {
   const batches = await dailyBatchModel.find().sort({ createdAt: -1 });
@@ -34,6 +48,9 @@ dailyBatchesController.getBatch = async (req, res) => {
 dailyBatchesController.insertBatch = async (req, res) => {
   const { date, product, color } = req.body;
 
+  const target = parseTarget(req.body.targetQuantity);
+  if (target.error) return res.status(400).json({ message: target.error });
+
   // El producto es el nombre de un producto del Catálogo.
   const productName = await assertProductName(product, { required: true });
 
@@ -44,6 +61,7 @@ dailyBatchesController.insertBatch = async (req, res) => {
     date,
     product: productName,
     color,
+    targetQuantity: target.value,
   });
 
   await newBatch.save();
@@ -61,10 +79,14 @@ dailyBatchesController.updateBatch = async (req, res) => {
     return res.status(404).json({ message: "Daily batch not found" });
   }
 
+  // Al editar la meta también es obligatoria (los lotes anteriores sin meta se completan aquí).
+  const target = parseTarget(req.body.targetQuantity);
+  if (target.error) return res.status(400).json({ message: target.error });
+
   // Conserva el producto que ya tenía aunque se haya renombrado o eliminado después.
   const productName = await assertProductName(product, { current: batch.product });
 
-  batch.set({ date, product: productName, color });
+  batch.set({ date, product: productName, color, targetQuantity: target.value });
 
   await batch.save();
 
@@ -79,11 +101,16 @@ dailyBatchesController.deleteBatch = async (req, res) => {
 
 // Programar - envía el lote diario a Lotes de fabricación (Línea, Producido
 // y Operario quedan vacíos y se completan después) y lo quita de Lotes Diarios.
+// El lote diario debe tener meta: pasa a targetQuantity del lote de fabricación.
 dailyBatchesController.scheduleBatch = async (req, res) => {
   const daily = await dailyBatchModel.findById(req.params.id);
 
   if (!daily) {
     return res.status(404).json({ message: "Daily batch not found" });
+  }
+
+  if (!daily.targetQuantity) {
+    return res.status(400).json({ message: `Agrega la meta de ${daily.dailyBatchNumber} antes de programarlo.` });
   }
 
   const batchNumber = await generateBatchNumber();
@@ -92,6 +119,7 @@ dailyBatchesController.scheduleBatch = async (req, res) => {
     batchNumber,
     product: daily.product,
     color: daily.color,
+    targetQuantity: daily.targetQuantity,
     startDate: daily.date,
     status: "Programado",
   });

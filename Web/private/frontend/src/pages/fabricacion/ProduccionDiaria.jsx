@@ -75,15 +75,24 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
         ),
     },
     {
+      key: "target",
+      label: "Meta",
+      align: "right",
+      render: (b) => <span className="tabular-nums">{b.targetQuantity ? fmtNumber(b.targetQuantity) : "—"}</span>,
+    },
+    {
       key: "actions",
       label: "Acciones",
       align: "right",
       width: "200px",
       render: (b) => (
         <div className="flex items-center justify-end gap-0.5">
-          <Button variant="soft" size="row" disabled={busyId === b._id} onClick={() => onSchedule(b)} className="mr-1">
-            Programar
-          </Button>
+          {/* Sin meta no se programa: el span lleva el motivo (un botón deshabilitado no siempre muestra su title). */}
+          <span title={b.targetQuantity ? undefined : "Agrega la meta para programarlo"} className="mr-1 inline-flex">
+            <Button variant="soft" size="row" disabled={busyId === b._id || !b.targetQuantity} onClick={() => onSchedule(b)}>
+              Programar
+            </Button>
+          </span>
           <button
             type="button"
             onClick={() => onEdit(b)}
