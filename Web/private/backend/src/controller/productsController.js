@@ -3,6 +3,7 @@ const productsController = {};
 import productModel, { NAME_COLLATION } from "../models/Product.js";
 import cloudinary, { uploadProductImageBuffer } from "../lib/cloudinary.js";
 import { normalizeProductName } from "../lib/productName.js";
+import { slugify } from "../lib/slugify.js";
 import { isNameInUse, nameKey, usedNameKeys } from "../lib/productUsage.js";
 
 /*
@@ -22,20 +23,6 @@ import { isNameInUse, nameKey, usedNameKeys } from "../lib/productUsage.js";
   crear y no cambia al editar (lo usan los carritos guardados y los enlaces de
   la tienda).
 */
-
-// Genera un slug simple y legible a partir del nombre del producto.
-// ej. "Pelota plástica 60 mm" -> "pelota-plastica-60-mm"
-function slugify(text) {
-  return text
-    .toString()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // quitar acentos
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-}
 
 // Errores de datos (esquema o id mal formado) -> 400 con el mensaje; el resto, 500.
 function sendError(res, error) {
