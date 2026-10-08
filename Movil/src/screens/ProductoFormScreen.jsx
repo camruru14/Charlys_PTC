@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useCatalog } from "../hooks/useCatalog";
-import { subcategoryOptions, useSubcategories } from "../hooks/useSubcategories";
+import { normalizeName, sameName, useProductNames } from "../hooks/useProductNames";
 import ColorChips from "../components/catalog/ColorChips";
 import ImageThumbRow from "../components/catalog/ImageThumbRow";
 import BottomBar from "../components/ui/BottomBar";
@@ -13,17 +13,19 @@ import LoadingState from "../components/ui/LoadingState";
 import SelectField from "../components/ui/SelectField";
 import SwitchField from "../components/ui/SwitchField";
 import { useToast } from "../components/ui/Toast";
-import { colors } from "../lib/theme";
+import { colors, tones } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { PRODUCT_CATEGORIES, catalogStatus } from "../lib/catalogOptions";
 import { MAX_IMAGES_PER_UPLOAD, pickFromLibrary, pickPhotoSource, takePhoto } from "../lib/pickImages";
 import { statusTone } from "../lib/statusTones";
 
-// Sin nombre (el nombre del producto es el de su subcategoría, lo pone el backend)
-// y sin categoría elegida: la subcategoría se habilita al elegirla.
+const MAX_NAME_LENGTH = 60;
+
+// El nombre es el «producto» que usa todo el sistema (único, ver más abajo) y
+// la categoría empieza sin elegir.
 const emptyForm = {
+  name: "",
   category: "",
-  subcategory: "",
   description: "",
   price: "",
   compareAtPrice: "",
@@ -57,7 +59,10 @@ function PhotoButton({ icon, label, onPress }) {
 }
 
 // Crear o editar un producto del catálogo, con los mismos campos, payload y
-// validaciones que ProductFormModal.jsx / pages/Catalogo.jsx de la web. Las
+// validaciones que ProductFormModal.jsx / pages/Catalogo.jsx de la web. El
+// nombre es único (sin distinguir mayúsculas ni espacios sobrantes): se valida
+// en vivo con useProductNames, y un producto que ya se usa en pedidos, lotes o
+// inventario no cambia de nombre ni de categoría. Las
 // fotos nuevas se encolan y se suben después de guardar el producto (igual
 // que la web); las ya subidas se borran al momento con su «x». Eliminar el
 // producto está en el «···» del encabezado.
@@ -67,7 +72,7 @@ export default function ProductoFormScreen({ navigation, route }) {
   const toast = useToast();
 
   const { products, loading, crear, actualizar, eliminar, agregarImagenes, eliminarImagen } = useCatalog();
-  const { subcategories } = useSubcategories();
+  const { products: productNames } = useProductNames();
 
   const [form, setForm] = useState(isEditing ? null : emptyForm);
   const [saving, setSaving] = useState(false);
@@ -80,8 +85,8 @@ export default function ProductoFormScreen({ navigation, route }) {
     if (!isEditing || form) return;
     if (product) {
       setForm({
+        name: product.name || "",
         category: product.category || "",
-        subcategory: product.subcategory || "",
         description: product.description || "",
         price: product.price != null ? String(product.price) : "",
         compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : "",
@@ -137,7 +142,7 @@ export default function ProductoFormScreen({ navigation, route }) {
       title: product.name,
       headerBackTitle: "Catálogo",
       headerStatus: { label: status, tone: statusTone(status, "catalogo") },
-      headerSubtitle: [product.category, product.subcategory, nColors ? `${nColors} ${nColors === 1 ? "color" : "colores"}` : "sin colores"]
+      headerSubtitle: [product.category, nColors ? `${nColors} ${nColors === 1 ? "color" : "colores"}` : "sin colores"]
         .filter(Boolean)
         .join(" · "),
       headerRight: () => (
@@ -184,13 +189,22 @@ export default function ProductoFormScreen({ navigation, route }) {
     }
   };
 
+  const typedName = normalizeName(form?.name);
+  // El propio producto no cuenta como repetido.
+  const duplicate = Boolean(typedName) && productNames.some((p) => p._id !== id && sameName(p.name, typedName));
+  const locked = Boolean(isEditing && productNames.find((p) => p._id === id)?.inUse);
+
   const handleSave = async () => {
-    if (!form.category) {
-      Alert.alert("Falta información", "Elige la categoría");
+    if (!typedName) {
+      Alert.alert("Falta información", "Escribe el nombre del producto");
       return;
     }
-    if (!form.subcategory) {
-      Alert.alert("Falta información", "Elige una subcategoría");
+    if (duplicate) {
+      Alert.alert("Nombre repetido", `Ya existe un producto llamado «${typedName}»`);
+      return;
+    }
+    if (!form.category) {
+      Alert.alert("Falta información", "Elige la categoría");
       return;
     }
     if (form.price === "") {
@@ -202,10 +216,11 @@ export default function ProductoFormScreen({ navigation, route }) {
       return;
     }
     setSaving(true);
-    // Mismo payload que pages/Catalogo.jsx (el nombre va tal cual).
+    // Mismo payload que pages/Catalogo.jsx.
     const { images, ...rest } = form;
     const payload = {
       ...rest,
+      name: form.name.trim(),
       price: Number(form.price) || 0,
       compareAtPrice: form.compareAtPrice === "" ? undefined : Number(form.compareAtPrice) || 0,
       minOrderQuantity: Number(form.minOrderQuantity) || 1,
@@ -247,17 +262,6 @@ export default function ProductoFormScreen({ navigation, route }) {
   const categories = !form.category || PRODUCT_CATEGORIES.includes(form.category)
     ? PRODUCT_CATEGORIES
     : [...PRODUCT_CATEGORIES, form.category];
-  // Solo las activas de la categoría elegida (más la actual si ya está inactiva);
-  // las que ya usa OTRO producto del catálogo salen deshabilitadas (una
-  // subcategoría = un producto; el propio producto no cuenta).
-  const usedByOther = new Set(
-    products.filter((p) => p._id !== id && p.subcategory).map((p) => p.subcategory.trim().toLocaleLowerCase("es")),
-  );
-  const subOptions = (form.category ? subcategoryOptions(subcategories, form.category, form.subcategory) : []).map((n) => {
-    const taken = usedByOther.has(n.trim().toLocaleLowerCase("es"));
-    return { label: taken ? `${n} · ya tiene producto` : n, value: n, disabled: taken };
-  });
-  const available = subOptions.filter((o) => !o.disabled).length;
 
   return (
     <View style={styles.screen}>
@@ -286,30 +290,28 @@ export default function ProductoFormScreen({ navigation, route }) {
           </>
         )}
 
+        <FormField
+          label="Nombre del producto"
+          value={form.name}
+          onChangeText={(v) => handleChange("name", v)}
+          placeholder="Ej. Pajilla jumbo"
+          maxLength={MAX_NAME_LENGTH}
+          editable={!locked}
+          required
+          style={duplicate ? styles.fieldWithError : null}
+        />
+        {duplicate ? <Text style={styles.error}>Ya existe un producto llamado «{typedName}»</Text> : null}
         <SelectField
           label="Categoría"
           value={form.category}
           placeholder="Seleccionar"
           options={categories.map((c) => ({ label: c, value: c }))}
-          onChange={(v) => setForm((f) => (v === f.category ? f : { ...f, category: v, subcategory: "" }))}
+          onChange={(v) => handleChange("category", v)}
+          disabled={locked}
           required
         />
-        <SelectField
-          label="Subcategoría"
-          value={form.subcategory}
-          options={subOptions}
-          onChange={(v) => handleChange("subcategory", v)}
-          disabled={!form.category}
-          placeholder={!form.category ? "Elige primero la categoría" : subOptions.length ? "Seleccionar" : "Sin subcategorías"}
-          required
-        />
-        {form.category && available === 0 ? (
-          <Text style={styles.hint}>
-            {subOptions.length === 0
-              ? `No hay subcategorías activas de ${form.category}.`
-              : `Todas las subcategorías de ${form.category} ya tienen producto.`}{" "}
-            Crea una en Configuración › Subcategorías.
-          </Text>
+        {locked ? (
+          <Text style={styles.hint}>Ya se usa en pedidos, lotes o inventario: el nombre y la categoría no se pueden cambiar.</Text>
         ) : null}
         <FormField
           label="Descripción"
@@ -368,10 +370,10 @@ export default function ProductoFormScreen({ navigation, route }) {
         note={pendingFiles.length ? `${pendingFiles.length} ${pendingFiles.length === 1 ? "foto se sube" : "fotos se suben"} al guardar` : undefined}
         actions={
           isEditing
-            ? [{ title: "Guardar cambios", loading: saving, onPress: handleSave }]
+            ? [{ title: "Guardar cambios", loading: saving, disabled: duplicate, onPress: handleSave }]
             : [
                 { title: "Cancelar", variant: "secondary", disabled: saving, onPress: () => navigation.goBack() },
-                { title: "Crear producto", loading: saving, onPress: handleSave },
+                { title: "Crear producto", loading: saving, disabled: duplicate, onPress: handleSave },
               ]
         }
       />
@@ -399,6 +401,8 @@ const styles = StyleSheet.create({
   photoPressed: { backgroundColor: colors.primarySoft },
   photoText: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.primary },
   hint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: -6, marginBottom: 14 },
+  fieldWithError: { marginBottom: 6 },
+  error: { fontFamily: fonts.semibold, fontSize: 12, color: tones.rose.text, marginBottom: 14 },
   columns: { flexDirection: "row", gap: 10 },
   column: { flex: 1 },
 });

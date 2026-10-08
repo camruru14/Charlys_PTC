@@ -48,7 +48,7 @@ export default function ProductActionsSheet({ product, onClose, onAction }) {
       visible={Boolean(product)}
       onClose={onClose}
       title={p?.name}
-      subtitle={p ? [p.category, p.subcategory && p.subcategory !== p.name ? p.subcategory : null, formatMoney(p.price), catalogStatus(p)].filter(Boolean).join(" · ") : undefined}
+      subtitle={p ? [p.category, formatMoney(p.price), catalogStatus(p)].filter(Boolean).join(" · ") : undefined}
     >
       {p ? (
         <View style={styles.list}>

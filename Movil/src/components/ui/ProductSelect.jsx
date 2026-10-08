@@ -1,24 +1,24 @@
 import { useState } from "react";
 import SegmentedField from "./SegmentedField";
 import SelectField from "./SelectField";
-import { SUBCATEGORY_CATEGORIES, categoryOfProduct, productOptions, useSubcategories } from "../../hooks/useSubcategories";
+import { PRODUCT_NAME_CATEGORIES, categoryOfProduct, productOptions, useProductNames } from "../../hooks/useProductNames";
 
 // Elección del producto en dos pasos (ProductSelect.jsx de la web):
-// «Categoría» (Pajillas/Pelotas) y «Producto» (las subcategorías activas de esa
-// categoría). El valor es el nombre de la subcategoría.
+// «Categoría» (Pajillas/Pelotas) y «Producto» (todos los productos del Catálogo
+// de esa categoría, activos o no). El valor es el nombre del producto.
 //   <ProductSelect value={form.product} onChange={(v) => handleChange("product", v)} />
 // - Al cambiar de categoría el producto se limpia.
 // - Al editar, la categoría se deduce del producto guardado, que se muestra
-//   aunque su subcategoría esté inactiva (o sea anterior a las subcategorías).
+//   aunque ya no exista en el Catálogo (o sea anterior al Catálogo único).
 // - Sin valor por defecto: quien guarda debe validar que el producto no esté
 //   vacío. Si el formulario se reutiliza sin cerrarse (p. ej. al agregar otra
 //   línea de un pedido), cambia su `key` para reiniciarlo.
 export default function ProductSelect({ value, onChange, required = true }) {
-  const { all } = useSubcategories();
+  const { products } = useProductNames();
   // Categoría elegida a mano; mientras no se elija, sale del producto guardado.
   const [picked, setPicked] = useState(null);
-  const category = picked ?? categoryOfProduct(all, value);
-  const options = productOptions(all, category, value);
+  const category = picked ?? categoryOfProduct(products, value);
+  const options = productOptions(products, category, value);
 
   const changeCategory = (next) => {
     setPicked(next);
@@ -27,7 +27,7 @@ export default function ProductSelect({ value, onChange, required = true }) {
 
   return (
     <>
-      <SegmentedField label="Categoría" value={category} options={SUBCATEGORY_CATEGORIES} onChange={changeCategory} required={required} />
+      <SegmentedField label="Categoría" value={category} options={PRODUCT_NAME_CATEGORIES} onChange={changeCategory} required={required} />
       <SelectField
         label="Producto"
         title="Producto"

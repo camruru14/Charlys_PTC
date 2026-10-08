@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useApi } from "./useApi";
 import { api } from "../lib/api";
+import { refreshProductNames } from "./useProductNames";
 
 // Administración del catálogo contra private/backend (src/lib/api.js, con el
 // token de la sesión), igual que el panel web. Lee de "/products/admin/all"
@@ -10,6 +11,34 @@ export function useCatalog() {
   const { data, loading, refreshing, error, refresh, crear, actualizar, eliminar } = useApi(
     "/products/admin/all",
     { mutatePath: "/products" },
+  );
+
+  // Crear, editar o eliminar cambia la lista de nombres de producto que usan
+  // los selectores (useProductNames): se vuelve a pedir tras cada cambio. Las
+  // funciones se mantienen estables (los formularios las usan en dependencias).
+  const crearYRefrescar = useCallback(
+    async (...args) => {
+      const result = await crear(...args);
+      refreshProductNames();
+      return result;
+    },
+    [crear],
+  );
+  const actualizarYRefrescar = useCallback(
+    async (...args) => {
+      const result = await actualizar(...args);
+      refreshProductNames();
+      return result;
+    },
+    [actualizar],
+  );
+  const eliminarYRefrescar = useCallback(
+    async (...args) => {
+      const result = await eliminar(...args);
+      refreshProductNames();
+      return result;
+    },
+    [eliminar],
   );
 
   // Sube hasta 6 imágenes (multipart/form-data, campo "images") a un
@@ -43,9 +72,9 @@ export function useCatalog() {
     refreshing,
     error,
     refresh,
-    crear,
-    actualizar,
-    eliminar,
+    crear: crearYRefrescar,
+    actualizar: actualizarYRefrescar,
+    eliminar: eliminarYRefrescar,
     agregarImagenes,
     eliminarImagen,
   };

@@ -44,13 +44,6 @@ export default function ProductCard({ product, onPress, uploading = false, style
         <Text style={styles.name} numberOfLines={1}>
           {product.name}
         </Text>
-        {/* El nombre del producto ES su subcategoría: solo se muestra aparte si
-            falta (producto anterior) o si el nombre guardado es otro. */}
-        {!product.subcategory || product.subcategory !== product.name ? (
-          <Text style={product.subcategory ? styles.sub : styles.meta} numberOfLines={1}>
-            {product.subcategory || "Sin subcategoría"}
-          </Text>
-        ) : null}
         <Text style={styles.meta} numberOfLines={1}>
           Mín. {formatNumber(product.minOrderQuantity ?? 1)} · {formatNumber(product.stock ?? 0)}
         </Text>
@@ -93,7 +86,6 @@ const styles = StyleSheet.create({
   },
   body: { paddingHorizontal: 11, paddingTop: 9, paddingBottom: 11, gap: 2 },
   name: { fontFamily: fonts.bold, fontSize: 13.5, color: colors.ink },
-  sub: { fontFamily: fonts.semibold, fontSize: 11.5, color: colors.primary },
   meta: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted, fontVariant: ["tabular-nums"] },
   priceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 4 },
   price: { fontFamily: fonts.bold, fontSize: 16, color: colors.ink, fontVariant: ["tabular-nums"] },

@@ -21,7 +21,6 @@ import ConfigEmpresaScreen from "../screens/ConfigEmpresaScreen";
 import ConfigBodegasScreen from "../screens/ConfigBodegasScreen";
 import ConfigVehiculosScreen from "../screens/ConfigVehiculosScreen";
 import ConfigLineasScreen from "../screens/ConfigLineasScreen";
-import ConfigSubcategoriasScreen from "../screens/ConfigSubcategoriasScreen";
 import ConfigPersonalScreen from "../screens/ConfigPersonalScreen";
 import MiCuentaScreen from "../screens/MiCuentaScreen";
 import LineaFormScreen from "../screens/LineaFormScreen";
@@ -90,7 +89,6 @@ export default function RootNavigator() {
           {/* Un vehículo (crear o editar): foto, modelo, placa y uso actual. */}
           <Stack.Screen name="VehiculoDetalle" component={VehiculoDetalleScreen} options={{ ...detailHeader, title: "Vehículo" }} />
           <Stack.Screen name="ConfigLineas" component={ConfigLineasScreen} options={{ ...detailHeader, title: "Líneas de producción" }} />
-          <Stack.Screen name="ConfigSubcategorias" component={ConfigSubcategoriasScreen} options={{ ...detailHeader, title: "Subcategorías" }} />
           <Stack.Screen name="ConfigPersonal" component={ConfigPersonalScreen} options={{ ...detailHeader, title: "Personal y permisos" }} />
           <Stack.Screen name="MiCuenta" component={MiCuentaScreen} options={{ ...detailHeader, title: "Mi cuenta" }} />
 
