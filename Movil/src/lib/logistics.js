@@ -181,13 +181,17 @@ export function departBlocker(route, orders) {
   return null;
 }
 
+// «P123-456 · Isuzu NPR» (solo la placa si el vehículo no tiene modelo).
+// COPIA de vehicleLabel de Web/private/frontend/src/lib/logistics.js.
+export const vehicleLabel = (vehicle) => (vehicle?.model ? `${vehicle.plate} · ${vehicle.model}` : vehicle?.plate || "");
+
 // Opciones de motorista y vehículo según /routes/availability. Ocupado = va
 // en otra ruta del día que no está Completada (la propia `routeId` no cuenta).
 export function crewOptions(availability, routeId) {
   const busy = (item) => Boolean(item.busy && (!routeId || String(item.route?._id) !== String(routeId)));
   return {
     drivers: (availability?.drivers || []).map((d) => ({ value: String(d._id), label: personName(d), busy: busy(d) })),
-    vehicles: (availability?.vehicles || []).map((v) => ({ value: v.plate, label: v.plate, busy: busy(v) })),
+    vehicles: (availability?.vehicles || []).map((v) => ({ value: v.plate, label: vehicleLabel(v), busy: busy(v) })),
   };
 }
 

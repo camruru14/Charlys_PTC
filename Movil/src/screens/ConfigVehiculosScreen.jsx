@@ -1,74 +1,74 @@
 import { useCallback, useLayoutEffect, useMemo } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
-import { useRoutes } from "../hooks/useRoutes";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useApi } from "../hooks/useApi";
 import { useVehicles } from "../hooks/useVehicles";
-import InlineNameRow from "../components/settings/InlineNameRow";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
+import Icon from "../components/ui/Icon";
 import IconButton from "../components/ui/IconButton";
 import ListGroup from "../components/ui/ListGroup";
 import LoadingState from "../components/ui/LoadingState";
 import Pill from "../components/ui/Pill";
-import { useToast } from "../components/ui/Toast";
+import VehiclePhoto from "../components/ui/VehiclePhoto";
 import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
-import { personName, routeLabel } from "../lib/logistics";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
 
-// Configuración > Vehículos (Configuracion.jsx de la web): la placa se cambia
-// en la misma fila; el detalle y el estado salen de las rutas de hoy
-// (/routes/availability) y un vehículo en ruta no se puede eliminar. «+»
-// agrega uno (VehiculoFormScreen).
+function VehicleRow({ vehicle, busy, onPress }) {
+  const status = busy ? "En ruta" : "Disponible";
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${vehicle.model || "Sin modelo"}, placa ${vehicle.plate}, ${status}`}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+    >
+      <VehiclePhoto uri={vehicle.image?.url} iconSize={20} style={styles.thumb} />
+      <View style={styles.texts}>
+        <Text style={[styles.model, !vehicle.model && styles.noModel]} numberOfLines={1}>
+          {vehicle.model || "Sin modelo"}
+        </Text>
+        <Text style={styles.plate} numberOfLines={1}>
+          {vehicle.plate}
+        </Text>
+      </View>
+      <Pill label={status} tone={statusTone(status, "vehiculo")} />
+      <Icon name="chevronRight" size={18} color={colors.chevron} />
+    </Pressable>
+  );
+}
+
+// Configuración > Vehículos (lista de Configuracion.jsx de la web): foto,
+// modelo, placa y si va en ruta (/routes/availability). Tocar una fila abre
+// VehiculoDetalle; «+» lo abre en modo creación.
 export default function ConfigVehiculosScreen({ navigation }) {
   const bottomPad = useBottomPad(32);
-  const toast = useToast();
-  const { vehicles, loading, refreshing, error, refresh, actualizar, eliminar } = useVehicles();
-  const { routes, availability, refresh: refreshRoutes } = useRoutes();
+  const { vehicles, loading, refreshing, error, refresh } = useVehicles();
+  const { data: availability, refresh: refreshAvailability } = useApi("/routes/availability");
 
   useFocusEffect(
     useCallback(() => {
       refresh();
-      refreshRoutes();
-    }, [refresh, refreshRoutes]),
+      refreshAvailability();
+    }, [refresh, refreshAvailability]),
   );
 
   useLayoutEffect(() => {
     navigation.setOptions({
       title: "Vehículos",
-      headerSubtitle: "Toca la placa para cambiarla",
+      headerSubtitle: "Toca un vehículo para ver su foto y su uso",
       headerRight: () => (
-        <IconButton icon="plus" variant="primary" onPress={() => navigation.navigate("VehiculoForm")} accessibilityLabel="Agregar vehículo" />
+        <IconButton icon="plus" variant="primary" onPress={() => navigation.navigate("VehiculoDetalle")} accessibilityLabel="Agregar vehículo" />
       ),
     });
   }, [navigation]);
 
-  const vehicleRoutes = useMemo(
-    () => new Map((availability?.vehicles || []).filter((v) => v.busy).map((v) => [String(v._id), v.route])),
+  const busyIds = useMemo(
+    () => new Set((availability?.vehicles || []).filter((v) => v.busy).map((v) => String(v._id))),
     [availability],
   );
-  // Motorista de cada ruta de hoy (availability solo trae número y zona).
-  const routeDrivers = useMemo(() => new Map(routes.map((r) => [String(r._id), personName(r.driver)])), [routes]);
-
-  const remove = (v) =>
-    Alert.alert("Eliminar vehículo", `¿Eliminar el vehículo «${v.plate}»? Ya no se podrá elegir al armar rutas.`, [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await eliminar(v._id);
-            toast.show("Vehículo eliminado");
-          } catch (err) {
-            Alert.alert("No se pudo eliminar", err.message);
-          } finally {
-            refreshRoutes();
-          }
-        },
-      },
-    ]);
 
   if (loading && !vehicles.length) return <LoadingState />;
   if (error && !vehicles.length) return <ErrorState message={error} onRetry={refresh} />;
@@ -83,44 +83,25 @@ export default function ConfigVehiculosScreen({ navigation }) {
           refreshing={refreshing}
           onRefresh={() => {
             refresh();
-            refreshRoutes();
+            refreshAvailability();
           }}
         />
       }
     >
       {vehicles.length ? (
         <ListGroup>
-          {vehicles.map((v) => {
-            const route = vehicleRoutes.get(String(v._id));
-            const driver = route ? routeDrivers.get(String(route._id)) : null;
-            const detail = route
-              ? [`${routeLabel(route)}${route.zone ? ` · ${route.zone}` : ""}`, driver || "sin conductor"].join(" · ")
-              : "sin asignar";
-            const status = route ? "En ruta" : "Disponible";
-            return (
-              <InlineNameRow
-                key={v._id}
-                icon="truck"
-                value={v.plate}
-                detail={detail}
-                label="placa"
-                autoCapitalize="characters"
-                onSave={async (plate) => {
-                  await actualizar(v._id, { plate });
-                  toast.show("Vehículo actualizado");
-                  refreshRoutes();
-                }}
-                right={<Pill label={status} tone={statusTone(status, "vehiculo")} />}
-                onDelete={() => remove(v)}
-                deleteBlocked={Boolean(route)}
-              />
-            );
-          })}
+          {vehicles.map((v) => (
+            <VehicleRow
+              key={v._id}
+              vehicle={v}
+              busy={busyIds.has(String(v._id))}
+              onPress={() => navigation.navigate("VehiculoDetalle", { id: v._id })}
+            />
+          ))}
         </ListGroup>
       ) : (
         <EmptyState icon="truck" message="No hay vehículos registrados." />
       )}
-      <Text style={styles.note}>Un vehículo en ruta no se puede eliminar.</Text>
     </ScrollView>
   );
 }
@@ -128,5 +109,18 @@ export default function ConfigVehiculosScreen({ navigation }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32 },
-  note: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  row: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+  },
+  pressed: { backgroundColor: colors.surface2 },
+  thumb: { width: 56, height: 40, borderRadius: 8 },
+  texts: { flex: 1, gap: 2 },
+  model: { fontFamily: fonts.bold, fontSize: 14, color: colors.ink },
+  noModel: { fontFamily: fonts.semibold, color: colors.muted },
+  plate: { fontFamily: fonts.regular, fontSize: 12.5, color: colors.muted, fontVariant: ["tabular-nums"] },
 });

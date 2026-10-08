@@ -3,6 +3,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
 import { useRoutes } from "../hooks/useRoutes";
+import CrewCard from "../components/logistics/CrewCard";
 import { CrewSheet } from "../components/logistics/RouteSheets";
 import BottomBar from "../components/ui/BottomBar";
 import Button from "../components/ui/Button";
@@ -160,7 +161,8 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
     });
   }, [navigation, route, empty, departed, confirmDelete]);
 
-  // Acción directa: si hay `undo`, el Toast ofrece «Deshacer».
+  // Acción directa: si hay `undo`, el Toast ofrece «Deshacer». Devuelve true
+  // si salió bien y false si falló (ya avisado con un Alert).
   async function act(run, message, undo, key = "global") {
     setPending((prev) => new Set(prev).add(key));
     try {
@@ -180,9 +182,11 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
       } else {
         toast.show(message);
       }
+      return true;
     } catch (err) {
       Alert.alert("No se pudo completar", err.message);
       reloadAll();
+      return false;
     } finally {
       setPending((prev) => {
         const next = new Set(prev);
@@ -222,15 +226,21 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
   const pickups = requiredPickups(routeOrders);
   const blocker = departBlocker(r, routeOrders);
   const incomplete = departed ? [] : routeOrders.filter((o) => !dispatchInfo(o).ready && !takeAsIs.has(String(o._id)));
-  const hasCrew = Boolean(r.driver && r.vehicle);
+  const unit = (availability?.vehicles || []).find((v) => v.plate === r.vehicle);
 
-  const changeCrew = (field, value) => {
-    const previous = field === "driver" ? String(r.driver?._id || r.driver || "") : r.vehicle;
-    const label = field === "driver" ? "Motorista" : "Vehículo";
-    act(
-      () => actualizar(r._id, { [field]: value }),
-      `${label} de ${routeRef(r)} actualizado`,
-      () => actualizar(r._id, { [field]: previous || null }),
+  // CrewSheet: un solo PATCH con los campos que cambiaron ({ driver?, vehicle? };
+  // "" quita el motorista o el vehículo). «Deshacer» los restaura juntos.
+  const changeCrew = (changes) => {
+    const previous = {};
+    if ("driver" in changes) previous.driver = String(r.driver?._id || r.driver || "") || null;
+    if ("vehicle" in changes) previous.vehicle = r.vehicle || null;
+    const body = Object.fromEntries(Object.entries(changes).map(([field, value]) => [field, value || null]));
+    const both = "driver" in changes && "vehicle" in changes;
+    const label = both ? "Motorista y vehículo" : "driver" in changes ? "Motorista" : "Vehículo";
+    return act(
+      () => actualizar(r._id, body),
+      `${label} de ${routeRef(r)} ${both ? "actualizados" : "actualizado"}`,
+      () => actualizar(r._id, previous),
       "crew",
     );
   };
@@ -250,6 +260,8 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
         contentContainerStyle={[styles.content, !departed ? null : bottomPad]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadAll} />}
       >
+        {!departed ? <CrewCard route={r} unit={unit} onEdit={() => setCrewOpen(true)} /> : null}
+
         <View style={styles.tiles}>
           <StatTile
             style={styles.tile}
@@ -414,17 +426,6 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
             })}
           </ListGroup>
         )}
-
-        {!departed ? (
-          <Button
-            title={hasCrew ? "Reasignar motorista o vehículo" : "Asignar motorista y vehículo"}
-            icon="users"
-            variant="secondary"
-            disabled={isBusy("crew")}
-            onPress={() => setCrewOpen(true)}
-            style={styles.crewButton}
-          />
-        ) : null}
       </ScrollView>
 
       {!departed ? (
@@ -446,7 +447,7 @@ export default function RutaDetalleScreen({ navigation, route: navRoute }) {
         availability={availability}
         busy={isBusy("crew")}
         onClose={() => setCrewOpen(false)}
-        onChange={changeCrew}
+        onSave={changeCrew}
       />
     </View>
   );
@@ -500,5 +501,4 @@ const styles = StyleSheet.create({
   },
   warningText: { fontFamily: fonts.regular, fontSize: 12.5, color: colors.amberStrong },
   warningActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  crewButton: { marginTop: 6 },
 });

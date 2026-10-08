@@ -17,6 +17,7 @@ import ActionsMenu from "../../components/ui/ActionsMenu";
 import ConfirmModal from "../../components/ui/ConfirmModal";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
+import { SelectField } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
 import { toastUndo } from "../../lib/toastUndo";
 import { TONE_SOFT } from "../../lib/tones";
@@ -45,7 +46,7 @@ import {
   departBlocker,
   personName,
   shortName,
-  vehicleLabel,
+  crewSelectOptions,
 } from "../../lib/logistics";
 
 // Chips: «Todos» más uno por grupo de la jerarquía (lib/logistics.js).
@@ -213,6 +214,82 @@ function CrewCard({ route, unit, onEdit }) {
   );
 }
 
+/*
+  Modal «Motorista y vehículo». Los combobox solo cambian un borrador (copia de
+  lo que tiene la ruta al abrir): nada se guarda hasta «Listo», que hace UN
+  solo PATCH con lo que cambió y deja «Deshacer». Cerrar sin «Listo» descarta.
+  Se monta solo mientras está abierto.
+*/
+function CrewModal({ route, availability, act, onClose }) {
+  const currentDriver = String(route.driver?._id || route.driver || "");
+  const currentVehicle = route.vehicle || "";
+  const [driver, setDriver] = useState(currentDriver);
+  const [vehicle, setVehicle] = useState(currentVehicle);
+  const [saving, setSaving] = useState(false);
+  const { drivers, vehicles } = crewSelectOptions(availability, route._id);
+  const driverChanged = driver !== currentDriver;
+  const vehicleChanged = vehicle !== currentVehicle;
+
+  async function save() {
+    if (!driverChanged && !vehicleChanged) return onClose();
+    const body = {};
+    const previous = {};
+    if (driverChanged) {
+      body.driver = driver || null;
+      previous.driver = currentDriver || null;
+    }
+    if (vehicleChanged) {
+      body.vehicle = vehicle || null;
+      previous.vehicle = currentVehicle || null;
+    }
+    const both = driverChanged && vehicleChanged;
+    const what = both ? "Motorista y vehículo" : driverChanged ? "Motorista" : "Vehículo";
+    const url = `/routes/${route._id}`;
+    setSaving(true);
+    const ok = await act(
+      () => api.patch(url, body),
+      `${what} de ${routeRef(route)} ${both ? "actualizados" : "actualizado"}`,
+      () => api.patch(url, previous),
+      `crew:${route._id}`,
+    );
+    // Si falla, el modal sigue abierto con el borrador intacto.
+    if (ok) onClose();
+    else setSaving(false);
+    return undefined;
+  }
+
+  return (
+    <Modal
+      open
+      onClose={saving ? undefined : onClose}
+      title={`Motorista y vehículo · ${routeLabel(route)}`}
+      subtitle="Los cambios se guardan al pulsar Listo."
+      size="lg"
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={saving} className={buttonClass("secondary", "modal")}>
+            Cancelar
+          </button>
+          <button type="button" onClick={save} disabled={saving} className={buttonClass("primary", "modal")}>
+            {saving ? "Guardando…" : "Listo"}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div>
+          <SelectField label="Motorista" name="driver" value={driver} onChange={(e) => setDriver(e.target.value)} options={drivers} placeholder="Selecciona…" />
+          {drivers.length === 1 ? <p className="t-aux mt-1.5">No hay empleados activos del área Logística.</p> : null}
+        </div>
+        <div>
+          <SelectField label="Vehículo" name="vehicle" value={vehicle} onChange={(e) => setVehicle(e.target.value)} options={vehicles} placeholder="Selecciona…" />
+          {vehicles.length === 1 ? <p className="t-aux mt-1.5">No hay vehículos en Configuración.</p> : null}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, onDeleted }) {
   const { confirm, confirmProps } = useConfirm();
   // Pedidos incompletos que se llevan como están («Llevar lo que hay»).
@@ -223,30 +300,8 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
   const pickups = requiredPickups(orders);
   const blocker = departBlocker(route, orders);
   const routeUrl = `/routes/${route._id}`;
-  const driverId = String(route.driver?._id || route.driver || "");
   const unit = (availability?.vehicles || []).find((v) => v.plate === route.vehicle);
   const empty = !route.orders?.length && !route.deliveries?.length;
-
-  const driverOptions = (availability?.drivers || []).map((d) => ({
-    value: String(d._id),
-    label: personName(d),
-    busy: d.busy && String(d.route?._id) !== String(route._id),
-  }));
-  const vehicleOptions = (availability?.vehicles || []).map((v) => ({
-    value: v.plate,
-    label: vehicleLabel(v),
-    busy: v.busy && String(v.route?._id) !== String(route._id),
-  }));
-
-  function change(field, value, previous, label) {
-    if (value === previous) return;
-    act(
-      () => api.patch(routeUrl, { [field]: value }),
-      `${label} de ${routeRef(route)} actualizado`,
-      () => api.patch(routeUrl, { [field]: previous || null }),
-      `crew:${route._id}`,
-    );
-  }
 
   function setTaken(id, on) {
     setTakeAsIs((prev) => {
@@ -403,37 +458,7 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
           ))}
         </div>
       </div>
-      <Modal
-        open={crewOpen}
-        onClose={() => setCrewOpen(false)}
-        title={`Motorista y vehículo · ${routeLabel(route)}`}
-        subtitle="Cada cambio se guarda al momento."
-        size="lg"
-        footer={
-          <button type="button" onClick={() => setCrewOpen(false)} className={buttonClass("primary", "modal")}>
-            Listo
-          </button>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <div>
-            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Motorista</span>
-            {driverOptions.length ? (
-              <PillSelector options={driverOptions} value={driverId} onChange={(v) => change("driver", v, driverId, "Motorista")} />
-            ) : (
-              <p className="t-aux">No hay empleados activos del área Logística.</p>
-            )}
-          </div>
-          <div>
-            <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Vehículo</span>
-            {vehicleOptions.length ? (
-              <PillSelector options={vehicleOptions} value={route.vehicle || ""} onChange={(v) => change("vehicle", v, route.vehicle, "Vehículo")} />
-            ) : (
-              <p className="t-aux">No hay vehículos en Configuración.</p>
-            )}
-          </div>
-        </div>
-      </Modal>
+      {crewOpen ? <CrewModal route={route} availability={availability} act={act} onClose={() => setCrewOpen(false)} /> : null}
       <ConfirmModal {...confirmProps} />
     </DetailPanel>
   );

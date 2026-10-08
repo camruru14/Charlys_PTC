@@ -30,6 +30,21 @@ export const isOrderDelivered = (order) => order.status === "Entregado" || Boole
 export const personName = (p) => (p?.name ? `${p.name} ${p.lastName || ""}`.trim() : null);
 // «P123-456 · Isuzu NPR» (solo la placa si el vehículo no tiene modelo).
 export const vehicleLabel = (vehicle) => (vehicle?.model ? `${vehicle.plate} · ${vehicle.model}` : vehicle?.plate || "");
+
+// Opciones de los combobox «Motorista» y «Vehículo» (SelectField) a partir de
+// /routes/availability. La primera es «Sin asignar» (value ""). Lo que va en
+// OTRA ruta sin completar queda deshabilitado con su motivo en la etiqueta
+// («Kevin Rivas · en R-2026-0049»); lo de la ruta `routeId` no cuenta como ocupado.
+export function crewSelectOptions(availability, routeId) {
+  const option = (item, value, label) => {
+    const busy = Boolean(item.busy && (!routeId || String(item.route?._id) !== String(routeId)));
+    return { value, label: busy ? `${label} · en ${routeLabel(item.route)}` : label, disabled: busy };
+  };
+  return {
+    drivers: [{ value: "", label: "Sin asignar" }, ...(availability?.drivers || []).map((d) => option(d, String(d._id), personName(d)))],
+    vehicles: [{ value: "", label: "Sin asignar" }, ...(availability?.vehicles || []).map((v) => option(v, v.plate, vehicleLabel(v)))],
+  };
+}
 // «J. Menjívar»
 export const shortName = (p) => (p?.name ? `${p.name.trim()[0]}. ${p.lastName || ""}`.trim() : null);
 

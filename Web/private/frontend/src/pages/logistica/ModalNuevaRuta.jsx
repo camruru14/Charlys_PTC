@@ -2,12 +2,9 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import Modal from "../../components/ui/Modal";
-import PillSelector from "../../components/ui/PillSelector";
-import { Field } from "../../components/ui/Field";
+import { Field, SelectField } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
-import { personName, routeLabel, vehicleLabel } from "../../lib/logistics";
-
-const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
+import { crewSelectOptions, routeLabel } from "../../lib/logistics";
 
 /*
   Modal «Nueva ruta» (desde «Armar ruta»). Motorista y vehículo son
@@ -20,8 +17,7 @@ function ModalNuevaRuta({ availability, onClose, onCreated }) {
   const [vehicle, setVehicle] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const drivers = (availability?.drivers || []).map((d) => ({ value: d._id, label: personName(d), busy: d.busy }));
-  const vehicles = (availability?.vehicles || []).map((v) => ({ value: v.plate, label: vehicleLabel(v), busy: v.busy }));
+  const { drivers, vehicles } = crewSelectOptions(availability);
 
   async function submit(e) {
     e.preventDefault();
@@ -62,20 +58,12 @@ function ModalNuevaRuta({ availability, onClose, onCreated }) {
       <form id="new-route-form" onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Zona" name="zone" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="Ej. Zona Norte" required autoFocus />
         <div>
-          <span className={labelClass}>Motorista</span>
-          {drivers.length ? (
-            <PillSelector options={drivers} value={driver} onChange={(v) => setDriver(v === driver ? "" : v)} />
-          ) : (
-            <p className="t-aux">No hay empleados activos del área Logística.</p>
-          )}
+          <SelectField label="Motorista" name="driver" value={driver} onChange={(e) => setDriver(e.target.value)} options={drivers} placeholder="Selecciona…" />
+          {drivers.length === 1 ? <p className="t-aux mt-1.5">No hay empleados activos del área Logística.</p> : null}
         </div>
         <div>
-          <span className={labelClass}>Vehículo</span>
-          {vehicles.length ? (
-            <PillSelector options={vehicles} value={vehicle} onChange={(v) => setVehicle(v === vehicle ? "" : v)} />
-          ) : (
-            <p className="t-aux">No hay vehículos en Configuración.</p>
-          )}
+          <SelectField label="Vehículo" name="vehicle" value={vehicle} onChange={(e) => setVehicle(e.target.value)} options={vehicles} placeholder="Selecciona…" />
+          {vehicles.length === 1 ? <p className="t-aux mt-1.5">No hay vehículos en Configuración.</p> : null}
         </div>
         <p className="text-[11.5px] text-muted">
           Los pedidos se agregan después, uno por uno, desde <strong className="font-semibold text-ink-2">Para despacho</strong> con el botón

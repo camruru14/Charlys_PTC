@@ -6,7 +6,7 @@ import DrawerNavigator from "./DrawerNavigator";
 import LoteFabricacionFormScreen from "../screens/LoteFabricacionFormScreen";
 import LoteDiarioFormScreen from "../screens/LoteDiarioFormScreen";
 import TransaccionFormScreen from "../screens/TransaccionFormScreen";
-import VehiculoFormScreen from "../screens/VehiculoFormScreen";
+import VehiculoDetalleScreen from "../screens/VehiculoDetalleScreen";
 import BodegaFormScreen from "../screens/BodegaFormScreen";
 import EmpleadoFormScreen from "../screens/EmpleadoFormScreen";
 import ProductoFormScreen from "../screens/ProductoFormScreen";
@@ -87,6 +87,8 @@ export default function RootNavigator() {
           <Stack.Screen name="ConfigEmpresa" component={ConfigEmpresaScreen} options={{ ...detailHeader, title: "Empresa" }} />
           <Stack.Screen name="ConfigBodegas" component={ConfigBodegasScreen} options={{ ...detailHeader, title: "Bodegas" }} />
           <Stack.Screen name="ConfigVehiculos" component={ConfigVehiculosScreen} options={{ ...detailHeader, title: "Vehículos" }} />
+          {/* Un vehículo (crear o editar): foto, modelo, placa y uso actual. */}
+          <Stack.Screen name="VehiculoDetalle" component={VehiculoDetalleScreen} options={{ ...detailHeader, title: "Vehículo" }} />
           <Stack.Screen name="ConfigLineas" component={ConfigLineasScreen} options={{ ...detailHeader, title: "Líneas de producción" }} />
           <Stack.Screen name="ConfigSubcategorias" component={ConfigSubcategoriasScreen} options={{ ...detailHeader, title: "Subcategorías" }} />
           <Stack.Screen name="ConfigPersonal" component={ConfigPersonalScreen} options={{ ...detailHeader, title: "Personal y permisos" }} />
@@ -126,7 +128,6 @@ export default function RootNavigator() {
             <Stack.Screen name="LoteFabricacionForm" component={LoteFabricacionFormScreen} />
             <Stack.Screen name="LoteDiarioForm" component={LoteDiarioFormScreen} />
             <Stack.Screen name="TransaccionForm" component={TransaccionFormScreen} />
-            <Stack.Screen name="VehiculoForm" component={VehiculoFormScreen} />
             <Stack.Screen name="BodegaForm" component={BodegaFormScreen} />
             <Stack.Screen name="LineaForm" component={LineaFormScreen} />
             <Stack.Screen name="EmpleadoForm" component={EmpleadoFormScreen} />

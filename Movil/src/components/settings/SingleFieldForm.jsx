@@ -7,8 +7,8 @@ import { useToast } from "../ui/Toast";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
-// Formulario de un solo campo para agregar una bodega, un vehículo o una
-// línea de producción (EntityModal y LineModal de la web): el valor se manda
+// Formulario de un solo campo para agregar una bodega o una línea de
+// producción (EntityModal y LineModal de la web): el valor se manda
 // sin espacios de más y los errores del backend (p. ej. duplicado) se
 // muestran tal cual.
 //   onSubmit(value) crea el registro; successMessage(value) es el Toast.

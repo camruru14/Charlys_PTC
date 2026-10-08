@@ -96,39 +96,68 @@ export function NewRouteSheet({ visible, availability, onClose, onCreate }) {
   );
 }
 
-// Reasignar motorista o vehículo de una ruta que todavía no sale (las
-// píldoras de RoutePanel/RouteDetail en la web): cada toque se aplica al
-// momento con «Deshacer». `onChange(field, value)` hace el PATCH.
-export function CrewSheet({ route, availability, busy, onClose, onChange }) {
+// Reasignar motorista o vehículo de una ruta que todavía no sale (el modal
+// «Motorista y vehículo» de ParaDespacho en la web): elegir una píldora solo
+// cambia un borrador; nada se guarda hasta «Guardar», que hace un solo PATCH
+// con lo que cambió y deja «Deshacer». Cerrar la hoja sin guardar descarta.
+// `onSave({ driver?, vehicle? })` hace el PATCH y devuelve true si salió bien
+// (si no, la hoja sigue abierta).
+export function CrewSheet({ route, availability, busy, onClose, onSave }) {
   // Se conserva la última ruta para que la hoja se vea mientras se cierra.
   const last = useRef(route);
   if (route) last.current = route;
   const current = last.current;
+  const open = Boolean(route);
+
+  // Borrador { driver, vehicle }; null = sin cambios. Se descarta al abrir y al cerrar.
+  const [draft, setDraft] = useState(null);
+  useEffect(() => {
+    setDraft(null);
+  }, [open]);
 
   const { drivers, vehicles } = crewOptions(availability, current?._id);
-  const driverId = String(current?.driver?._id || current?.driver || "");
+  const currentDriver = String(current?.driver?._id || current?.driver || "");
+  const currentVehicle = current?.vehicle || "";
+  const driverId = draft?.driver ?? currentDriver;
+  const vehicleId = draft?.vehicle ?? currentVehicle;
+  const changes = {};
+  if (driverId !== currentDriver) changes.driver = driverId;
+  if (vehicleId !== currentVehicle) changes.vehicle = vehicleId;
+  const changed = Object.keys(changes).length > 0;
+
+  const pick = (field, value) => setDraft({ driver: driverId, vehicle: vehicleId, [field]: value });
+
+  const save = async () => {
+    if (await onSave(changes)) onClose();
+  };
 
   return (
     <BottomSheet
-      visible={Boolean(route)}
+      visible={open}
       onClose={onClose}
+      dismissable={!busy}
       title="Motorista y vehículo"
       subtitle={current ? `${routeLabel(current)} · ${current.zone}` : undefined}
-      footer={<Button title="Listo" variant="secondary" onPress={onClose} />}
+      footer={
+        <View style={styles.footer}>
+          <Button title="Cancelar" variant="secondary" disabled={busy} onPress={onClose} style={styles.flex} />
+          <Button title="Guardar" loading={busy} disabled={!changed} onPress={save} style={styles.flex} />
+        </View>
+      }
     >
       <CrewPicker
         label="Motorista"
         options={drivers}
         value={driverId}
-        onChange={(v) => v !== driverId && onChange("driver", v)}
+        onChange={(v) => v !== driverId && pick("driver", v)}
         emptyText={NO_DRIVERS}
         disabled={busy}
       />
       <CrewPicker
         label="Vehículo"
         options={vehicles}
-        value={current?.vehicle || ""}
-        onChange={(v) => v !== current?.vehicle && onChange("vehicle", v)}
+        value={vehicleId}
+        onChange={(v) => v !== vehicleId && pick("vehicle", v)}
         emptyText={NO_VEHICLES}
         disabled={busy}
       />
