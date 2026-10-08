@@ -22,6 +22,10 @@ export const STATUS_DOMAINS = {
     "Listo para empacar": "green",
     "Esperando lote": "amber",
     Empacado: "purple",
+    // Ya con Logística (mismos tonos que el dominio pedido)
+    Recogido: "blue",
+    "En Tránsito": "teal",
+    Entregado: "green",
   },
   "linea-inventario": {
     "Por verificar": "gray",

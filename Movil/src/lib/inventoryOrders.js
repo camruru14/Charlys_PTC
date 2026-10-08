@@ -90,8 +90,14 @@ function isProcessed(item) {
   return Boolean(item.verified || item.sentToManufacturing || item.packed || item.stockPackedAt || item.manufacturePackedAt);
 }
 
-// Estado macro del pedido (dominio pedido-inventario).
+// Estado macro del pedido (dominio pedido-inventario). Primero manda el
+// estado real del pedido (lo cambia Logística: En Tránsito al salir la ruta,
+// Entregado al entregar) y la recogida del motorista; si no, se calcula por
+// líneas. isDispatched no llama a esta función, así que no hay ciclo.
 export function inventoryMacroStatus(order) {
+  if (order.status === "Entregado") return "Entregado";
+  if (order.status === "En Tránsito") return "En Tránsito";
+  if (isDispatched(order)) return "Recogido";
   const items = order.items || [];
   if (items.length > 0 && items.every((i) => i.packed)) return "Empacado";
   const pending = items.filter((i) => !i.packed);
