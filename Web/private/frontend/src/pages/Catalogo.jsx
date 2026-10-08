@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
-import { useSubcategories } from "../hooks/useSubcategories";
+import { useProductNames, refreshProductNames } from "../hooks/useProductNames";
 import { api } from "../lib/api";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import ProductFormModal from "../components/catalog/ProductFormModal";
@@ -23,11 +23,11 @@ import { statusTone } from "../lib/statusDomains";
 const PUBLIC_STORE_URL = import.meta.env.VITE_PUBLIC_STORE_URL || "";
 const ALL = "todas";
 
-// Sin nombre (el nombre del producto es el de su subcategoría) y sin categoría
-// elegida: la subcategoría se habilita al elegirla.
+// El nombre es el «producto» que usa todo el sistema (único, ver
+// ProductFormModal). Sin categoría elegida.
 const emptyForm = {
+  name: "",
   category: "",
-  subcategory: "",
   description: "",
   price: "",
   compareAtPrice: "",
@@ -51,7 +51,7 @@ function Catalogo() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/products/admin/all");
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
-  const { subcategories } = useSubcategories();
+  const { products: productNames } = useProductNames();
 
   // Pestañas: «Todas» y cada categoría que existe, con su conteo (?categoria=).
   const categories = useMemo(() => [...new Set(list.map((p) => p.category).filter(Boolean))].sort(), [list]);
@@ -88,8 +88,8 @@ function Catalogo() {
   function openEdit(product) {
     setEditingId(product._id);
     setForm({
+      name: product.name || "",
       category: product.category,
-      subcategory: product.subcategory || "",
       description: product.description || "",
       price: product.price ?? "",
       compareAtPrice: product.compareAtPrice ?? "",
@@ -105,12 +105,7 @@ function Catalogo() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    // Las subcategorías dependen de la categoría: al cambiarla se limpia la elegida.
-    setForm((f) => ({
-      ...f,
-      [name]: type === "checkbox" ? checked : value,
-      ...(name === "category" && value !== f.category ? { subcategory: "" } : null),
-    }));
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
   function toggleColor(color) {
@@ -131,6 +126,7 @@ function Catalogo() {
     const { images, ...rest } = form;
     const payload = {
       ...rest,
+      name: form.name.trim(),
       price: Number(form.price) || 0,
       compareAtPrice: form.compareAtPrice === "" ? undefined : Number(form.compareAtPrice) || 0,
       minOrderQuantity: Number(form.minOrderQuantity) || 1,
@@ -154,8 +150,12 @@ function Catalogo() {
 
       setModalOpen(false);
       refetch();
+      refreshProductNames();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message, { duration: 6000 });
+      // Si el producto se creó o editó y falló la subida de imágenes, la lista cambió igual.
+      refetch();
+      refreshProductNames();
     } finally {
       setSaving(false);
     }
@@ -167,8 +167,10 @@ function Catalogo() {
       await api.del(`/products/${product._id}`);
       toast.success("Producto eliminado");
       refetch();
+      refreshProductNames();
     } catch (err) {
-      toast.error(err.message);
+      // El backend explica por qué no se pudo (p. ej. ya se usa en pedidos, lotes o inventario).
+      toast.error(err.message, { duration: 6000 });
     }
   }
 
@@ -255,8 +257,7 @@ function Catalogo() {
         onClose={() => setModalOpen(false)}
         editingId={editingId}
         form={form}
-        subcategories={subcategories}
-        products={list}
+        productNames={productNames}
         handleChange={handleChange}
         onToggleColor={toggleColor}
         onSubmit={handleSubmit}

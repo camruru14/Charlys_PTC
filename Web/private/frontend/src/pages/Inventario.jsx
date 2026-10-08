@@ -118,7 +118,7 @@ function Inventario() {
   // así no se pisa un valor que ya tuviera.
   async function handleSubmit(e) {
     e.preventDefault();
-    // El nombre de un producto terminado es el de una subcategoría.
+    // El nombre de un producto terminado es el de un producto del Catálogo.
     if (form.category === "Producto Terminado" && !form.name) {
       toast.error("Elige la categoría y el producto");
       return;

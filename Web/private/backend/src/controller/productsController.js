@@ -1,9 +1,9 @@
 const productsController = {};
 
-import productModel from "../models/Product.js";
-import { findSubcategoryByName } from "../lib/subcategories.js";
-import { NAME_COLLATION } from "../models/Subcategory.js";
+import productModel, { NAME_COLLATION } from "../models/Product.js";
 import cloudinary, { uploadProductImageBuffer } from "../lib/cloudinary.js";
+import { normalizeProductName } from "../lib/productName.js";
+import { isNameInUse, nameKey, usedNameKeys } from "../lib/productUsage.js";
 
 /*
   Administración del catálogo de la tienda pública (pages/Catalogo.jsx del
@@ -13,12 +13,14 @@ import cloudinary, { uploadProductImageBuffer } from "../lib/cloudinary.js";
   públicas de solo lectura (GET /products y GET /products/:slug) siguen en
   public/backend.
 
-  El nombre de un producto es SIEMPRE el de su subcategoría (Configuración >
-  Subcategorías): es el «producto» que muestra todo el sistema y la tienda. El
-  panel ya no manda `name`; si llega en el cuerpo se ignora, y el backend lo
-  llena con la subcategoría. Una subcategoría = un producto del catálogo. El
-  slug se genera al crear y no cambia al editar (lo usan los carritos
-  guardados y los enlaces de la tienda).
+  El Catálogo es la ÚNICA fuente de productos: el `name` de un producto es el
+  «producto» que se elige en Fabricación, Producción diaria e Inventario y el
+  que guardan las líneas de los pedidos. Es único sin distinguir mayúsculas ni
+  espacios sobrantes. Si ya se usa en pedidos, lotes o inventario
+  (lib/productUsage.js) no se puede renombrar, cambiar de categoría ni
+  eliminar (solo desactivar para ocultarlo de la tienda). El slug se genera al
+  crear y no cambia al editar (lo usan los carritos guardados y los enlaces de
+  la tienda).
 */
 
 // Genera un slug simple y legible a partir del nombre del producto.
@@ -45,31 +47,26 @@ function sendError(res, error) {
 }
 
 const CATEGORIES = ["Pelotas", "Pajillas"];
-const sameName = (a, b) => String(a ?? "").trim().toLocaleLowerCase("es") === String(b ?? "").trim().toLocaleLowerCase("es");
+const MAX_NAME_LENGTH = 60;
 
-// La subcategoría es obligatoria al crear o editar desde el panel: debe
-// existir, estar activa (o ser la que el producto ya tenía) y pertenecer a la
-// categoría del producto. Devuelve { name } con el nombre tal como está
-// guardado en Configuración, o { error } con el mensaje para el 400.
-async function resolveSubcategory(category, subcategory, current) {
-  if (!CATEGORIES.includes(category)) return { error: "Categoría no válida." };
-  const wanted = typeof subcategory === "string" ? subcategory.trim() : "";
-  if (!wanted) return { error: "Elige una subcategoría." };
+const duplicateMessage = (name) => `Ya existe un producto llamado «${name}»`;
+const IN_USE_SUFFIX = "ya se usa en pedidos, lotes o inventario";
 
-  const sub = await findSubcategoryByName(wanted);
-  if (!sub) return { error: `La subcategoría «${wanted}» no existe.` };
-  if (!sub.active && !sameName(sub.name, current)) return { error: `La subcategoría «${sub.name}» está inactiva.` };
-  if (sub.category !== category) {
-    return { error: `La subcategoría «${sub.name}» pertenece a «${sub.category}», no a «${category}».` };
-  }
-  return { name: sub.name };
+// Valida el nombre (ya normalizado) y la categoría. Devuelve el mensaje del
+// 400 o null si están bien.
+function nameAndCategoryError(name, category) {
+  if (!name) return "Escribe el nombre del producto.";
+  if (name.length > MAX_NAME_LENGTH) return `El nombre no puede pasar de ${MAX_NAME_LENGTH} caracteres.`;
+  if (!CATEGORIES.includes(category)) return "Categoría no válida.";
+  return null;
 }
 
-// ¿Otro producto del catálogo ya usa esta subcategoría? (sin distinguir
-// mayúsculas, como el nombre de la subcategoría). `exceptId`: el propio producto.
-const subcategoryTaken = (name, exceptId) =>
-  productModel.exists({ subcategory: name, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_COLLATION);
-const takenMessage = (name) => `La subcategoría «${name}» ya tiene un producto en el catálogo.`;
+// ¿Otro producto ya se llama así? (sin distinguir mayúsculas). `exceptId`: el propio producto.
+const nameTaken = (name, exceptId) =>
+  productModel.exists({ name, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_COLLATION);
+
+// 11000 por el índice único de name (una carrera entre dos altas) -> el mismo 409.
+const isDuplicateName = (error) => error?.code === 11000 && Boolean(error.keyPattern?.name);
 
 // GET /api/products/admin/all
 // A diferencia del catálogo público, no filtra por `active`: la pantalla de
@@ -84,12 +81,35 @@ productsController.getAllProductsAdmin = async (_req, res) => {
   }
 };
 
+// GET /api/products/names
+// Los productos para los selectores y el formulario del Catálogo, ordenados
+// por categoría y nombre, con `inUse` calculado en bloque. Incluye los
+// inactivos: `active` solo controla la tienda.
+productsController.getProductNames = async (_req, res) => {
+  try {
+    const [list, used] = await Promise.all([
+      productModel.find().select("name category active").sort({ category: 1, name: 1 }).collation(NAME_COLLATION),
+      usedNameKeys(),
+    ]);
+    res.json(
+      list.map((p) => ({
+        _id: p._id,
+        name: p.name,
+        category: p.category,
+        active: p.active,
+        inUse: used.has(nameKey(p.name)),
+      })),
+    );
+  } catch (error) {
+    sendError(res, error);
+  }
+};
+
 // POST /api/products
 productsController.createProduct = async (req, res) => {
   try {
     const {
       category,
-      subcategory,
       description,
       price,
       compareAtPrice,
@@ -100,19 +120,15 @@ productsController.createProduct = async (req, res) => {
       featured,
       active,
     } = req.body;
+    const name = normalizeProductName(req.body.name);
 
-    if (!category || !subcategory || price === undefined) {
-      return res
-        .status(400)
-        .json({ message: "category, subcategory y price son obligatorios." });
+    if (!name || !category || price === undefined) {
+      return res.status(400).json({ message: "name, category y price son obligatorios." });
     }
+    const invalid = nameAndCategoryError(name, category);
+    if (invalid) return res.status(400).json({ message: invalid });
+    if (await nameTaken(name)) return res.status(409).json({ message: duplicateMessage(name) });
 
-    const resolved = await resolveSubcategory(category, subcategory);
-    if (resolved.error) return res.status(400).json({ message: resolved.error });
-    if (await subcategoryTaken(resolved.name)) return res.status(409).json({ message: takenMessage(resolved.name) });
-
-    // El nombre del producto es el de su subcategoría (se ignora el del cuerpo).
-    const name = resolved.name;
     let slug = slugify(name);
     // Evitar colisiones de slug
     const existing = await productModel.findOne({ slug });
@@ -124,7 +140,6 @@ productsController.createProduct = async (req, res) => {
       name,
       slug,
       category,
-      subcategory: resolved.name,
       description,
       price,
       compareAtPrice,
@@ -139,11 +154,14 @@ productsController.createProduct = async (req, res) => {
     await newProduct.save();
     res.status(201).json(newProduct);
   } catch (error) {
+    if (isDuplicateName(error)) return res.status(409).json({ message: duplicateMessage(normalizeProductName(req.body?.name)) });
     sendError(res, error);
   }
 };
 
 // PUT /api/products/:id
+// El nombre y la categoría solo cambian si el producto no se usa en pedidos,
+// lotes ni inventario; el resto de los campos siempre se edita.
 productsController.updateProduct = async (req, res) => {
   try {
     const existing = await productModel.findById(req.params.id);
@@ -151,27 +169,32 @@ productsController.updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Producto no encontrado." });
     }
 
-    // Lo que no venga en el cuerpo se toma del producto guardado: un producto
-    // anterior a las subcategorías no se puede editar sin asignarle una.
-    const resolved = await resolveSubcategory(
-      req.body.category ?? existing.category,
-      req.body.subcategory ?? existing.subcategory,
-      existing.subcategory,
-    );
-    if (resolved.error) return res.status(400).json({ message: resolved.error });
+    const requested = req.body.name === undefined ? existing.name : normalizeProductName(req.body.name);
+    const category = req.body.category ?? existing.category;
+    // Renombrar = pedir otro nombre; si solo cambian los espacios sobrantes del
+    // nombre guardado, no cuenta y el nombre guardado se conserva tal cual.
+    const renames = requested !== normalizeProductName(existing.name);
+    const name = renames ? requested : existing.name;
+    const recategorizes = category !== existing.category;
 
-    // Una subcategoría = un producto: solo se comprueba al cambiarla (un
-    // producto que ya la tenía no se bloquea por datos anteriores).
-    if (!sameName(resolved.name, existing.subcategory) && (await subcategoryTaken(resolved.name, existing._id))) {
-      return res.status(409).json({ message: takenMessage(resolved.name) });
+    if (renames || recategorizes) {
+      const invalid = nameAndCategoryError(name, category);
+      if (invalid) return res.status(400).json({ message: invalid });
+      if (await isNameInUse(existing.name)) {
+        return res.status(409).json({
+          message: `No se puede cambiar el nombre ni la categoría de «${existing.name}»: ${IN_USE_SUFFIX}.`,
+        });
+      }
+      if (renames && (await nameTaken(name, existing._id))) {
+        return res.status(409).json({ message: duplicateMessage(name) });
+      }
     }
 
-    // El nombre siempre es el de la subcategoría y el slug no cambia: se
-    // ignoran `name` y `slug` del cuerpo.
-    const { name: _name, slug: _slug, ...fields } = req.body;
+    // El slug no cambia y `subcategory` ya no existe: se ignoran los del cuerpo.
+    const { name: _name, category: _category, slug: _slug, subcategory: _subcategory, ...fields } = req.body;
     const updated = await productModel.findByIdAndUpdate(
       req.params.id,
-      { ...fields, subcategory: resolved.name, name: resolved.name },
+      { ...fields, name, category },
       { returnDocument: "after", runValidators: true },
     );
 
@@ -181,16 +204,24 @@ productsController.updateProduct = async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (isDuplicateName(error)) return res.status(409).json({ message: duplicateMessage(normalizeProductName(req.body?.name)) });
     sendError(res, error);
   }
 };
 
 // DELETE /api/products/:id
+// No se elimina si su nombre ya se usa en pedidos, lotes o inventario.
 productsController.deleteProduct = async (req, res) => {
   try {
     const product = await productModel.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: "Producto no encontrado." });
+    }
+
+    if (await isNameInUse(product.name)) {
+      return res.status(409).json({
+        message: `No se puede eliminar «${product.name}»: ${IN_USE_SUFFIX}. Desactívalo para ocultarlo de la tienda.`,
+      });
     }
 
     // Borrar también las imágenes en Cloudinary

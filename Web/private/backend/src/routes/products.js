@@ -9,6 +9,10 @@ const router = express.Router();
 // public/backend.
 router.route("/admin/all").get(productsController.getAllProductsAdmin);
 
+// Nombres de los productos para los selectores y el formulario del Catálogo
+// (antes de /:id).
+router.route("/names").get(productsController.getProductNames);
+
 router.route("/").post(productsController.createProduct);
 
 router

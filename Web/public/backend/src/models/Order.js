@@ -16,7 +16,7 @@ import { Schema, model } from "mongoose";
 
 const orderItemSchema = new Schema(
   {
-    product: { type: String, required: true }, // nombre de la subcategoría del producto, ej. "Pajilla jumbo"
+    product: { type: String, required: true }, // nombre del producto del Catálogo del producto, ej. "Pajilla jumbo"
     color: { type: String },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },

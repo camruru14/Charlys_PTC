@@ -6,10 +6,8 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import { useProductionLines } from "../hooks/useProductionLines";
-import { useSubcategories } from "../hooks/useSubcategories";
 import { useAuth } from "../hooks/useAuth";
 import LineasProduccion from "./configuracion/LineasProduccion";
-import Subcategorias from "./configuracion/Subcategorias";
 import Vehiculos from "./configuracion/Vehiculos";
 import PersonalPermisos from "./configuracion/PersonalPermisos";
 import MiCuenta from "./configuracion/MiCuenta";
@@ -72,7 +70,7 @@ function clearLegacyCompany() {
 
 // ?tab= de cada sección del menú. «usuarios» (el nombre anterior de Personal
 // y permisos) cae en Empresa.
-const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "subcategorias", "personal", "cuenta"];
+const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "personal", "cuenta"];
 
 // Mi cuenta: teléfono y DUI, más el cambio de correo o contraseña (que pide la actual).
 const emptyAccountForm = { phone: "", dui: "", newEmail: "", newPassword: "" };
@@ -133,7 +131,6 @@ function SectionMenu({ value, onChange, counts, companyName, updatedAt }) {
     { key: "bodegas", label: "Bodegas", icon: IconBox, count: counts.bodegas },
     { key: "vehiculos", label: "Vehículos", icon: IconTruck, count: counts.vehiculos },
     { key: "lineas", label: "Líneas de producción", icon: IconFactory, count: counts.lineas },
-    { key: "subcategorias", label: "Subcategorías", icon: IconTag, count: counts.subcategorias },
     { key: "personal", label: "Personal y permisos", icon: IconUsers, count: counts.personal },
     { key: "cuenta", label: "Mi cuenta", icon: IconUser },
   ];
@@ -230,7 +227,6 @@ function Configuracion() {
   const { data: availability, refetch: refetchAvailability } = useFetch("/routes/availability");
   const { schedule, loading: scheduleLoading, refetch: refetchSchedule } = useWorkSchedule();
   const { lines, loading: linesLoading, error: linesError, refetch: refetchLines } = useProductionLines();
-  const { subcategories, loading: subcategoriesLoading, error: subcategoriesError, refetch: refetchSubcategories } = useSubcategories();
   const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useFetch("/employees");
   const { data: account, loading: accountLoading, error: accountError, mutate: mutateAccount } = useFetch("/auth/me");
   // Contraseña propia desencriptada, para el ojo de Mi cuenta: { password, legacy }.
@@ -544,7 +540,7 @@ function Configuracion() {
         <SectionMenu
           value={section}
           onChange={setSection}
-          counts={{ bodegas: warehouses.length, vehiculos: vehicles.length, lineas: lines.length, subcategorias: subcategories.length, personal: employees.length }}
+          counts={{ bodegas: warehouses.length, vehiculos: vehicles.length, lineas: lines.length, personal: employees.length }}
           companyName={savedCompany.name || DEFAULT_COMPANY.name}
           updatedAt={savedCompany.updatedAt}
         />
@@ -638,8 +634,6 @@ function Configuracion() {
             />
           ) : section === "lineas" ? (
             <LineasProduccion lines={lines} loading={linesLoading} error={linesError} refetch={refetchLines} />
-          ) : section === "subcategorias" ? (
-            <Subcategorias subcategories={subcategories} loading={subcategoriesLoading} error={subcategoriesError} refetch={refetchSubcategories} />
           ) : section === "personal" ? (
             <PersonalPermisos employees={employees} loading={employeesLoading} error={employeesError} refetch={refetchEmployees} />
           ) : (

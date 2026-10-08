@@ -12,6 +12,9 @@ import { Schema, model } from "mongoose";
 // Si se modifica el esquema en un lado, el otro archivo debe actualizarse
 // igual para que ambos sigan siendo compatibles.
 
+// Sin distinguir mayúsculas (strength 2): "Jumbo" y "jumbo" son el mismo nombre.
+export const NAME_COLLATION = { locale: "es", strength: 2 };
+
 const productImageSchema = new Schema(
   {
     url: { type: String, required: true }, // secure_url de Cloudinary
@@ -22,19 +25,16 @@ const productImageSchema = new Schema(
 
 const productSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true }, // ej. "Pelota plástica 60 mm"
+    // El nombre es el «producto» que se elige en Fabricación, Producción
+    // diaria e Inventario y el que guardan las líneas de los pedidos. Es único
+    // sin distinguir mayúsculas ni espacios sobrantes (índice de abajo).
+    name: { type: String, required: true, trim: true }, // ej. "Pajilla jumbo"
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     category: {
       type: String,
       enum: ["Pelotas", "Pajillas"],
       required: true,
     },
-    // Nombre de la subcategoría (colección "subcategories", Configuración >
-    // Subcategorías) a la que pertenece el producto; su categoría debe
-    // coincidir con `category`. No es required en el esquema porque los
-    // productos anteriores no la tienen: el panel la exige al crear o editar
-    // (private/backend/src/controller/productsController.js).
-    subcategory: { type: String, trim: true },
     description: { type: String, default: "" },
     price: { type: Number, required: true, min: 0 }, // precio unitario en USD
     compareAtPrice: { type: Number, min: 0 }, // precio "antes" opcional, para mostrar descuento
@@ -50,5 +50,8 @@ const productSchema = new Schema(
 );
 
 productSchema.index({ category: 1, active: 1 });
+// Nombre único sin distinguir mayúsculas (strength 2). El panel además lo
+// recorta y colapsa sus espacios antes de guardar.
+productSchema.index({ name: 1 }, { unique: true, collation: NAME_COLLATION });
 
 export default model("Product", productSchema);

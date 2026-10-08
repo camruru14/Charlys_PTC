@@ -61,21 +61,12 @@ async function buildOrderItems(rawItems) {
       throw { status: 400, message: `Color inválido para "${product.name}".` };
     }
 
-    // La línea guarda como "producto" el nombre de la SUBCATEGORÍA del
-    // catálogo (Configuración > Subcategorías del panel), no el nombre libre
-    // del producto ni el de su categoría: es el nombre que usa todo el panel
-    // (Pedidos, Fabricación, Logística) y con el que Inventario busca el
-    // producto terminado al verificar el pedido (name = subcategoría + color,
-    // private/backend/src/lib/stock.js). Sin subcategoría no se vende: no hay
-    // nombre válido con el que el panel pueda descontar la existencia.
-    const subcategory = typeof product.subcategory === "string" ? product.subcategory.trim() : "";
-    if (!subcategory) {
-      throw {
-        status: 400,
-        message: `"${product.name}" no tiene subcategoría asignada; no se puede vender todavía.`,
-      };
-    }
-    const productLabel = raw.size ? `${subcategory} (${raw.size})` : subcategory;
+    // La línea guarda como "producto" el NOMBRE del producto del catálogo (el
+    // que se administra en Catálogo del panel, único en todo el sistema), no
+    // su categoría: es el nombre que usa todo el panel (Pedidos, Fabricación,
+    // Logística) y con el que Inventario busca el producto terminado al
+    // verificar el pedido (name + color, private/backend/src/lib/stock.js).
+    const productLabel = raw.size ? `${product.name} (${raw.size})` : product.name;
     const unitPrice = product.price;
     const subtotal = Number((unitPrice * quantity).toFixed(2));
 

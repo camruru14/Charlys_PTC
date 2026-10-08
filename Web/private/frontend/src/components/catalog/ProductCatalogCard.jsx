@@ -11,7 +11,7 @@ import { IconImage, IconUpload } from "../../lib/icons";
 /*
   Tarjeta de un producto del catálogo público (pantalla Catálogo). Imagen de
   128px (o placeholder con el color principal suavizado), categoría y estado,
-  nombre, subcategoría, mínimo y stock, precio, colores y acciones: Editar, subir imagen
+  nombre, mínimo y stock, precio, colores y acciones: Editar, subir imagen
   (directo, sin abrir el modal) y «…» con Eliminar.
 */
 
@@ -58,19 +58,6 @@ function ProductCatalogCard({ product, onEdit, onDelete, onAddImages, uploading 
 
       <div className="flex flex-1 flex-col p-4">
         <p className="truncate text-[15px] font-bold text-ink" title={product.name}>{product.name}</p>
-        {/* El nombre del producto ES su subcategoría: la etiqueta solo aparece
-            si falta (producto anterior) o si el nombre guardado es otro. */}
-        {!product.subcategory || product.subcategory !== product.name ? (
-          <p className="mt-1">
-            {product.subcategory ? (
-              <span className="inline-flex h-[20px] max-w-full items-center truncate rounded-[6px] bg-primary-soft px-2 text-[11px] font-semibold text-primary-soft-text">
-                {product.subcategory}
-              </span>
-            ) : (
-              <span className="t-aux">Sin subcategoría</span>
-            )}
-          </p>
-        ) : null}
         <p className="mt-1 text-[11.5px] text-subtle">
           Mínimo {fmtNumber(product.minOrderQuantity ?? 1)} u · stock {fmtNumber(product.stock)}
         </p>

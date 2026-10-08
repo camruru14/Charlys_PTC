@@ -8,7 +8,7 @@ import { formatBatchNumber } from "../lib/format";
 export const emptyDailyBatchForm = {
   dailyBatchNumber: "",
   date: "",
-  product: "", // nombre de una subcategoría (ProductSelect); sin valor por defecto
+  product: "", // nombre de un producto del Catálogo (ProductSelect); sin valor por defecto
   color: "Rojo",
 };
 

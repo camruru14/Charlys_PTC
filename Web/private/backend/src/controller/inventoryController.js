@@ -33,7 +33,7 @@ inventoryController.insertItem = async (req, res) => {
     const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
       req.body;
 
-    // El nombre de un producto terminado es el de una subcategoría activa.
+    // El nombre de un producto terminado es el de un producto del Catálogo.
     const itemName = category === "Producto Terminado" ? await assertProductName(name, { required: true }) : name;
 
     const newItem = new inventoryModel({
@@ -62,8 +62,8 @@ inventoryController.updateItem = async (req, res) => {
     const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
       req.body;
 
-    // Un producto terminado conserva su nombre aunque la subcategoría se haya
-    // desactivado; un nombre nuevo debe ser el de una subcategoría activa.
+    // Un producto terminado conserva su nombre aunque el producto se haya
+    // renombrado o eliminado del Catálogo; un nombre nuevo debe existir en él.
     let itemName = name;
     if (category === "Producto Terminado") {
       const existing = await inventoryModel.findById(req.params.id);

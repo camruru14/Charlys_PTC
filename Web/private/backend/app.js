@@ -21,7 +21,6 @@ import routesRoutes from "./src/routes/routes.js";
 import settingsRoutes from "./src/routes/settings.js";
 import productionLinesRoutes from "./src/routes/productionLines.js";
 import productsRoutes from "./src/routes/products.js";
-import subcategoriesRoutes from "./src/routes/subcategories.js";
 import { PRODUCT_IMAGE_MAX_MB } from "./src/lib/cloudinary.js";
 
 // Cargar especificación OpenAPI 3.1.0
@@ -114,10 +113,6 @@ app.use("/api/routes", validateAuthCookie(), routesRoutes);
 
 // Líneas de producción (Configuración; opciones al crear/iniciar lotes)
 app.use("/api/productionLines", validateAuthCookie(), productionLinesRoutes);
-
-// Subcategorías de producto (Configuración; se eligen al crear o editar un
-// producto del Catálogo)
-app.use("/api/subcategories", validateAuthCookie(), subcategoriesRoutes);
 
 // Catálogo de la tienda pública: administración (crear/editar/eliminar e
 // imágenes). Misma colección "products" que lee public/backend.

@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import Modal from "../ui/Modal";
 import { Field, SelectField, TextareaField } from "../ui/Field";
@@ -7,19 +6,21 @@ import { blockNegativeKey } from "../../lib/numberInput";
 import { PRODUCT_COLORS, PRODUCT_COLOR_HEX } from "../../lib/catalogOptions";
 import { IconClose } from "../../lib/icons";
 import { buttonClass } from "../../lib/buttonStyles";
-import { subcategoryOptions } from "../../hooks/useSubcategories";
+import { normalizeName, sameName } from "../../hooks/useProductNames";
 
 const CATEGORIES = ["Pelotas", "Pajillas"];
+const MAX_NAME_LENGTH = 60;
 
 /*
-  Modal de creación/edición de un producto del catálogo público. No tiene
-  campo «Nombre»: el nombre del producto es siempre el de su subcategoría (el
-  backend lo toma de ahí). Primero se elige la categoría y después la
-  subcategoría (obligatoria, sale de Configuración > Subcategorías): solo las
-  activas de esa categoría, y el campo queda deshabilitado mientras no haya
-  categoría. Una subcategoría = un producto, así que las que ya usa OTRO
-  producto del catálogo salen deshabilitadas (`products` es la lista que ya
-  carga Catálogo). Los colores sí salen de catalogOptions.js (misma fuente que
+  Modal de creación/edición de un producto del catálogo público. El
+  catálogo es la única fuente de productos: se escribe el NOMBRE (obligatorio,
+  máximo 60) y se elige la CATEGORÍA. Ese nombre es el «producto» que se elige
+  en Fabricación, Producción diaria e Inventario y el que guardan los pedidos
+  de la tienda. Es único sin distinguir mayúsculas ni espacios sobrantes: se
+  valida en vivo con `productNames` (useProductNames) y, si ya existe, se
+  muestra el error y no se puede guardar. Un producto que ya se usa en
+  pedidos, lotes o inventario (`inUse`) no cambia de nombre ni de categoría.
+  Los colores salen de catalogOptions.js (misma fuente que
   usa public/frontend), así ambos lados nunca se desincronizan ahí.
 
   Las imágenes existentes (solo en edición) se pueden quitar una por una;
@@ -28,7 +29,7 @@ const CATEGORIES = ["Pelotas", "Pajillas"];
   agregarle una imagen a un producto ya existente SIN abrir este modal, está
   el botón "Agregar imagen" de cada card (ProductCatalogCard.jsx).
 */
-function ProductFormModal({ open, onClose, editingId, form, subcategories = [], products = [], handleChange, onToggleColor, onSubmit, saving, onRemoveImage, removingImage }) {
+function ProductFormModal({ open, onClose, editingId, form, productNames = [], handleChange, onToggleColor, onSubmit, saving, onRemoveImage, removingImage }) {
   const fileInputRef = useRef(null);
   const [pendingFiles, setPendingFiles] = useState([]);
 
@@ -41,25 +42,23 @@ function ProductFormModal({ open, onClose, editingId, form, subcategories = [], 
     onClose();
   }
 
-  // Solo las activas de la categoría elegida (más la actual si ya está inactiva);
-  // las que ya usa otro producto salen deshabilitadas (el propio no cuenta).
-  const usedByOther = new Set(
-    products.filter((p) => p._id !== editingId && p.subcategory).map((p) => p.subcategory.trim().toLocaleLowerCase("es")),
-  );
-  const subOptions = (form.category ? subcategoryOptions(subcategories, form.category, form.subcategory) : []).map((name) => {
-    const taken = usedByOther.has(name.trim().toLocaleLowerCase("es"));
-    return { value: name, label: taken ? `${name} · ya tiene producto` : name, disabled: taken };
-  });
-  const available = subOptions.filter((o) => !o.disabled).length;
+  const typedName = normalizeName(form.name);
+  // El propio producto no cuenta como repetido.
+  const duplicate = Boolean(typedName) && productNames.some((p) => p._id !== editingId && sameName(p.name, typedName));
+  const locked = Boolean(editingId && productNames.find((p) => p._id === editingId)?.inUse);
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (!form.category) {
-      toast.error("Elige la categoría");
+    if (!typedName) {
+      toast.error("Escribe el nombre del producto");
       return;
     }
-    if (!form.subcategory) {
-      toast.error("Elige una subcategoría");
+    if (duplicate) {
+      toast.error(`Ya existe un producto llamado «${typedName}»`);
+      return;
+    }
+    if (!form.category) {
+      toast.error("Elige la categoría");
       return;
     }
     onSubmit(pendingFiles).then(() => setPendingFiles([]));
@@ -74,35 +73,34 @@ function ProductFormModal({ open, onClose, editingId, form, subcategories = [], 
       footer={
         <>
           <button type="button" onClick={handleClose} className={buttonClass("secondary", "modal")}>Cancelar</button>
-          <button type="submit" form="product-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
+          <button type="submit" form="product-form" disabled={saving || duplicate} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
         </>
       }
     >
       <form id="product-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} placeholder="Selecciona…" required />
         <div>
-          <SelectField
-            label="Subcategoría"
-            name="subcategory"
-            value={form.subcategory}
+          <Field
+            label="Nombre del producto"
+            name="name"
+            value={form.name}
             onChange={handleChange}
-            options={subOptions}
-            disabled={!form.category}
-            placeholder={!form.category ? "Elige primero la categoría" : subOptions.length ? "Selecciona…" : "Sin subcategorías"}
+            placeholder="Ej. Pajilla jumbo"
+            maxLength={MAX_NAME_LENGTH}
+            autoComplete="off"
             required
+            {...(locked
+              ? {
+                  disabled: true,
+                  className: "w-full cursor-not-allowed rounded-[10px] border border-line bg-surface-2 px-3 py-2 text-[13px] text-muted outline-none",
+                }
+              : {})}
           />
-          {form.category && available === 0 ? (
-            <p className="t-aux mt-1.5">
-              {subOptions.length === 0
-                ? `No hay subcategorías activas de ${form.category}.`
-                : `Todas las subcategorías de ${form.category} ya tienen producto.`}{" "}
-              <Link to="/configuracion?tab=subcategorias" className="font-semibold text-primary underline">
-                Crea una en Configuración
-              </Link>
-              .
-            </p>
-          ) : null}
+          {duplicate ? <p className="mt-1.5 text-[12px] font-medium text-tone-rose-text">Ya existe un producto llamado «{typedName}»</p> : null}
         </div>
+        <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} placeholder="Selecciona…" disabled={locked} required />
+        {locked ? (
+          <p className="t-aux sm:col-span-2">Ya se usa en pedidos, lotes o inventario: el nombre y la categoría no se pueden cambiar.</p>
+        ) : null}
 
         <div className="sm:col-span-2">
           <TextareaField label="Descripción" name="description" value={form.description} onChange={handleChange} rows={3} />

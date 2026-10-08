@@ -1,28 +1,28 @@
 import { useState } from "react";
 import { SelectField } from "./Field";
-import { SUBCATEGORY_CATEGORIES, categoryOfProduct, productOptions, useSubcategories } from "../../hooks/useSubcategories";
+import { PRODUCT_CATEGORIES, categoryOfProduct, productOptions, useProductNames } from "../../hooks/useProductNames";
 
 /*
   Elección del producto en dos pasos: «Categoría» (Pajillas/Pelotas) y
-  «Producto» (las subcategorías activas de esa categoría). El valor guardado
-  es el nombre de la subcategoría. Son dos campos (un fragmento): el
+  «Producto» (todos los productos del Catálogo de esa categoría, activos o
+  no). El valor guardado es el nombre del producto. Son dos campos (un fragmento): el
   formulario los acomoda en su cuadrícula.
     <ProductSelect value={form.product} onChange={handleChange} />
   - onChange recibe { target: { name, value } } como el resto de SelectField.
   - Al cambiar de categoría el producto se limpia.
   - Al editar, la categoría se deduce del producto guardado, que se muestra
-    aunque su subcategoría esté inactiva (o sea anterior a las subcategorías).
+    aunque ya no exista en el Catálogo (o sea anterior al Catálogo único).
   - Sin valor inicial: no hay producto por defecto. Quien guarda debe validar
     que el producto no esté vacío.
   El componente se monta con el formulario; si el formulario se reutiliza sin
   cerrarse (p. ej. al agregar otra línea), cambia su `key` para reiniciarlo.
 */
 function ProductSelect({ name = "product", value, onChange, size = "md", required = true }) {
-  const { all } = useSubcategories();
+  const { products } = useProductNames();
   // Categoría elegida a mano; mientras no se elija, sale del producto guardado.
   const [picked, setPicked] = useState(null);
-  const category = picked ?? categoryOfProduct(all, value);
-  const options = productOptions(all, category, value);
+  const category = picked ?? categoryOfProduct(products, value);
+  const options = productOptions(products, category, value);
 
   function changeCategory(e) {
     setPicked(e.target.value);
@@ -37,7 +37,7 @@ function ProductSelect({ name = "product", value, onChange, size = "md", require
         name={`${name}Category`}
         value={category}
         onChange={changeCategory}
-        options={SUBCATEGORY_CATEGORIES}
+        options={PRODUCT_CATEGORIES}
         placeholder="Selecciona…"
         required={required}
       />

@@ -34,7 +34,7 @@ dailyBatchesController.getBatch = async (req, res) => {
 dailyBatchesController.insertBatch = async (req, res) => {
   const { date, product, color } = req.body;
 
-  // El producto es el nombre de una subcategoría activa.
+  // El producto es el nombre de un producto del Catálogo.
   const productName = await assertProductName(product, { required: true });
 
   const dailyBatchNumber = await generateDailyBatchNumber();
@@ -61,7 +61,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
     return res.status(404).json({ message: "Daily batch not found" });
   }
 
-  // Conserva el producto que ya tenía aunque su subcategoría esté inactiva.
+  // Conserva el producto que ya tenía aunque se haya renombrado o eliminado después.
   const productName = await assertProductName(product, { current: batch.product });
 
   batch.set({ date, product: productName, color });
