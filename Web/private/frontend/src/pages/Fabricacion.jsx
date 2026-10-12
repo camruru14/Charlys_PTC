@@ -3,18 +3,14 @@ import { useSearchParams } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
 import { useBatchForm } from "../hooks/useBatchForm";
 import { useDailyBatchForm } from "../hooks/useDailyBatchForm";
-import { useDateRange } from "../context/dateRange";
 import { useUrlState } from "../hooks/useUrlState";
-import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import { isStockBatch } from "../lib/batchFlow";
-import { buildGroups, inMfgRange, MFG_GROUPS } from "../lib/orderManufacturing";
-import { fmtNumber, fromDateOnly } from "../lib/format";
+import { buildGroups } from "../lib/orderManufacturing";
 import { IconPlus } from "../lib/icons";
 import { getPageMeta } from "../lib/nav";
 import { useProductionLines } from "../hooks/useProductionLines";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
-import KpiInline from "../components/ui/KpiInline";
 import Button from "../components/ui/Button";
 import DateRangePicker from "../components/ui/DateRangePicker";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -23,7 +19,6 @@ import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import LotesFabricacion from "./fabricacion/LotesFabricacion";
 import ProduccionDiaria from "./fabricacion/ProduccionDiaria";
 import PedidosFabricacion from "./fabricacion/PedidosFabricacion";
-import { statusTone } from "../lib/statusDomains";
 
 const TABS = [
   { key: "lotes", label: "Lotes de fabricación" },
@@ -31,16 +26,7 @@ const TABS = [
   { key: "pedidos", label: "Pedidos" },
 ];
 
-// Lunes de esta semana a las 00:00.
-function startOfWeek() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d;
-}
-
 function Fabricacion() {
-  const range = useDateRange();
   const { data: batches, loading, error, refetch, mutate: mutateBatches } = useFetch("/productionBatches");
   const { data: dailyBatches, loading: dailyLoading, error: dailyError, refetch: refetchDaily } = useFetch("/dailyBatches");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders, mutate: mutateOrders } = useFetch("/orders");
@@ -63,7 +49,6 @@ function Fabricacion() {
   }
 
   const list = useMemo(() => (Array.isArray(batches) ? batches : []), [batches]);
-  const rangeList = useMemo(() => filterBatches(list, defaultBatchFilters, range), [list, range]);
   // Lotes de stock sin filtrar por fecha: la pestaña Lotes agrupa por estado y
   // el rango solo afecta a «En bodega» (ver groupBatches).
   const stockList = useMemo(() => list.filter(isStockBatch), [list]);
@@ -127,37 +112,6 @@ function Fabricacion() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const kpiItems = useMemo(() => {
-    if (activeTab === "diaria") {
-      const today = new Date().toDateString();
-      const weekStart = startOfWeek();
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const dates = dailyList.map((b) => fromDateOnly(b.date)).filter(Boolean);
-      return [
-        { label: "Lotes hoy", value: fmtNumber(dates.filter((d) => d.toDateString() === today).length), tone: "blue" },
-        { label: "Esta semana", value: fmtNumber(dates.filter((d) => d >= weekStart && d < weekEnd).length), tone: "green" },
-      ];
-    }
-    if (activeTab === "pedidos") {
-      const packedGroup = MFG_GROUPS.find((g) => g.macro === "Empacado");
-      const count = (test) => fmtNumber(orderGroups.filter(test).length);
-      // Los tres primeros no dependen del rango; Empacados solo cuenta los del rango.
-      return [
-        { label: "Por empacar", value: count((g) => g.macro === "Por empacar"), tone: statusTone("Por empacar", "pedido-fabricacion") },
-        { label: "En proceso", value: count((g) => g.macro.startsWith("En proceso")), tone: statusTone("En proceso", "pedido-fabricacion") },
-        { label: "Detenidos", value: count((g) => g.macro === "En proceso · detenido"), tone: statusTone("En proceso · detenido", "pedido-fabricacion") },
-        { label: "Empacados", value: count((g) => g.macro === "Empacado" && inMfgRange(g, packedGroup, range)), tone: statusTone("Empacado", "pedido-fabricacion") },
-      ];
-    }
-    return [
-      { label: "Producción", value: fmtNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
-      // En proceso y Detenidos cuentan los lotes activos de la lista, sin importar el rango.
-      { label: "En proceso", value: fmtNumber(stockList.filter((b) => b.status === "En Proceso").length), tone: statusTone("En proceso", "lote") },
-      { label: "Detenidos", value: fmtNumber(stockList.filter((b) => b.status === "Detenido").length), tone: statusTone("Detenido", "lote") },
-    ];
-  }, [activeTab, rangeList, stockList, dailyList, orderGroups, range]);
-
   function newBatch() {
     if (activeTab === "diaria") {
       openDailyCreate();
@@ -181,23 +135,21 @@ function Fabricacion() {
             ? "Pedidos — del lote programado al empaque, sin abrir formularios"
             : getPageMeta("/fabricacion").subtitle
         }
+        // En las tres pestañas, todo va en una sola fila: el rango de fechas,
+        // «Nuevo lote» (no en Pedidos: sus lotes llegan solos desde Inventario) y
+        // las pestañas, así el contenido de cada una arranca a la misma altura.
         actions={
           <>
             <DateRangePicker />
-            {/* Los lotes de pedido llegan solos desde Inventario: sin «Nuevo lote». */}
             {activeTab === "pedidos" ? null : (
               <Button icon={IconPlus} onClick={newBatch}>
                 Nuevo lote
               </Button>
             )}
+            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
           </>
         }
       />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <KpiInline items={kpiItems} />
-        <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
-      </div>
 
       {activeTab === "lotes" ? (
         <LotesFabricacion
