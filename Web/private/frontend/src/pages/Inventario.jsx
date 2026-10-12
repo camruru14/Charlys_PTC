@@ -6,6 +6,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
+import DateRangePicker from "../components/ui/DateRangePicker";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
@@ -187,6 +188,7 @@ function Inventario() {
                 Nuevo artículo
               </Button>
             ) : null}
+            {activeTab === "pedidos" ? <DateRangePicker /> : null}
             <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
           </div>
         }

@@ -13,6 +13,10 @@
     barras de filtros (Logística, Inventario, Fabricación, y los toolbars de
     Lotes/Transacciones) — el tamaño del botón lo define cada caller vía
     `className` (mismo que ya tenían esos filtros, solo cambió el mecanismo).
+    Una opción { value, label, dot, meta, muted } puede traer un punto de color
+    (clase de fondo, p. ej. «bg-tone-blue-dot»), un texto a la derecha (meta,
+    p. ej. un conteo) y verse en gris sin dejar de poder elegirse (muted). Con
+    `label`, el botón muestra «label  valor  meta».
   - TextareaField: área de texto.
 */
 
@@ -127,10 +131,13 @@ function useDropdown() {
     };
   }, [open]);
 
-  function toggleOpen() {
+  // minWidth (opcional): ancho mínimo del panel; si es mayor que el botón, el
+  // panel se alinea a su borde derecho.
+  function toggleOpen(minWidth = 0) {
     if (!open && triggerRef.current) {
       const r = triggerRef.current.getBoundingClientRect();
-      setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+      const width = Math.max(r.width, minWidth);
+      setRect({ top: r.bottom + 4, left: r.right - width, width });
     }
     setOpen((o) => !o);
   }
@@ -177,6 +184,9 @@ function DropdownOptions({ rect, options, value, onSelect }) {
           const text = typeof opt === "string" ? opt : opt.label;
           // Una opción { value, label, disabled: true } se ve pero no se puede elegir.
           const disabled = typeof opt !== "string" && Boolean(opt.disabled);
+          const dot = typeof opt === "string" ? null : opt.dot;
+          const meta = typeof opt === "string" ? null : opt.meta;
+          const muted = typeof opt !== "string" && Boolean(opt.muted);
           const selected = val === value;
           return (
             <button
@@ -189,10 +199,12 @@ function DropdownOptions({ rect, options, value, onSelect }) {
               className={`flex h-9 w-full items-center px-3.5 text-left text-[13px] ${
                 disabled
                   ? "cursor-not-allowed text-faint"
-                  : `hover:bg-surface-2 ${selected ? "bg-select-bg font-semibold text-primary-soft-text" : "text-ink-2"}`
+                  : `hover:bg-surface-2 ${selected ? "bg-select-bg font-semibold text-primary-soft-text" : muted ? "text-faint" : "text-ink-2"}`
               }`}
             >
+              {dot ? <span className={`mr-2 h-2 w-2 shrink-0 rounded-full ${dot} ${muted ? "opacity-40" : ""}`} /> : null}
               <span className="block min-w-0 flex-1 truncate">{text}</span>
+              {meta != null ? <span className={`ml-2 shrink-0 text-[12px] font-normal tabular-nums ${muted ? "text-faint" : "text-muted"}`}>{meta}</span> : null}
             </button>
           );
         })
@@ -225,7 +237,7 @@ export function SelectField({ label, name, value, onChange, options = [], requir
       <button
         type="button"
         ref={triggerRef}
-        onClick={toggleOpen}
+        onClick={() => toggleOpen()}
         disabled={disabled}
         className={`${compact ? compactControlClass : controlClass} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:bg-surface-2 disabled:opacity-70`}
       >
@@ -243,11 +255,12 @@ export function SelectField({ label, name, value, onChange, options = [], requir
 // de filtros: cada caller sigue trayendo su propia "opción X: Todos" como
 // primer elemento de `options` (igual que antes con <option value="">), y
 // su propio tamaño de botón vía `className`.
-export function FilterSelect({ value, onChange, options = [], className = "" }) {
+export function FilterSelect({ value, onChange, options = [], className = "", label, panelMinWidth }) {
   const { open, setOpen, rect, rootRef, triggerRef, toggleOpen } = useDropdown();
 
   const selected = options.find((opt) => (typeof opt === "string" ? opt : opt.value) === value);
   const selectedLabel = selected ? (typeof selected === "string" ? selected : selected.label) : "";
+  const selectedMeta = selected && typeof selected !== "string" ? selected.meta : null;
 
   function selectOption(opt) {
     const val = typeof opt === "string" ? opt : opt.value;
@@ -260,10 +273,18 @@ export function FilterSelect({ value, onChange, options = [], className = "" }) 
       <button
         type="button"
         ref={triggerRef}
-        onClick={toggleOpen}
+        onClick={() => toggleOpen(panelMinWidth)}
         className={`flex items-center justify-between gap-1.5 text-left ${className}`}
       >
-        <span>{selectedLabel}</span>
+        {label ? (
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span className="shrink-0 font-normal text-muted">{label}</span>
+            <span className="truncate">{selectedLabel}</span>
+            {selectedMeta != null ? <span className="ml-auto shrink-0 text-[12px] font-normal tabular-nums text-muted">{selectedMeta}</span> : null}
+          </span>
+        ) : (
+          <span>{selectedLabel}</span>
+        )}
         <IconChevronDown width={14} height={14} className={`shrink-0 text-subtle transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? <DropdownOptions rect={rect} options={options} value={value} onSelect={selectOption} /> : null}

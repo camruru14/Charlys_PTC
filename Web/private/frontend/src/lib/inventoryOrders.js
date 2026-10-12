@@ -1,5 +1,5 @@
 import { routeLabel } from "./logistics";
-import { formatBatchNumber } from "./format";
+import { formatBatchNumber, fmtDate, fmtTime } from "./format";
 
 /*
   Lógica de Inventario > Pedidos a partir de /orders y /inventory:
@@ -177,8 +177,92 @@ export function routeNote(order) {
   return `${routeLabel(route)} · ${name}`;
 }
 
-// Fecha del último cambio de status (para «Despachados, últimos 30 días»).
+// Fecha del último cambio de status (la que filtra el rango en Recogido,
+// En Tránsito y Entregado).
 export function lastStatusAt(order) {
   const history = order.statusHistory || [];
   return history.length ? history[history.length - 1].at : order.updatedAt;
+}
+
+// Grupos de la lista de Pedidos, en su orden fijo. `key` va en la URL (?estado=);
+// `status` es el estado macro
+// (dominio pedido-inventario) que reúne cada grupo; `sort`: «arrival» = el que
+// llegó antes a Inventario primero, «asc»/«desc» = por lastStatusAt.
+// `ranged`: solo esos grupos se filtran por el rango de fechas.
+export const ORDER_GROUPS = [
+  { key: "listo", status: "Listo para empacar", label: "Listos para empacar", note: "solo falta empacar", sort: "arrival" },
+  { key: "verificando", status: "Verificando", label: "Verificando", sort: "arrival", selectable: true },
+  { key: "sin-verificar", status: "Sin verificar", label: "Sin verificar", sort: "arrival", selectable: true },
+  { key: "esperando", status: "Esperando lote", label: "Esperando lote", note: "depende de Fabricación", sort: "arrival" },
+  { key: "empacado", status: "Empacado", label: "Empacados", note: "esperan a Logística", sort: "arrival" },
+  { key: "recogido", status: "Recogido", label: "Recogidos", note: "la ruta aún no sale", sort: "asc", ranged: true },
+  { key: "transito", status: "En Tránsito", label: "En tránsito", sort: "asc", ranged: true },
+  { key: "entregado", status: "Entregado", label: "Entregados", note: "más recientes primero", sort: "desc", ranged: true },
+];
+
+const time = (value) => {
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? 0 : t;
+};
+
+// Cuándo llegó el pedido a Inventario.
+export const arrivedAt = (order) => order.sentToInventoryAt || order.createdAt;
+
+// Número de pedido (completo o parcial) o nombre del cliente.
+export function matchesOrderQuery(order, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return `${order.orderNumber || ""} ${order.customer?.name || ""}`.toLowerCase().includes(q);
+}
+
+// ¿El pedido se ve con el rango de fechas? Solo Recogido, En Tránsito y
+// Entregado se filtran (por lastStatusAt); lo que sigue en bodega se ve siempre.
+export function inDateRange(order, group, range) {
+  if (!group.ranged || !range?.from || !range?.to) return true;
+  const at = time(lastStatusAt(order));
+  return !at || (at >= range.from.getTime() && at <= range.to.getTime());
+}
+
+// Pedidos por grupo (en el orden de ORDER_GROUPS) y con el orden de cada uno.
+// Devuelve [{ ...grupo, items }], incluidos los vacíos.
+export function groupInventoryOrders(orders, range) {
+  const byStatus = new Map(ORDER_GROUPS.map((g) => [g.status, []]));
+  for (const order of orders) byStatus.get(inventoryMacroStatus(order))?.push(order);
+  return ORDER_GROUPS.map((group) => {
+    const items = byStatus.get(group.status).filter((o) => inDateRange(o, group, range));
+    const key = group.sort === "arrival" ? (o) => time(arrivedAt(o)) : (o) => time(lastStatusAt(o));
+    items.sort((a, b) => (group.sort === "desc" ? key(b) - key(a) : key(a) - key(b)));
+    return { ...group, items };
+  });
+}
+
+const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+// Cuándo llegó a Inventario: «hoy 08:20», «ayer 15:30» o «hace N días».
+// `late`: lleva más de 2 días.
+export function arrivalLabel(order, now = new Date()) {
+  const at = arrivedAt(order);
+  const d = new Date(at);
+  if (!at || Number.isNaN(d.getTime())) return null;
+  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+  if (days <= 0) return { text: `hoy ${fmtTime(d)}`, late: false };
+  if (days === 1) return { text: `ayer ${fmtTime(d)}`, late: false };
+  return { text: `hace ${days} días`, late: days > 2 };
+}
+
+// Segunda línea de un pedido que ya salió de bodega: «R-2026-0048 · salió
+// 08:05», «Entregado 11 oct · 14:20». Recogido usa la hora de la recogida.
+export function dispatchNote(order) {
+  const status = inventoryMacroStatus(order);
+  const last = lastStatusAt(order);
+  if (status === "Entregado") return `Entregado ${fmtDate(last)} · ${fmtTime(last)}`;
+  const r = order.delivery?.route;
+  const route = r?.code || r?.number != null ? routeLabel(r) : null;
+  let text;
+  if (status === "En Tránsito") text = `salió ${fmtTime(last)}`;
+  else {
+    const picked = Math.max(0, ...(order.items || []).map((i) => time(i.pickedUpAt)));
+    text = picked ? `recogido ${fmtTime(picked)}` : "recogido";
+  }
+  return route ? `${route} · ${text}` : text;
 }

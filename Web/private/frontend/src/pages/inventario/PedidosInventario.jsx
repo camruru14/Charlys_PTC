@@ -2,13 +2,16 @@ import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useDateRange, rangeLabel } from "../../context/dateRange";
 import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import { replaceById } from "../../hooks/useFetch";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
 import BulkBar from "../../components/ui/BulkBar";
-import FilterChips from "../../components/ui/FilterChips";
+import SearchInput from "../../components/ui/SearchInput";
+import ListGroupHeader from "../../components/ui/ListGroupHeader";
+import { FilterSelect } from "../../components/ui/Field";
 import ColorSwatch from "../../components/ui/ColorSwatch";
 import InlineResolveBox from "../../components/ui/InlineResolveBox";
 import RadioCardList from "../../components/ui/RadioCardList";
@@ -16,7 +19,8 @@ import DisclosureChevron from "../../components/ui/DisclosureChevron";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
 import { fmtNumber, fmtDate, formatBatchNumber } from "../../lib/format";
-import { IconOrders } from "../../lib/icons";
+import { IconOrders, IconClock } from "../../lib/icons";
+import { filterSelectClass } from "../../lib/filterStyles";
 import { statusTone, normalizeStatus } from "../../lib/statusDomains";
 import {
   buildStockMap,
@@ -30,9 +34,12 @@ import {
   unprocessedCount,
   packableLines,
   hasPackedLines,
-  lastStatusAt,
-  isDispatched,
   routeNote,
+  ORDER_GROUPS,
+  matchesOrderQuery,
+  groupInventoryOrders,
+  arrivalLabel,
+  dispatchNote,
 } from "../../lib/inventoryOrders";
 
 /*
@@ -41,7 +48,8 @@ import {
   enviar a fabricación y resolver faltantes son directos, con «Deshacer».
 */
 
-const DISPATCHED_DAYS = 30;
+// Valores de ?estado=: «todos» o la clave de un grupo de ORDER_GROUPS.
+const STATE_KEYS = ["todos", ...ORDER_GROUPS.map((g) => g.key)];
 // Producto · Color · Cant. · Existencia · Estado · Acción · caret.
 // Producto acotado (96–130px) para que Color quede junto a él; el espacio que
 // sobra se lo lleva Cant. (alineada a la derecha, junto a Existencia).
@@ -72,6 +80,7 @@ const TONE_DOT = {
   teal: "bg-tone-teal-dot",
 };
 const lineDot = (status) => TONE_DOT[statusTone(status, "linea-inventario")];
+const orderDot = (status) => TONE_DOT[statusTone(status, "pedido-inventario")];
 
 // «N PRODUCTOS», leyenda por estado y barra segmentada (un segmento por
 // producto, agrupados por estado), como en el mockup R1.
@@ -118,11 +127,15 @@ function ordersFrom(result) {
   return result?.order ? [result.order] : [];
 }
 
-function OrderListRow({ order, selected, checked, onToggle, onSelect, showCheckbox }) {
+// Pedido en la lista. Mientras sigue en bodega muestra cuándo llegó y su
+// avance; ya despachado, la ruta y la hora (dispatchNote).
+function OrderListRow({ order, group, selected, checked, onToggle, onSelect }) {
+  const inWarehouse = group.sort === "arrival";
+  const arrival = inWarehouse ? arrivalLabel(order) : null;
   return (
     <div className={`grid grid-cols-[34px_5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
       <div className="flex items-start pl-[11px] pt-[15px]">
-        {showCheckbox ? (
+        {group.selectable ? (
           <input
             type="checkbox"
             checked={checked}
@@ -135,12 +148,22 @@ function OrderListRow({ order, selected, checked, onToggle, onSelect, showCheckb
       <span className={selected ? "bg-select-bar" : ""} />
       <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 py-3 pl-2.5 pr-3.5 text-left">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+            {arrival ? (
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 text-[11.5px] tabular-nums ${arrival.late ? "font-bold text-tone-amber-text" : "text-muted"}`}
+              >
+                <IconClock width={11} height={11} className="shrink-0" />
+                {arrival.text}
+              </span>
+            ) : null}
+          </span>
           <StatusPill status={inventoryMacroStatus(order)} domain="pedido-inventario" variant="dot" />
         </div>
         <div className="mt-1 flex items-center justify-between gap-3">
           <span className="truncate text-[12.5px] text-ink-2">{order.customer?.name || "—"}</span>
-          <span className="shrink-0 text-[11.5px] tabular-nums text-muted">{progressLabel(order)}</span>
+          <span className="shrink-0 text-[11.5px] tabular-nums text-muted">{inWarehouse ? progressLabel(order) : dispatchNote(order)}</span>
         </div>
       </button>
     </div>
@@ -464,27 +487,52 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 
 function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, mutateOrders, finishedItems, refetchInventory }) {
   const [selectedId, setSelectedId] = useUrlState("id");
-  const [segment, setSegment] = useState("preparar");
+  const range = useDateRange();
+  const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });
+  const [query, setQuery] = useState("");
   const [checked, setChecked] = useState(() => new Set());
   const [openBox, setOpenBox] = useState(null);
   const [busy, setBusy] = useState(false);
-  // Inicio de la ventana de «Despachados» (últimos 30 días), fijado al montar.
-  const [dispatchedSince] = useState(() => Date.now() - DISPATCHED_DAYS * 86400000);
 
   const stockMap = useMemo(() => buildStockMap(finishedItems), [finishedItems]);
 
-  const toPrepare = useMemo(() => orders.filter((o) => !isDispatched(o)), [orders]);
-  const dispatched = useMemo(
-    () => orders.filter((o) => isDispatched(o) && new Date(lastStatusAt(o)).getTime() >= dispatchedSince),
-    [orders, dispatchedSince],
+  // Grupos con la búsqueda y el rango (los conteos del combobox salen de aquí);
+  // no se muestran los vacíos ni los que no son el estado elegido.
+  const found = useMemo(() => orders.filter((o) => matchesOrderQuery(o, query)), [orders, query]);
+  const allGroups = useMemo(() => groupInventoryOrders(found, range), [found, range]);
+  const groups = useMemo(() => allGroups.filter((g) => g.items.length > 0 && (estado === "todos" || g.key === estado)), [allGroups, estado]);
+  const list = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  const stateOptions = useMemo(
+    () => [
+      { value: "todos", label: "Todos", meta: fmtNumber(allGroups.reduce((n, g) => n + g.items.length, 0)) },
+      ...allGroups.map((g) => ({
+        value: g.key,
+        label: g.status,
+        dot: orderDot(g.status),
+        meta: fmtNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
+    ],
+    [allGroups],
   );
+  const estadoGroup = ORDER_GROUPS.find((g) => g.key === estado);
 
-  const list = segment === "preparar" ? toPrepare : dispatched;
   const selected = useMemo(() => orders.find((o) => o._id === selectedId) || null, [orders, selectedId]);
   useRememberedSelection("inventario/pedidos", { selectedId, setSelectedId, ids: list.map((o) => o._id), ready: !ordersLoading });
 
-  // Pedidos marcados (solo los que siguen en Por preparar).
-  const checkedOrders = useMemo(() => toPrepare.filter((o) => checked.has(o._id)), [toPrepare, checked]);
+  // Pedidos marcados: solo los de «Verificando» y «Sin verificar» que se ven.
+  const selectableOrders = useMemo(() => groups.filter((g) => g.selectable).flatMap((g) => g.items), [groups]);
+  const checkedOrders = useMemo(() => selectableOrders.filter((o) => checked.has(o._id)), [selectableOrders, checked]);
+  // Al filtrar o buscar se sueltan las marcas de los pedidos que ya no se ven.
+  const [prevSelectable, setPrevSelectable] = useState(selectableOrders);
+  if (prevSelectable !== selectableOrders) {
+    setPrevSelectable(selectableOrders);
+    if (checked.size > 0) {
+      const visible = new Set(selectableOrders.map((o) => o._id));
+      const next = new Set([...checked].filter((id) => visible.has(id)));
+      if (next.size !== checked.size) setChecked(next);
+    }
+  }
   const bulkSummary = useMemo(() => {
     let verifiable = 0;
     let pending = 0;
@@ -609,26 +657,32 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
     <MasterDetail listWidth={392}>
       <ListPanel
         header={
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            {/* Mismos chips que la lista de Pedidos: el seleccionado en azul. */}
-            <FilterChips
-              showEmpty
-              value={segment}
-              onChange={(key) => {
-                setSegment(key);
-                setChecked(new Set());
-              }}
-              options={[
-                { key: "preparar", tone: "amber", label: "Por preparar", count: fmtNumber(toPrepare.length) },
-                { key: "despachados", tone: "green", label: "Despachados", count: fmtNumber(dispatched.length) },
-              ]}
-            />
-            <span className="text-[11px] text-muted">salen al recogerse todo</span>
-          </div>
+          <>
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
+                <span className="t-aux tabular-nums">
+                  {fmtNumber(list.length)} {list.length === 1 ? "pedido" : "pedidos"}
+                </span>
+              </div>
+              <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <SearchInput value={query} onChange={setQuery} placeholder="Buscar por pedido o cliente" className="min-w-0 flex-1" />
+              <FilterSelect
+                label="Estado"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                options={stateOptions}
+                panelMinWidth={208}
+                className={`${filterSelectClass} w-[140px] !min-w-0 !gap-1 !px-2`}
+              />
+            </div>
+          </>
         }
       >
         <BulkBar
-          count={segment === "preparar" ? checkedOrders.length : 0}
+          count={checkedOrders.length}
           onClear={() => setChecked(new Set())}
           note={`${fmtNumber(bulkSummary.verifiable)} de ${fmtNumber(bulkSummary.total)} productos tienen existencia completa y se verificarán · ${fmtNumber(bulkSummary.pending)} quedarán pendientes por revisar`}
         >
@@ -640,22 +694,35 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
           <EmptyState title="Cargando pedidos…" />
         ) : ordersError ? (
           <EmptyState title="No se pudieron cargar los pedidos" description={ordersError} />
-        ) : list.length === 0 ? (
-          <EmptyState title={segment === "preparar" ? "No hay pedidos por preparar." : "No hay pedidos despachados en los últimos 30 días."} />
+        ) : groups.length === 0 ? (
+          <EmptyState
+            title={
+              estadoGroup
+                ? `No hay pedidos «${estadoGroup.status}» ${estadoGroup.ranged ? "en este rango" : "con estos filtros"}.`
+                : query.trim()
+                  ? "No hay pedidos con estos filtros."
+                  : "No hay pedidos."
+            }
+          />
         ) : (
-          list.map((o) => (
-            <OrderListRow
-              key={o._id}
-              order={o}
-              selected={o._id === selectedId}
-              checked={checked.has(o._id)}
-              showCheckbox={segment === "preparar"}
-              onToggle={() => toggleChecked(o._id)}
-              onSelect={() => {
-                setSelectedId(o._id);
-                setOpenBox(null);
-              }}
-            />
+          groups.map((g) => (
+            <Fragment key={g.key}>
+              <ListGroupHeader label={g.label} note={g.note} count={g.items.length} />
+              {g.items.map((o) => (
+                <OrderListRow
+                  key={o._id}
+                  order={o}
+                  group={g}
+                  selected={o._id === selectedId}
+                  checked={checked.has(o._id)}
+                  onToggle={() => toggleChecked(o._id)}
+                  onSelect={() => {
+                    setSelectedId(o._id);
+                    setOpenBox(null);
+                  }}
+                />
+              ))}
+            </Fragment>
           ))
         )}
       </ListPanel>
