@@ -7,7 +7,6 @@ import { useWarehouses } from "../hooks/useWarehouses";
 import NewItemSheet from "../components/inventory/NewItemSheet";
 import PrepOrderCard from "../components/inventory/PrepOrderCard";
 import StockRow from "../components/inventory/StockRow";
-import BottomBar from "../components/ui/BottomBar";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
@@ -33,13 +32,9 @@ import { useBottomPad } from "../hooks/useBottomPad";
 import {
   buildStockMap,
   finishedItemsOf,
-  fullyVerifiableLines,
   groupInventoryOrders,
   matchesOrderQuery,
   ORDER_GROUPS,
-  orderLineApi,
-  runAll,
-  unprocessedCount,
 } from "../lib/inventoryOrders";
 
 // Mismas vistas que Web/private/frontend/src/pages/Inventario.jsx.
@@ -138,9 +133,6 @@ export default function InventarioScreen({ navigation }) {
   const range = useDateRange();
   const [estado, setEstado] = useState("");
   const [orderQuery, setOrderQuery] = useState("");
-  const [selecting, setSelecting] = useState(false);
-  const [checked, setChecked] = useState(() => new Set());
-  const [busy, setBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -232,35 +224,9 @@ export default function InventarioScreen({ navigation }) {
   const totalFound = useMemo(() => allGroups.reduce((n, g) => n + g.items.length, 0), [allGroups]);
   const estadoGroup = ORDER_GROUPS.find((g) => g.key === estado);
 
-  // Selección múltiple: solo los pedidos de «Verificando» y «Sin verificar» que
-  // se ven. Al filtrar o buscar se sueltan las marcas de los que ya no se ven.
-  const selectableOrders = useMemo(() => orderGroups.filter((g) => g.selectable).flatMap((g) => g.items), [orderGroups]);
-  const checkedOrders = useMemo(() => selectableOrders.filter((o) => checked.has(o._id)), [selectableOrders, checked]);
-  const [prevSelectable, setPrevSelectable] = useState(selectableOrders);
-  if (prevSelectable !== selectableOrders) {
-    setPrevSelectable(selectableOrders);
-    if (checked.size > 0) {
-      const visible = new Set(selectableOrders.map((o) => o._id));
-      const next = new Set([...checked].filter((id) => visible.has(id)));
-      if (next.size !== checked.size) setChecked(next);
-    }
-  }
-  const bulkSummary = useMemo(() => {
-    let verifiable = 0;
-    let pending = 0;
-    for (const o of checkedOrders) {
-      const v = fullyVerifiableLines(o, stockMap).length;
-      verifiable += v;
-      pending += unprocessedCount(o) - v;
-    }
-    return { verifiable, pending, total: verifiable + pending };
-  }, [checkedOrders, stockMap]);
-
   const changeTab = (next) => {
     setTab(next);
     setLowOnly(false);
-    setSelecting(false);
-    setChecked(new Set());
   };
 
   const editItem = (item) => navigation.navigate("InventarioItemForm", { id: item._id });
@@ -299,56 +265,6 @@ export default function InventarioScreen({ navigation }) {
     toast.show("Artículo agregado");
   };
 
-  const toggleChecked = (id) =>
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const stopSelecting = () => {
-    setSelecting(false);
-    setChecked(new Set());
-  };
-
-  // «Verificar seleccionados» de la web: verifica de una vez las líneas con
-  // existencia completa de los pedidos marcados, con «Deshacer».
-  const verifySelected = async () => {
-    const groups = checkedOrders
-      .map((order) => ({ order, lines: fullyVerifiableLines(order, stockMap) }))
-      .filter((g) => g.lines.length > 0);
-    if (!groups.length) {
-      Alert.alert("Nada que verificar", "Ningún producto seleccionado tiene existencia completa");
-      return;
-    }
-    const n = groups.reduce((s, g) => s + g.lines.length, 0);
-    const reload = () => Promise.all([refreshOrders(), refresh()]);
-    setBusy(true);
-    try {
-      await orderLineApi.verifyBulk(
-        groups.map((g) => ({ id: g.order._id, items: g.lines.map((l) => ({ index: l.index, warehouse: l.warehouse })) })),
-      );
-      await reload();
-      stopSelecting();
-      toast.undo(`${n} ${n === 1 ? "producto verificado" : "productos verificados"}`, async () => {
-        try {
-          await runAll(groups.flatMap((g) => g.lines.map((l) => () => orderLineApi.unverify(g.order._id, l.index))));
-          toast.show("Cambio deshecho");
-        } catch (err) {
-          Alert.alert("No se pudo deshacer", err.message);
-        } finally {
-          reload();
-        }
-      });
-    } catch (err) {
-      Alert.alert("No se pudo verificar", err.message);
-      reload();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (loading) return <LoadingState />;
   if (error && items.length === 0) return <ErrorState message={error} onRetry={refresh} />;
 
@@ -377,7 +293,7 @@ export default function InventarioScreen({ navigation }) {
       </View>
 
       {tab === "terminado" ? (
-        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
           <KpiInline items={kpis} style={styles.kpis} />
           <View style={styles.searchRow}>
             <SearchField
@@ -417,7 +333,7 @@ export default function InventarioScreen({ navigation }) {
           </Text>
         </ScrollView>
       ) : tab === "materia" ? (
-        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.flex} contentContainerStyle={[styles.content, bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
           <KpiInline items={kpis} style={styles.kpis} />
           <FilterChips
             style={styles.chips}
@@ -450,24 +366,19 @@ export default function InventarioScreen({ navigation }) {
       ) : (
         <SectionList
           style={styles.flex}
-          contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]}
+          contentContainerStyle={[styles.content, bottomPad]}
           sections={orderSections}
           keyExtractor={(o) => o._id}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
-          renderItem={({ item: o, section }) => {
-            const selectable = Boolean(section.group.selectable);
-            return (
-              <PrepOrderCard
-                order={o}
-                stockMap={stockMap}
-                group={section.group}
-                selecting={selecting && selectable}
-                checked={checked.has(o._id)}
-                onPress={() => (selecting && selectable ? toggleChecked(o._id) : navigation.navigate("PedidoDetalle", { id: o._id }))}
-              />
-            );
-          }}
+          renderItem={({ item: o, section }) => (
+            <PrepOrderCard
+              order={o}
+              stockMap={stockMap}
+              group={section.group}
+              onPress={() => navigation.navigate("PedidoDetalle", { id: o._id })}
+            />
+          )}
           refreshControl={
             <RefreshControl
               refreshing={ordersRefreshing}
@@ -499,14 +410,6 @@ export default function InventarioScreen({ navigation }) {
                   </Text>
                 </View>
               </View>
-              {selectableOrders.length > 0 || selecting ? (
-                <View style={styles.selectRow}>
-                  <Text style={styles.hint}>{selecting ? "Marca los pedidos a verificar de una vez" : "Verificando y Sin verificar se pueden marcar"}</Text>
-                  <Pressable onPress={() => (selecting ? stopSelecting() : setSelecting(true))} hitSlop={8} accessibilityRole="button">
-                    <Text style={styles.link}>{selecting ? "Listo" : "Seleccionar"}</Text>
-                  </Pressable>
-                </View>
-              ) : null}
             </View>
           }
           ListEmptyComponent={
@@ -529,26 +432,6 @@ export default function InventarioScreen({ navigation }) {
           }
         />
       )}
-
-      {tab === "pedidos" && selecting ? (
-        <BottomBar
-          note={
-            checkedOrders.length
-              ? `${formatNumber(bulkSummary.verifiable)} de ${formatNumber(bulkSummary.total)} productos tienen existencia completa y se verificarán · ${formatNumber(bulkSummary.pending)} quedarán pendientes por revisar`
-              : "Ningún pedido marcado"
-          }
-          actions={[
-            { title: "Cancelar", variant: "secondary", disabled: busy, onPress: stopSelecting },
-            {
-              title: `Verificar${checkedOrders.length ? ` · ${checkedOrders.length}` : ""}`,
-              icon: "check",
-              loading: busy,
-              disabled: bulkSummary.verifiable === 0,
-              onPress: verifySelected,
-            },
-          ]}
-        />
-      ) : null}
 
       <NewItemSheet visible={newOpen} warehouses={warehouses} onClose={() => setNewOpen(false)} onCreate={handleCreate} />
     </View>
@@ -586,9 +469,6 @@ const styles = StyleSheet.create({
   ordersSummary: { flex: 1, alignItems: "flex-end" },
   summaryCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   summaryRange: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
-  selectRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
-  hint: { flex: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",

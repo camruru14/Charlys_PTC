@@ -50,12 +50,11 @@ function shortageNote(order, stockMap) {
   return `${name}: hay ${formatNumber(available)} de ${formatNumber(item.quantity)}${more}`;
 }
 
-// Tarjeta de un pedido en Inventario > Pedidos. En modo selección muestra
-// una casilla y el toque la marca en vez de abrir el pedido. `group` es el
+// Tarjeta de un pedido en Inventario > Pedidos. `group` es el
 // grupo de la lista (ORDER_GROUPS): mientras el pedido sigue en bodega
 // muestra cuándo llegó (ámbar si pasa de 2 días) y su avance; ya despachado,
 // la ruta y la hora.
-export default function PrepOrderCard({ order, stockMap, group, onPress, selecting = false, checked = false }) {
+export default function PrepOrderCard({ order, stockMap, group, onPress }) {
   const macro = inventoryMacroStatus(order);
   const inWarehouse = group ? group.sort === "arrival" : true;
   const arrival = inWarehouse ? arrivalLabel(order) : null;
@@ -64,16 +63,10 @@ export default function PrepOrderCard({ order, stockMap, group, onPress, selecti
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole={selecting ? "checkbox" : "button"}
-      accessibilityState={selecting ? { checked } : undefined}
-      style={({ pressed }) => [styles.card, checked && styles.cardChecked, pressed && styles.pressed]}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        {selecting ? (
-          <View style={[styles.checkbox, checked && styles.checkboxOn]}>
-            {checked ? <Icon name="check" size={13} color={colors.white} strokeWidth={2.6} /> : null}
-          </View>
-        ) : null}
         <View style={styles.numberBox}>
           <Text style={styles.number}>{order.orderNumber}</Text>
           {arrival ? (
@@ -119,10 +112,6 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 10,
   },
-  cardChecked: {
-    borderColor: colors.selectBar,
-    backgroundColor: colors.selectBg,
-  },
   pressed: {
     opacity: 0.85,
   },
@@ -133,19 +122,6 @@ const styles = StyleSheet.create({
   },
   second: {
     marginTop: 4,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.busyLine,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   numberBox: {
     flex: 1,

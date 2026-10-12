@@ -136,11 +136,6 @@ export const COUNT_STATUS = [
   ["enFabricacion", "En fabricación"],
 ];
 
-// Líneas sin procesar (por verificar, parciales o sin existencia).
-export function unprocessedCount(order) {
-  return (order.items || []).filter((i) => !isProcessed(i) && !isSplit(i)).length;
-}
-
 // Despachado: ya salió, o está en una ruta de Logística y todas sus líneas
 // por llevar (empacadas sin entregar) ya se recogieron.
 export function isDispatched(order) {
@@ -202,11 +197,11 @@ export function routeNote(order) {
 // el filtro; `status` es el estado macro (dominio pedido-inventario) que
 // reúne cada grupo; `sort`: «arrival» = el que llegó antes a Inventario
 // primero, «asc»/«desc» = por lastStatusAt. `ranged`: solo esos grupos se
-// filtran por el rango de fechas. `selectable`: admiten selección múltiple.
+// filtran por el rango de fechas.
 export const ORDER_GROUPS = [
   { key: "listo", status: "Listo para empacar", label: "Listos para empacar", note: "solo falta empacar", sort: "arrival" },
-  { key: "verificando", status: "Verificando", label: "Verificando", sort: "arrival", selectable: true },
-  { key: "sin-verificar", status: "Sin verificar", label: "Sin verificar", sort: "arrival", selectable: true },
+  { key: "verificando", status: "Verificando", label: "Verificando", sort: "arrival" },
+  { key: "sin-verificar", status: "Sin verificar", label: "Sin verificar", sort: "arrival" },
   { key: "esperando", status: "Esperando lote", label: "Esperando lote", note: "depende de Fabricación", sort: "arrival" },
   { key: "empacado", status: "Empacado", label: "Empacados", note: "esperan a Logística", sort: "arrival" },
   { key: "recogido", status: "Recogido", label: "Recogidos", note: "la ruta aún no sale", sort: "asc", ranged: true },

@@ -8,7 +8,6 @@ import { replaceById } from "../../hooks/useFetch";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
-import BulkBar from "../../components/ui/BulkBar";
 import SearchInput from "../../components/ui/SearchInput";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { FilterSelect } from "../../components/ui/Field";
@@ -31,7 +30,6 @@ import {
   progressLabel,
   lineCounts,
   fullyVerifiableLines,
-  unprocessedCount,
   packableLines,
   hasPackedLines,
   routeNote,
@@ -129,24 +127,13 @@ function ordersFrom(result) {
 
 // Pedido en la lista. Mientras sigue en bodega muestra cuándo llegó y su
 // avance; ya despachado, la ruta y la hora (dispatchNote).
-function OrderListRow({ order, group, selected, checked, onToggle, onSelect }) {
+function OrderListRow({ order, group, selected, onSelect }) {
   const inWarehouse = group.sort === "arrival";
   const arrival = inWarehouse ? arrivalLabel(order) : null;
   return (
-    <div className={`grid grid-cols-[34px_5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
-      <div className="flex items-start pl-[11px] pt-[15px]">
-        {group.selectable ? (
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={onToggle}
-            aria-label={`Seleccionar ${order.orderNumber}`}
-            className="h-3.5 w-3.5 cursor-pointer rounded-[4px] accent-primary"
-          />
-        ) : null}
-      </div>
+    <div className={`grid grid-cols-[5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
       <span className={selected ? "bg-select-bar" : ""} />
-      <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 py-3 pl-2.5 pr-3.5 text-left">
+      <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 px-3.5 py-3 text-left">
         <div className="flex items-center justify-between gap-3">
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
@@ -490,7 +477,6 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });
   const [query, setQuery] = useState("");
-  const [checked, setChecked] = useState(() => new Set());
   const [openBox, setOpenBox] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -519,39 +505,6 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
 
   const selected = useMemo(() => orders.find((o) => o._id === selectedId) || null, [orders, selectedId]);
   useRememberedSelection("inventario/pedidos", { selectedId, setSelectedId, ids: list.map((o) => o._id), ready: !ordersLoading });
-
-  // Pedidos marcados: solo los de «Verificando» y «Sin verificar» que se ven.
-  const selectableOrders = useMemo(() => groups.filter((g) => g.selectable).flatMap((g) => g.items), [groups]);
-  const checkedOrders = useMemo(() => selectableOrders.filter((o) => checked.has(o._id)), [selectableOrders, checked]);
-  // Al filtrar o buscar se sueltan las marcas de los pedidos que ya no se ven.
-  const [prevSelectable, setPrevSelectable] = useState(selectableOrders);
-  if (prevSelectable !== selectableOrders) {
-    setPrevSelectable(selectableOrders);
-    if (checked.size > 0) {
-      const visible = new Set(selectableOrders.map((o) => o._id));
-      const next = new Set([...checked].filter((id) => visible.has(id)));
-      if (next.size !== checked.size) setChecked(next);
-    }
-  }
-  const bulkSummary = useMemo(() => {
-    let verifiable = 0;
-    let pending = 0;
-    for (const o of checkedOrders) {
-      const v = fullyVerifiableLines(o, stockMap).length;
-      verifiable += v;
-      pending += unprocessedCount(o) - v;
-    }
-    return { verifiable, pending, total: verifiable + pending };
-  }, [checkedOrders, stockMap]);
-
-  function toggleChecked(id) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   // Aplica la respuesta de una acción: reemplaza los pedidos que vienen
   // actualizados (sin recargar la lista) y recarga el inventario solo si la
@@ -601,7 +554,8 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
         () => api.patch(`${base(order, index)}/unverify`),
         { stock: true },
       ),
-    // groups = [{ order, lines: [{ index, warehouse }] }]
+    // «Verificar todo» del detalle: se usa con un solo pedido,
+    // groups = [{ order, lines: [{ index, warehouse }] }] (un elemento).
     verifyLines: (groups) => {
       const n = groups.reduce((s, g) => s + g.lines.length, 0);
       return act(
@@ -641,18 +595,6 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
       ),
   };
 
-  function verifySelected() {
-    const groups = checkedOrders
-      .map((order) => ({ order, lines: fullyVerifiableLines(order, stockMap) }))
-      .filter((g) => g.lines.length > 0);
-    if (!groups.length) {
-      toast.error("Ningún producto seleccionado tiene existencia completa");
-      return;
-    }
-    actions.verifyLines(groups);
-    setChecked(new Set());
-  }
-
   return (
     <MasterDetail listWidth={392}>
       <ListPanel
@@ -681,15 +623,6 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
           </>
         }
       >
-        <BulkBar
-          count={checkedOrders.length}
-          onClear={() => setChecked(new Set())}
-          note={`${fmtNumber(bulkSummary.verifiable)} de ${fmtNumber(bulkSummary.total)} productos tienen existencia completa y se verificarán · ${fmtNumber(bulkSummary.pending)} quedarán pendientes por revisar`}
-        >
-          <Button size="row" disabled={busy || bulkSummary.verifiable === 0} onClick={verifySelected}>
-            Verificar seleccionados
-          </Button>
-        </BulkBar>
         {ordersLoading && !orders.length ? (
           <EmptyState title="Cargando pedidos…" />
         ) : ordersError ? (
@@ -714,8 +647,6 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
                   order={o}
                   group={g}
                   selected={o._id === selectedId}
-                  checked={checked.has(o._id)}
-                  onToggle={() => toggleChecked(o._id)}
                   onSelect={() => {
                     setSelectedId(o._id);
                     setOpenBox(null);
