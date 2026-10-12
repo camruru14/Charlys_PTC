@@ -1,21 +1,25 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import ColorSwatch from "../ui/ColorSwatch";
+import Icon from "../ui/Icon";
 import LevelMeter from "../ui/LevelMeter";
 import Pill from "../ui/Pill";
 import { colors, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 import { formatAge, formatNumber } from "../../lib/format";
-import { batchState } from "../../lib/batchFlow";
+import { batchState, batchTimeNote } from "../../lib/batchFlow";
 import { statusTone } from "../../lib/statusTones";
 
-// Tarjeta de un lote de fabricación (lista de Lotes): código y estado,
-// producto y línea, avance producido / meta y una nota según el estado
+// Tarjeta de un lote de fabricación (lista de Lotes): código, nota de tiempo
+// con reloj («detenido hace 2 h», «desde 07:30») y estado, producto y línea,
+// avance producido / meta (la meta en gris) y una nota según el estado
 // («Listo para enviar a bodega», o el motivo y el tiempo detenido).
 export default function BatchCard({ batch, onPress }) {
   const state = batchState(batch);
   const target = batch.targetQuantity;
   const produced = batch.producedQuantity || 0;
   const done = batch.status === "Completado";
+  const time = batchTimeNote(batch);
+  const timeColor = time?.tone === "rose" ? tones.rose.text : time?.tone === "amber" ? tones.amber.text : colors.muted;
 
   let note = null;
   if (state === "Por enviar") {
@@ -36,7 +40,17 @@ export default function BatchCard({ batch, onPress }) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        <Text style={styles.number}>{batch.batchNumber}</Text>
+        <View style={styles.numberBox}>
+          <Text style={styles.number}>{batch.batchNumber}</Text>
+          {time ? (
+            <View style={styles.time}>
+              <Icon name="clock" size={12} color={timeColor} />
+              <Text style={[styles.timeText, time.bold && styles.timeBold, { color: timeColor }]} numberOfLines={1}>
+                {time.text}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Pill label={state} tone={statusTone(state, "lote")} />
       </View>
       <View style={[styles.row, styles.product]}>
@@ -54,7 +68,8 @@ export default function BatchCard({ batch, onPress }) {
           style={styles.meter}
         />
         <Text style={styles.quantities}>
-          {done || produced ? formatNumber(produced) : "0"} / {target != null ? formatNumber(target) : "—"}
+          {done || produced ? formatNumber(produced) : "0"}
+          <Text style={styles.target}> / {target != null ? formatNumber(target) : "—"}</Text>
         </Text>
       </View>
       {note ? <Text style={[styles.note, { color: note.color }]}>{note.text}</Text> : null}
@@ -73,12 +88,17 @@ const styles = StyleSheet.create({
   },
   pressed: { backgroundColor: colors.surface2 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  number: { flex: 1, fontFamily: fonts.bold, fontSize: 14, color: colors.ink, fontVariant: ["tabular-nums"] },
+  numberBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  number: { fontFamily: fonts.bold, fontSize: 14, color: colors.ink, fontVariant: ["tabular-nums"] },
+  time: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, fontVariant: ["tabular-nums"] },
+  timeBold: { fontFamily: fonts.bold },
   product: { marginTop: 6 },
   productText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
   line: { color: colors.faint },
   progress: { marginTop: 12, gap: 12 },
   meter: { flex: 1 },
   quantities: { fontFamily: fonts.bold, fontSize: 12.5, color: colors.ink, fontVariant: ["tabular-nums"] },
+  target: { fontFamily: fonts.regular, color: colors.muted },
   note: { marginTop: 10, fontFamily: fonts.semibold, fontSize: 12.5 },
 });

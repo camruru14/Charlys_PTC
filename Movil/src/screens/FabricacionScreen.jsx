@@ -1,10 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, View } from "react-native";
 import { useBatches } from "../hooks/useBatches";
 import { useDailyBatches } from "../hooks/useDailyBatches";
 import { useOrders } from "../hooks/useOrders";
-import { useDateRange } from "../context/DateRangeContext";
+import { useDateRange, rangeLabel } from "../context/DateRangeContext";
 import BatchCard from "../components/batches/BatchCard";
 import DailyBatchRow from "../components/batches/DailyBatchRow";
 import ManufacturingOrderCard from "../components/batches/ManufacturingOrderCard";
@@ -13,6 +13,8 @@ import DateRangeButton from "../components/ui/DateRangeButton";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import FilterChips from "../components/ui/FilterChips";
+import FilterSelectChip from "../components/ui/FilterSelectChip";
+import GroupHeader from "../components/ui/GroupHeader";
 import Icon from "../components/ui/Icon";
 import IconButton from "../components/ui/IconButton";
 import KpiInline from "../components/ui/KpiInline";
@@ -21,11 +23,11 @@ import LoadingState from "../components/ui/LoadingState";
 import SearchField from "../components/ui/SearchField";
 import Segmented from "../components/ui/Segmented";
 import { useToast } from "../components/ui/Toast";
-import { colors } from "../lib/theme";
+import { colors, getTone } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber, fromDateOnly } from "../lib/format";
 import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
-import { batchSearchText, batchState } from "../lib/batchFlow";
+import { BATCH_GROUPS, batchSearchText, groupBatches, isStockBatch } from "../lib/batchFlow";
 import { batchApi } from "../lib/batchActions";
 import { runAll } from "../lib/inventoryOrders";
 import { buildGroups, groupSearchText } from "../lib/orderManufacturing";
@@ -37,14 +39,6 @@ const TABS = [
   { value: "lotes", label: "Lotes" },
   { value: "diaria", label: "Diaria" },
   { value: "pedidos", label: "Pedidos" },
-];
-
-// Chips de Lotes: filtran por el estado visible del lote (batchState).
-const LOT_CHIPS = [
-  { value: "all", label: "Todos" },
-  { value: "En proceso", label: "En proceso" },
-  { value: "Por enviar", label: "Por enviar" },
-  { value: "Detenido", label: "Detenidos" },
 ];
 
 // Chips de Pedidos (PedidosFabricacion.jsx).
@@ -123,7 +117,7 @@ export default function FabricacionScreen({ navigation }) {
 
   const [tab, setTab] = useState("lotes");
   const [lotQuery, setLotQuery] = useState("");
-  const [lotChip, setLotChip] = useState("all");
+  const [lotEstado, setLotEstado] = useState("");
   const [dailyQuery, setDailyQuery] = useState("");
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [schedulingId, setSchedulingId] = useState(null);
@@ -161,24 +155,41 @@ export default function FabricacionScreen({ navigation }) {
     });
   }, [navigation, tab]);
 
-  // Lotes del rango de fechas global; «Lotes» solo muestra los de stock (los
-  // de pedido van en la pestaña Pedidos), como la web.
+  // Lotes del rango de fechas global (para el KPI de producción). «Lotes» solo
+  // muestra los de stock (los de pedido van en la pestaña Pedidos, como la web)
+  // y NO se filtran por el rango: la lista va agrupada por estado y el rango
+  // solo afecta a «En bodega» (ver groupBatches).
   const rangeList = useMemo(() => filterBatches(batches, defaultBatchFilters, range), [batches, range]);
-  const stockList = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
+  const stockList = useMemo(() => batches.filter(isStockBatch), [batches]);
 
-  const lotCounts = useMemo(() => {
-    const c = { all: stockList.length };
-    stockList.forEach((b) => {
-      const s = batchState(b);
-      c[s] = (c[s] || 0) + 1;
-    });
-    return c;
-  }, [stockList]);
-
-  const visibleLots = useMemo(() => {
+  // Grupos con la búsqueda y el rango (los conteos del filtro «Estado» salen de
+  // aquí); no se muestran los vacíos ni los que no son el estado elegido.
+  const foundLots = useMemo(() => {
     const q = lotQuery.trim().toLowerCase();
-    return stockList.filter((b) => (lotChip === "all" || batchState(b) === lotChip) && (!q || batchSearchText(b).includes(q)));
-  }, [stockList, lotChip, lotQuery]);
+    return q ? stockList.filter((b) => batchSearchText(b).includes(q)) : stockList;
+  }, [stockList, lotQuery]);
+  const allLotGroups = useMemo(() => groupBatches(foundLots, range), [foundLots, range]);
+  const lotSections = useMemo(
+    () =>
+      allLotGroups
+        .filter((g) => g.items.length > 0 && (!lotEstado || g.key === lotEstado))
+        .map((g) => ({ key: g.key, title: g.label, note: g.note, count: g.items.length, data: g.items })),
+    [allLotGroups, lotEstado],
+  );
+  const visibleLotCount = useMemo(() => lotSections.reduce((n, s) => n + s.count, 0), [lotSections]);
+  const lotStateOptions = useMemo(
+    () =>
+      allLotGroups.map((g) => ({
+        value: g.key,
+        label: g.state,
+        dot: getTone(statusTone(g.state, "lote")).dot,
+        meta: formatNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
+    [allLotGroups],
+  );
+  const lotTotalFound = useMemo(() => allLotGroups.reduce((n, g) => n + g.items.length, 0), [allLotGroups]);
+  const lotEstadoGroup = BATCH_GROUPS.find((g) => g.key === lotEstado);
 
   // Producción diaria: meses con lotes (más reciente primero) más el actual.
   const monthOptions = useMemo(() => {
@@ -237,16 +248,17 @@ export default function FabricacionScreen({ navigation }) {
       { label: "Producción", value: formatNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
       {
         label: "En proceso",
-        value: formatNumber(rangeList.filter((b) => b.status === "En Proceso").length),
+        // En proceso y Detenidos cuentan los lotes activos de la lista, sin importar el rango.
+        value: formatNumber(stockList.filter((b) => b.status === "En Proceso").length),
         tone: statusTone("En proceso", "lote"),
       },
       {
         label: "Detenidos",
-        value: formatNumber(rangeList.filter((b) => b.status === "Detenido").length),
+        value: formatNumber(stockList.filter((b) => b.status === "Detenido").length),
         tone: statusTone("Detenido", "lote"),
       },
     ];
-  }, [tab, rangeList, dailyBatches]);
+  }, [tab, rangeList, stockList, dailyBatches]);
 
   // «Programar» es directo y no tiene reversa: el backend crea el lote de
   // fabricación y borra el lote diario (en la web tampoco hay «Deshacer»).
@@ -352,14 +364,26 @@ export default function FabricacionScreen({ navigation }) {
       <KpiInline items={kpis} style={styles.kpis} />
       {tab === "lotes" ? (
         <>
-          <SearchField value={lotQuery} onChangeText={setLotQuery} placeholder="Buscar lote, producto o color" />
-          <FilterChips
-            style={styles.chips}
-            contentContainerStyle={styles.chipsContent}
-            value={lotChip}
-            onChange={setLotChip}
-            options={LOT_CHIPS.map((c) => ({ ...c, count: lotCounts[c.value] || 0 }))}
-          />
+          <SearchField value={lotQuery} onChangeText={setLotQuery} placeholder="Buscar lote, producto o color" style={styles.lotSearch} />
+          <View style={styles.lotFilterRow}>
+            <FilterSelectChip
+              label="Estado"
+              allLabel="todos"
+              allMeta={formatNumber(lotTotalFound)}
+              size="lg"
+              value={lotEstado}
+              options={lotStateOptions}
+              onChange={setLotEstado}
+            />
+            <View style={styles.lotSummary}>
+              <Text style={styles.lotSummaryCount}>
+                {formatNumber(visibleLotCount)} {visibleLotCount === 1 ? "lote" : "lotes"}
+              </Text>
+              <Text style={styles.lotSummaryRange} numberOfLines={1}>
+                {rangeLabel(range)}
+              </Text>
+            </View>
+          </View>
         </>
       ) : tab === "diaria" ? (
         <View style={styles.searchRow}>
@@ -388,11 +412,13 @@ export default function FabricacionScreen({ navigation }) {
       </View>
 
       {tab === "lotes" ? (
-        <FlatList
+        <SectionList
           style={styles.flex}
           contentContainerStyle={[styles.content, bottomPad]}
-          data={visibleLots}
+          sections={lotSections}
           keyExtractor={(b) => b._id}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
           renderItem={({ item }) => (
             <BatchCard batch={item} onPress={() => navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes" })} />
           )}
@@ -402,7 +428,13 @@ export default function FabricacionScreen({ navigation }) {
           ListEmptyComponent={
             <EmptyState
               icon="factory"
-              message={stockList.length ? "Ningún lote coincide con la búsqueda." : "No hay lotes en el rango seleccionado."}
+              message={
+                lotEstadoGroup
+                  ? `No hay lotes «${lotEstadoGroup.state}» ${lotEstadoGroup.ranged ? "en este rango" : "con estos filtros"}.`
+                  : lotQuery.trim()
+                    ? "No hay lotes con estos filtros."
+                    : "No hay lotes."
+              }
             />
           }
           ListFooterComponent={
@@ -494,6 +526,11 @@ const styles = StyleSheet.create({
   chips: { marginTop: 10, marginHorizontal: -20 },
   chipsContent: { paddingHorizontal: 20 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  lotSearch: { marginBottom: 10 },
+  lotFilterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  lotSummary: { flex: 1, alignItems: "flex-end" },
+  lotSummaryCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  lotSummaryRange: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   monthChip: {
     height: 42,
     maxWidth: 150,

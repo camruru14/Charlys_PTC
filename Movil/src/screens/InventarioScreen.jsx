@@ -12,6 +12,7 @@ import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import FilterChips from "../components/ui/FilterChips";
 import FilterSelectChip from "../components/ui/FilterSelectChip";
+import GroupHeader from "../components/ui/GroupHeader";
 import Icon from "../components/ui/Icon";
 import IconButton from "../components/ui/IconButton";
 import KpiInline from "../components/ui/KpiInline";
@@ -43,24 +44,6 @@ const TABS = [
   { value: "materia", label: "Materia prima" },
   { value: "pedidos", label: "Pedidos" },
 ];
-
-// Encabezado de grupo de la lista de pedidos (como los de Logística): nombre,
-// nota en gris y cuántos hay.
-function GroupHeader({ title, note, count }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleBox}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {note ? (
-          <Text style={styles.sectionNote} numberOfLines={1}>
-            · {note}
-          </Text>
-        ) : null}
-      </View>
-      <Text style={styles.sectionCount}>{count}</Text>
-    </View>
-  );
-}
 
 // Chip rosa «Bajo mínimo» junto al buscador: filtra solo esos artículos
 // (LowStockToggle de la web). Activo, se pinta en primary y se quita con
@@ -469,17 +452,4 @@ const styles = StyleSheet.create({
   ordersSummary: { flex: 1, alignItems: "flex-end" },
   summaryCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   summaryRange: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingTop: 4,
-    paddingBottom: 8,
-    backgroundColor: colors.canvas,
-  },
-  sectionTitleBox: { flex: 1, flexDirection: "row", alignItems: "baseline", gap: 6 },
-  sectionTitle: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: colors.subtle },
-  sectionNote: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 11, color: colors.faint },
-  sectionCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
 });

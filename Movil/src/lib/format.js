@@ -133,12 +133,23 @@ export function fromDateOnly(value) {
 // Días de calendario (locales) entre `d` y `now`, medianoche contra
 // medianoche: anteayer da 2 aunque hayan pasado menos de 48 h. Math.round
 // absorbe los días de 23 o 25 h por cambio de horario.
-function calendarDaysAgo(d, now = new Date()) {
+export function calendarDaysAgo(d, now = new Date()) {
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   const day = new Date(d);
   day.setHours(0, 0, 0, 0);
   return Math.round((today - day) / 86400000);
+}
+
+// "hoy 08:20" | "ayer 15:30" | "hace N días" (una fecha futura cuenta como
+// hoy), con los días de calendario que pasaron (fmtWhen de la web).
+export function formatWhen(value, now = new Date()) {
+  const d = toDate(value);
+  if (!d) return null;
+  const days = calendarDaysAgo(d, now);
+  if (days <= 0) return { text: `hoy ${formatClock(d)}`, days: 0 };
+  if (days === 1) return { text: `ayer ${formatClock(d)}`, days };
+  return { text: `hace ${days} días`, days };
 }
 
 // "hoy" | "ayer" | "19 sep"
