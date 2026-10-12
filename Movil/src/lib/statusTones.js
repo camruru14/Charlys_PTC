@@ -11,7 +11,7 @@ export const STATUS_DOMAINS = {
   pedido: {
     Pendiente: "gray",
     Procesando: "blue",
-    "En Fabricación": "blue",
+    "En Fabricación": "amber",
     Empacado: "purple",
     "En Tránsito": "teal",
     Entregado: "green",

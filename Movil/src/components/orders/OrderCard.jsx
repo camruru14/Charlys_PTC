@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
-import { colors, getTone } from "../../lib/theme";
+import { colors, getTone, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 import { formatAge, formatMoney, formatNumber } from "../../lib/format";
 import { orderJourneySteps } from "../../lib/orderJourney";
+import { orderTimeNote } from "../../lib/orderList";
 import { statusTone } from "../../lib/statusTones";
 
 // Barra del recorrido: un segmento por tramo de ORDER_STEPS (lib/orderJourney.js).
@@ -38,9 +40,12 @@ function JourneyBar({ order }) {
   );
 }
 
-// Tarjeta de un pedido en la lista de Pedidos.
+// Tarjeta de un pedido en la lista de Pedidos: el número lleva al lado su nota
+// de tiempo con reloj («llegó hace 3 h», «salió 08:05 · R-2026-0048»…).
 export default function OrderCard({ order, onPress }) {
   const products = (order.items || []).length;
+  const time = orderTimeNote(order);
+  const timeColor = time?.tone === "amber" ? tones.amber.text : colors.muted;
 
   return (
     <Pressable
@@ -49,7 +54,17 @@ export default function OrderCard({ order, onPress }) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        <Text style={styles.number}>{order.orderNumber}</Text>
+        <View style={styles.numberBox}>
+          <Text style={styles.number}>{order.orderNumber}</Text>
+          {time ? (
+            <View style={styles.time}>
+              <Icon name="clock" size={12} color={timeColor} />
+              <Text style={[styles.timeText, time.bold && styles.timeBold, { color: timeColor }]} numberOfLines={1}>
+                {time.text}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Pill label={order.status} tone={statusTone(order.status, "pedido")} />
       </View>
       <View style={[styles.row, styles.customerRow]}>
@@ -90,6 +105,10 @@ const styles = StyleSheet.create({
   customerRow: {
     marginTop: 4,
   },
+  numberBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  time: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, fontVariant: ["tabular-nums"] },
+  timeBold: { fontFamily: fonts.bold },
   number: {
     fontFamily: fonts.bold,
     fontSize: 14.5,
