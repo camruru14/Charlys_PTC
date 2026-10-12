@@ -611,7 +611,7 @@ function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll
   };
 
   return (
-    <MasterDetail listWidth={392}>
+    <MasterDetail listWidth={424}>
       <ListPanel
         header={
           <>
