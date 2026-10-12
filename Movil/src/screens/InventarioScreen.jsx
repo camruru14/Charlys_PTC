@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, View } from "react-native";
 import { useInventory } from "../hooks/useInventory";
 import { useOrders } from "../hooks/useOrders";
 import { useWarehouses } from "../hooks/useWarehouses";
@@ -8,9 +8,11 @@ import NewItemSheet from "../components/inventory/NewItemSheet";
 import PrepOrderCard from "../components/inventory/PrepOrderCard";
 import StockRow from "../components/inventory/StockRow";
 import BottomBar from "../components/ui/BottomBar";
+import DateRangeButton from "../components/ui/DateRangeButton";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import FilterChips from "../components/ui/FilterChips";
+import FilterSelectChip from "../components/ui/FilterSelectChip";
 import Icon from "../components/ui/Icon";
 import IconButton from "../components/ui/IconButton";
 import KpiInline from "../components/ui/KpiInline";
@@ -20,18 +22,21 @@ import SearchField from "../components/ui/SearchField";
 import Segmented from "../components/ui/Segmented";
 import SelectField from "../components/ui/SelectField";
 import { useToast } from "../components/ui/Toast";
-import { colors, tones } from "../lib/theme";
+import { useDateRange, rangeLabel } from "../context/DateRangeContext";
+import { colors, getTone, tones } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
 import { MATERIAL_TYPES } from "../lib/inventoryOptions";
+import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
 import {
   buildStockMap,
   finishedItemsOf,
   fullyVerifiableLines,
-  isDispatched,
-  lastStatusAt,
+  groupInventoryOrders,
+  matchesOrderQuery,
+  ORDER_GROUPS,
   orderLineApi,
   runAll,
   unprocessedCount,
@@ -44,8 +49,23 @@ const TABS = [
   { value: "pedidos", label: "Pedidos" },
 ];
 
-// «Despachados» muestra los de los últimos 30 días, como la web.
-const DISPATCHED_DAYS = 30;
+// Encabezado de grupo de la lista de pedidos (como los de Logística): nombre,
+// nota en gris y cuántos hay.
+function GroupHeader({ title, note, count }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleBox}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {note ? (
+          <Text style={styles.sectionNote} numberOfLines={1}>
+            · {note}
+          </Text>
+        ) : null}
+      </View>
+      <Text style={styles.sectionCount}>{count}</Text>
+    </View>
+  );
+}
 
 // Chip rosa «Bajo mínimo» junto al buscador: filtra solo esos artículos
 // (LowStockToggle de la web). Activo, se pinta en primary y se quita con
@@ -115,11 +135,12 @@ export default function InventarioScreen({ navigation }) {
   const [rawSearch, setRawSearch] = useState("");
   const [materialType, setMaterialType] = useState("");
   // Pedidos
-  const [segment, setSegment] = useState("preparar");
+  const range = useDateRange();
+  const [estado, setEstado] = useState("");
+  const [orderQuery, setOrderQuery] = useState("");
   const [selecting, setSelecting] = useState(false);
   const [checked, setChecked] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
-  const [dispatchedSince] = useState(() => Date.now() - DISPATCHED_DAYS * 86400000);
 
   useFocusEffect(
     useCallback(() => {
@@ -139,7 +160,10 @@ export default function InventarioScreen({ navigation }) {
           ? () => (
               <IconButton icon="plus" variant="primary" onPress={() => setNewOpen(true)} accessibilityLabel="Nuevo artículo" />
             )
-          : undefined,
+          : tab === "pedidos"
+            ? // El rango de fechas solo filtra Recogido, En Tránsito y Entregado.
+              () => <DateRangeButton />
+            : undefined,
     });
   }, [navigation, tab]);
 
@@ -181,14 +205,46 @@ export default function InventarioScreen({ navigation }) {
     });
   }, [rawItems, lowOnly, rawSearch, materialType]);
 
-  const toPrepare = useMemo(() => orders.filter((o) => !isDispatched(o)), [orders]);
-  const dispatched = useMemo(
-    () => orders.filter((o) => isDispatched(o) && new Date(lastStatusAt(o)).getTime() >= dispatchedSince),
-    [orders, dispatchedSince],
+  // Grupos con la búsqueda y el rango (los conteos del filtro «Estado» salen de
+  // aquí); no se muestran los vacíos ni los que no son el estado elegido.
+  const foundOrders = useMemo(() => orders.filter((o) => matchesOrderQuery(o, orderQuery)), [orders, orderQuery]);
+  const allGroups = useMemo(() => groupInventoryOrders(foundOrders, range), [foundOrders, range]);
+  const orderGroups = useMemo(
+    () => allGroups.filter((g) => g.items.length > 0 && (!estado || g.key === estado)),
+    [allGroups, estado],
   );
-  const orderList = segment === "preparar" ? toPrepare : dispatched;
+  const orderSections = useMemo(
+    () => orderGroups.map((g) => ({ key: g.key, group: g, title: g.label, note: g.note, count: g.items.length, data: g.items })),
+    [orderGroups],
+  );
+  const visibleCount = useMemo(() => orderGroups.reduce((n, g) => n + g.items.length, 0), [orderGroups]);
+  const stateOptions = useMemo(
+    () =>
+      allGroups.map((g) => ({
+        value: g.key,
+        label: g.status,
+        dot: getTone(statusTone(g.status, "pedido-inventario")).dot,
+        meta: formatNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
+    [allGroups],
+  );
+  const totalFound = useMemo(() => allGroups.reduce((n, g) => n + g.items.length, 0), [allGroups]);
+  const estadoGroup = ORDER_GROUPS.find((g) => g.key === estado);
 
-  const checkedOrders = useMemo(() => toPrepare.filter((o) => checked.has(o._id)), [toPrepare, checked]);
+  // Selección múltiple: solo los pedidos de «Verificando» y «Sin verificar» que
+  // se ven. Al filtrar o buscar se sueltan las marcas de los que ya no se ven.
+  const selectableOrders = useMemo(() => orderGroups.filter((g) => g.selectable).flatMap((g) => g.items), [orderGroups]);
+  const checkedOrders = useMemo(() => selectableOrders.filter((o) => checked.has(o._id)), [selectableOrders, checked]);
+  const [prevSelectable, setPrevSelectable] = useState(selectableOrders);
+  if (prevSelectable !== selectableOrders) {
+    setPrevSelectable(selectableOrders);
+    if (checked.size > 0) {
+      const visible = new Set(selectableOrders.map((o) => o._id));
+      const next = new Set([...checked].filter((id) => visible.has(id)));
+      if (next.size !== checked.size) setChecked(next);
+    }
+  }
   const bulkSummary = useMemo(() => {
     let verifiable = 0;
     let pending = 0;
@@ -392,20 +448,26 @@ export default function InventarioScreen({ navigation }) {
           </Text>
         </ScrollView>
       ) : (
-        <FlatList
+        <SectionList
           style={styles.flex}
           contentContainerStyle={[styles.content, tab === "pedidos" && selecting ? null : bottomPad]}
-          data={orderList}
+          sections={orderSections}
           keyExtractor={(o) => o._id}
-          renderItem={({ item: o }) => (
-            <PrepOrderCard
-              order={o}
-              stockMap={stockMap}
-              selecting={selecting}
-              checked={checked.has(o._id)}
-              onPress={() => (selecting ? toggleChecked(o._id) : navigation.navigate("PedidoDetalle", { id: o._id }))}
-            />
-          )}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
+          renderItem={({ item: o, section }) => {
+            const selectable = Boolean(section.group.selectable);
+            return (
+              <PrepOrderCard
+                order={o}
+                stockMap={stockMap}
+                group={section.group}
+                selecting={selecting && selectable}
+                checked={checked.has(o._id)}
+                onPress={() => (selecting && selectable ? toggleChecked(o._id) : navigation.navigate("PedidoDetalle", { id: o._id }))}
+              />
+            );
+          }}
           refreshControl={
             <RefreshControl
               refreshing={ordersRefreshing}
@@ -417,32 +479,34 @@ export default function InventarioScreen({ navigation }) {
           }
           ListHeaderComponent={
             <View style={styles.ordersHeader}>
+              <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar por pedido o cliente" />
               <View style={styles.ordersChipsRow}>
-                <FilterChips
-                  style={styles.flex}
-                  value={segment}
-                  onChange={(key) => {
-                    setSegment(key);
-                    stopSelecting();
-                  }}
-                  options={[
-                    { value: "preparar", label: "Por preparar", count: toPrepare.length },
-                    { value: "despachados", label: "Despachados", count: dispatched.length },
-                  ]}
+                <FilterSelectChip
+                  label="Estado"
+                  allLabel="todos"
+                  allMeta={formatNumber(totalFound)}
+                  size="lg"
+                  value={estado}
+                  options={stateOptions}
+                  onChange={setEstado}
                 />
-                {segment === "preparar" && toPrepare.length > 0 ? (
-                  <Pressable
-                    onPress={() => (selecting ? stopSelecting() : setSelecting(true))}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                  >
+                <View style={styles.ordersSummary}>
+                  <Text style={styles.summaryCount}>
+                    {formatNumber(visibleCount)} {visibleCount === 1 ? "pedido" : "pedidos"}
+                  </Text>
+                  <Text style={styles.summaryRange} numberOfLines={1}>
+                    {rangeLabel(range)}
+                  </Text>
+                </View>
+              </View>
+              {selectableOrders.length > 0 || selecting ? (
+                <View style={styles.selectRow}>
+                  <Text style={styles.hint}>{selecting ? "Marca los pedidos a verificar de una vez" : "Verificando y Sin verificar se pueden marcar"}</Text>
+                  <Pressable onPress={() => (selecting ? stopSelecting() : setSelecting(true))} hitSlop={8} accessibilityRole="button">
                     <Text style={styles.link}>{selecting ? "Listo" : "Seleccionar"}</Text>
                   </Pressable>
-                ) : null}
-              </View>
-              <Text style={styles.hint}>
-                {selecting ? "Marca los pedidos a verificar de una vez" : "Salen de aquí al recogerse todo"}
-              </Text>
+                </View>
+              ) : null}
             </View>
           }
           ListEmptyComponent={
@@ -454,9 +518,11 @@ export default function InventarioScreen({ navigation }) {
                 message={
                   ordersLoading
                     ? "Cargando pedidos…"
-                    : segment === "preparar"
-                      ? "No hay pedidos por preparar."
-                      : "No hay pedidos despachados en los últimos 30 días."
+                    : estadoGroup
+                      ? `No hay pedidos «${estadoGroup.status}» ${estadoGroup.ranged ? "en este rango" : "con estos filtros"}.`
+                      : orderQuery.trim()
+                        ? "No hay pedidos con estos filtros."
+                        : "No hay pedidos."
                 }
               />
             )
@@ -515,8 +581,25 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: "row", gap: 10 },
   filterItem: { flex: 1, marginBottom: 12 },
   summary: { marginTop: 2, fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
-  ordersHeader: { marginBottom: 12 },
-  ordersChipsRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  ordersHeader: { gap: 10, marginBottom: 12 },
+  ordersChipsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  ordersSummary: { flex: 1, alignItems: "flex-end" },
+  summaryCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  summaryRange: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
+  selectRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
-  hint: { marginTop: 8, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  hint: { flex: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 8,
+    backgroundColor: colors.canvas,
+  },
+  sectionTitleBox: { flex: 1, flexDirection: "row", alignItems: "baseline", gap: 6 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: colors.subtle },
+  sectionNote: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 11, color: colors.faint },
+  sectionCount: { fontFamily: fonts.semibold, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
 });

@@ -3,12 +3,13 @@ import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
 import { colors, getTone, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
-import { formatAge, formatNumber } from "../../lib/format";
+import { formatNumber } from "../../lib/format";
 import { statusTone } from "../../lib/statusTones";
 import {
   COUNT_STATUS,
+  arrivalLabel,
+  dispatchNote,
   inventoryMacroStatus,
-  lastStatusAt,
   lineCounts,
   lineParts,
   progressLabel,
@@ -50,10 +51,15 @@ function shortageNote(order, stockMap) {
 }
 
 // Tarjeta de un pedido en Inventario > Pedidos. En modo selección muestra
-// una casilla y el toque la marca en vez de abrir el pedido.
-export default function PrepOrderCard({ order, stockMap, onPress, selecting = false, checked = false }) {
+// una casilla y el toque la marca en vez de abrir el pedido. `group` es el
+// grupo de la lista (ORDER_GROUPS): mientras el pedido sigue en bodega
+// muestra cuándo llegó (ámbar si pasa de 2 días) y su avance; ya despachado,
+// la ruta y la hora.
+export default function PrepOrderCard({ order, stockMap, group, onPress, selecting = false, checked = false }) {
   const macro = inventoryMacroStatus(order);
-  const note = shortageNote(order, stockMap);
+  const inWarehouse = group ? group.sort === "arrival" : true;
+  const arrival = inWarehouse ? arrivalLabel(order) : null;
+  const note = inWarehouse ? shortageNote(order, stockMap) : null;
 
   return (
     <Pressable
@@ -68,21 +74,37 @@ export default function PrepOrderCard({ order, stockMap, onPress, selecting = fa
             {checked ? <Icon name="check" size={13} color={colors.white} strokeWidth={2.6} /> : null}
           </View>
         ) : null}
-        <Text style={styles.number}>{order.orderNumber}</Text>
+        <View style={styles.numberBox}>
+          <Text style={styles.number}>{order.orderNumber}</Text>
+          {arrival ? (
+            <View style={styles.arrival}>
+              <Icon name="clock" size={12} color={arrival.late ? tones.amber.text : colors.muted} />
+              <Text style={[styles.age, arrival.late && styles.ageLate]} numberOfLines={1}>
+                {arrival.text}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Pill label={macro} tone={statusTone(macro, "pedido-inventario")} />
       </View>
       <View style={[styles.row, styles.second]}>
         <Text style={styles.customer} numberOfLines={1}>
           {order.customer?.name || "—"}
         </Text>
-        <Text style={styles.age}>{formatAge(lastStatusAt(order) || order.createdAt)}</Text>
+        {inWarehouse ? null : (
+          <Text style={styles.age} numberOfLines={1}>
+            {dispatchNote(order)}
+          </Text>
+        )}
       </View>
-      <View style={[styles.row, styles.progressRow]}>
-        <ProgressSegments order={order} stockMap={stockMap} />
-        <Text style={styles.progress} numberOfLines={1}>
-          {progressLabel(order)}
-        </Text>
-      </View>
+      {inWarehouse ? (
+        <View style={[styles.row, styles.progressRow]}>
+          <ProgressSegments order={order} stockMap={stockMap} />
+          <Text style={styles.progress} numberOfLines={1}>
+            {progressLabel(order)}
+          </Text>
+        </View>
+      ) : null}
       {note ? <Text style={styles.note}>{note}</Text> : null}
     </Pressable>
   );
@@ -125,8 +147,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  number: {
+  numberBox: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  arrival: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  number: {
     fontFamily: fonts.bold,
     fontSize: 14.5,
     color: colors.ink,
@@ -142,6 +175,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.muted,
+    fontVariant: ["tabular-nums"],
+  },
+  ageLate: {
+    fontFamily: fonts.bold,
+    color: tones.amber.text,
   },
   progressRow: {
     marginTop: 12,
