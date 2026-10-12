@@ -22,7 +22,9 @@ function currentMonthKey() {
 
 /*
   Fabricación > Producción diaria: lotes diarios que se programan como lotes
-  de fabricación. Buscador, filtro por mes, tabla y paginación.
+  de fabricación. Buscador, filtro por mes, tabla y paginación. La tarjeta
+  mide lo que ocupan sus registros y solo llega hasta el fondo de la ventana
+  (y pagina) cuando no caben (usePagedRows con shrink).
 */
 function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, onDelete }) {
   const [query, setQuery] = useState("");
@@ -55,7 +57,7 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
     });
   }, [list, query, month]);
 
-  const { cardRef, areaRef, cardStyle, visible, page, setPage, size, total, paged } = usePagedRows(filtered, { rowHeight: 44, headerHeight: 32, resetKey: `${query}|${month}` });
+  const { cardRef, areaRef, cardStyle, visible, page, setPage, size, total, paged } = usePagedRows(filtered, { rowHeight: 44, headerHeight: 32, resetKey: `${query}|${month}`, shrink: true });
 
   const columns = [
     { key: "id", label: "ID", render: (b) => <span className="t-row-name tabular-nums">{b.dailyBatchNumber}</span> },
@@ -124,7 +126,8 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
         />
         <FilterSelect value={month} onChange={(e) => setMonth(e.target.value)} options={monthOptions} className={filterSelectClass} />
       </div>
-      <div ref={areaRef} className="min-h-0 flex-1 overflow-y-auto">
+      {/* min-h: con la tarjeta de alto automático, «Cargando…» y los estados vacíos no la aplastan. */}
+      <div ref={areaRef} className="min-h-[132px] flex-1 overflow-y-auto">
         {body}
       </div>
       {paged ? (
