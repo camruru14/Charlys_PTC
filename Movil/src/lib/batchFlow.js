@@ -131,7 +131,7 @@ export function groupBatches(list, range) {
 }
 
 // «hace 5 min» / «hace 2 h» si fue hoy; si no, «ayer 16:10» o «hace N días».
-function sinceText(value, now) {
+export function sinceText(value, now) {
   const when = formatWhen(value, now);
   if (!when) return null;
   if (when.days > 0) return when.text;

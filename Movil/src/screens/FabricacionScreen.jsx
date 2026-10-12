@@ -30,7 +30,7 @@ import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import { BATCH_GROUPS, batchSearchText, groupBatches, isStockBatch } from "../lib/batchFlow";
 import { batchApi } from "../lib/batchActions";
 import { runAll } from "../lib/inventoryOrders";
-import { buildGroups, groupSearchText } from "../lib/orderManufacturing";
+import { MFG_GROUPS, buildGroups, groupMfgOrders, groupSearchText, inMfgRange } from "../lib/orderManufacturing";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
 
@@ -39,14 +39,6 @@ const TABS = [
   { value: "lotes", label: "Lotes" },
   { value: "diaria", label: "Diaria" },
   { value: "pedidos", label: "Pedidos" },
-];
-
-// Chips de Pedidos (PedidosFabricacion.jsx).
-const ORDER_CHIPS = [
-  { value: "all", label: "Todos", test: () => true },
-  { value: "enProceso", label: "En proceso", test: (g) => g.macro.startsWith("En proceso") },
-  { value: "porEmpacar", label: "Por empacar", test: (g) => g.macro === "Por empacar" },
-  { value: "detenidos", label: "Detenidos", test: (g) => g.stopped.length > 0 },
 ];
 
 const MONTHS = [
@@ -122,7 +114,7 @@ export default function FabricacionScreen({ navigation }) {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [schedulingId, setSchedulingId] = useState(null);
   const [orderQuery, setOrderQuery] = useState("");
-  const [orderChip, setOrderChip] = useState("all");
+  const [orderEstado, setOrderEstado] = useState("");
   const [busy, setBusy] = useState(false);
 
   useFocusEffect(
@@ -221,16 +213,37 @@ export default function FabricacionScreen({ navigation }) {
     });
   }, [dailyBatches, dailyQuery, month]);
 
+  // Pedidos con lotes de fabricación. La lista va agrupada por estado: con la
+  // búsqueda y el rango (los conteos del filtro «Estado» salen de aquí) no se
+  // muestran los grupos vacíos ni los que no son el estado elegido. El rango
+  // solo filtra «Empacado».
   const groups = useMemo(() => buildGroups(orders, batches), [orders, batches]);
-  const orderCounts = useMemo(
-    () => Object.fromEntries(ORDER_CHIPS.map((c) => [c.value, groups.filter(c.test).length])),
-    [groups],
-  );
-  const visibleGroups = useMemo(() => {
+  const foundOrders = useMemo(() => {
     const q = orderQuery.trim().toLowerCase();
-    const test = ORDER_CHIPS.find((c) => c.value === orderChip)?.test || (() => true);
-    return groups.filter((g) => test(g) && (!q || groupSearchText(g).includes(q)));
-  }, [groups, orderChip, orderQuery]);
+    return q ? groups.filter((g) => groupSearchText(g).includes(q)) : groups;
+  }, [groups, orderQuery]);
+  const allOrderGroups = useMemo(() => groupMfgOrders(foundOrders, range), [foundOrders, range]);
+  const orderSections = useMemo(
+    () =>
+      allOrderGroups
+        .filter((g) => g.items.length > 0 && (!orderEstado || g.key === orderEstado))
+        .map((g) => ({ key: g.key, title: g.label, note: g.note, count: g.items.length, data: g.items })),
+    [allOrderGroups, orderEstado],
+  );
+  const visibleOrderCount = useMemo(() => orderSections.reduce((n, s) => n + s.count, 0), [orderSections]);
+  const orderStateOptions = useMemo(
+    () =>
+      allOrderGroups.map((g) => ({
+        value: g.key,
+        label: g.state,
+        dot: getTone(statusTone(g.macro, "pedido-fabricacion")).dot,
+        meta: formatNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
+    [allOrderGroups],
+  );
+  const orderTotalFound = useMemo(() => allOrderGroups.reduce((n, g) => n + g.items.length, 0), [allOrderGroups]);
+  const orderEstadoGroup = MFG_GROUPS.find((g) => g.key === orderEstado);
 
   const kpis = useMemo(() => {
     if (tab === "diaria") {
@@ -242,6 +255,17 @@ export default function FabricacionScreen({ navigation }) {
       return [
         { label: "Lotes hoy", value: formatNumber(dates.filter((d) => d.toDateString() === today).length), tone: "blue" },
         { label: "Esta semana", value: formatNumber(dates.filter((d) => d >= weekStart && d < weekEnd).length), tone: "green" },
+      ];
+    }
+    if (tab === "pedidos") {
+      const packed = MFG_GROUPS.find((g) => g.macro === "Empacado");
+      const count = (test) => formatNumber(groups.filter(test).length);
+      // Los tres primeros no dependen del rango; Empacados solo cuenta los del rango.
+      return [
+        { label: "Por empacar", value: count((g) => g.macro === "Por empacar"), tone: statusTone("Por empacar", "pedido-fabricacion") },
+        { label: "En proceso", value: count((g) => g.macro.startsWith("En proceso")), tone: statusTone("En proceso", "pedido-fabricacion") },
+        { label: "Detenidos", value: count((g) => g.macro === "En proceso · detenido"), tone: statusTone("En proceso · detenido", "pedido-fabricacion") },
+        { label: "Empacados", value: count((g) => g.macro === "Empacado" && inMfgRange(g, packed, range)), tone: statusTone("Empacado", "pedido-fabricacion") },
       ];
     }
     return [
@@ -258,7 +282,7 @@ export default function FabricacionScreen({ navigation }) {
         tone: statusTone("Detenido", "lote"),
       },
     ];
-  }, [tab, rangeList, stockList, dailyBatches]);
+  }, [tab, rangeList, stockList, dailyBatches, groups, range]);
 
   // «Programar» es directo y no tiene reversa: el backend crea el lote de
   // fabricación y borra el lote diario (en la web tampoco hay «Deshacer»).
@@ -392,14 +416,26 @@ export default function FabricacionScreen({ navigation }) {
         </View>
       ) : (
         <>
-          <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar pedido" />
-          <FilterChips
-            style={styles.chips}
-            contentContainerStyle={styles.chipsContent}
-            value={orderChip}
-            onChange={setOrderChip}
-            options={ORDER_CHIPS.map((c) => ({ value: c.value, label: c.label, count: orderCounts[c.value] }))}
-          />
+          <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar pedido, cliente o lote" style={styles.lotSearch} />
+          <View style={styles.lotFilterRow}>
+            <FilterSelectChip
+              label="Estado"
+              allLabel="todos"
+              allMeta={formatNumber(orderTotalFound)}
+              size="lg"
+              value={orderEstado}
+              options={orderStateOptions}
+              onChange={setOrderEstado}
+            />
+            <View style={styles.lotSummary}>
+              <Text style={styles.lotSummaryCount}>
+                {formatNumber(visibleOrderCount)} {visibleOrderCount === 1 ? "pedido" : "pedidos"}
+              </Text>
+              <Text style={styles.lotSummaryRange} numberOfLines={1}>
+                {rangeLabel(range)}
+              </Text>
+            </View>
+          </View>
         </>
       )}
     </View>
@@ -482,11 +518,13 @@ export default function FabricacionScreen({ navigation }) {
           </Text>
         </ScrollView>
       ) : (
-        <FlatList
+        <SectionList
           style={styles.flex}
           contentContainerStyle={[styles.content, bottomPad]}
-          data={visibleGroups}
+          sections={orderSections}
           keyExtractor={(g) => g.order._id}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
           renderItem={({ item: g }) => (
             <ManufacturingOrderCard
               group={g}
@@ -506,7 +544,13 @@ export default function FabricacionScreen({ navigation }) {
             ) : (
               <EmptyState
                 icon="orders"
-                message={groups.length ? "Ningún pedido coincide con la búsqueda." : "No hay pedidos en fabricación."}
+                message={
+                  orderEstadoGroup
+                    ? `No hay pedidos «${orderEstadoGroup.state}» ${orderEstadoGroup.ranged ? "en este rango" : "con estos filtros"}.`
+                    : orderQuery.trim()
+                      ? "No hay pedidos con estos filtros."
+                      : "No hay pedidos en fabricación."
+                }
               />
             )
           }

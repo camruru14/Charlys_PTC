@@ -2,25 +2,38 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Button from "../ui/Button";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
-import { colors, getTone } from "../../lib/theme";
+import { colors, getTone, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 import { formatNumber } from "../../lib/format";
-import { lotState, miniSegments } from "../../lib/orderManufacturing";
+import { lotState, miniSegments, mfgTimeNote } from "../../lib/orderManufacturing";
 import { statusTone } from "../../lib/statusTones";
 
-// Tarjeta de un pedido en Fabricación > Pedidos: número, estado del pedido
-// en fabricación, cliente, avance en 4 tramos (Programado, En proceso,
+// Tarjeta de un pedido en Fabricación > Pedidos: número con su nota de tiempo
+// (reloj: «detenido hace 2 h», «llegó hoy 08:20»…), estado del pedido en
+// fabricación, cliente, avance en 4 tramos (Programado, En proceso,
 // Completado, Empacado) y sus lotes. Tocar un lote abre su detalle. Las
 // acciones de todo el pedido son las de la web: reanudar los detenidos y
 // empacar los completados.
 export default function ManufacturingOrderCard({ group, busy, onOpenLot, onOpenOrder, onResume, onPackCompleted }) {
   const { order, lots, stopped } = group;
   const completed = lots.filter((l) => lotState(l) === "Completado");
+  const time = mfgTimeNote(group);
+  const timeColor = time?.tone === "rose" ? tones.rose.text : time?.tone === "amber" ? tones.amber.text : colors.muted;
 
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <Text style={styles.number}>{order.orderNumber}</Text>
+        <View style={styles.numberBox}>
+          <Text style={styles.number}>{order.orderNumber}</Text>
+          {time ? (
+            <View style={styles.time}>
+              <Icon name="clock" size={12} color={timeColor} />
+              <Text style={[styles.timeText, time.bold && styles.timeBold, { color: timeColor }]} numberOfLines={1}>
+                {time.text}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Pill label={group.macro} tone={statusTone(group.macro, "pedido-fabricacion")} />
       </View>
       <View style={[styles.row, styles.second]}>
@@ -103,7 +116,11 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   second: { marginTop: 4 },
-  number: { flex: 1, fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink, fontVariant: ["tabular-nums"] },
+  numberBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  number: { fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink, fontVariant: ["tabular-nums"] },
+  time: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 4 },
+  timeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, fontVariant: ["tabular-nums"] },
+  timeBold: { fontFamily: fonts.bold },
   customer: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
   count: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   bar: { flexDirection: "row", gap: 4, marginTop: 12 },
