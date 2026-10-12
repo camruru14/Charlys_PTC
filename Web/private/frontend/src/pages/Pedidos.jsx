@@ -1,5 +1,5 @@
 import { routeLabel } from "../lib/logistics";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
@@ -7,11 +7,14 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useAuth } from "../hooks/useAuth";
 import { useUrlState } from "../hooks/useUrlState";
 import { useRememberedSelection } from "../hooks/useRememberedSelection";
+import { useDateRange, rangeLabel } from "../context/dateRange";
 import PageHeader from "../components/ui/PageHeader";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import SearchInput from "../components/ui/SearchInput";
-import FilterChips from "../components/ui/FilterChips";
+import ListGroupHeader from "../components/ui/ListGroupHeader";
+import DateRangePicker from "../components/ui/DateRangePicker";
+import { FilterSelect } from "../components/ui/Field";
 import Stepper from "../components/ui/Stepper";
 import StatTile from "../components/ui/StatTile";
 import EmptyState from "../components/ui/EmptyState";
@@ -20,15 +23,14 @@ import ConfirmModal from "../components/ui/ConfirmModal";
 import { fmtMoney, fmtNumber, fmtDate, fmtDateYear } from "../lib/format";
 import { orderJourneySteps, lastStatusEntry } from "../lib/orderJourney";
 import ColorSwatch from "../components/ui/ColorSwatch";
-import { IconOrders, IconTrash } from "../lib/icons";
+import { IconClock, IconOrders, IconTrash } from "../lib/icons";
 import { statusTone } from "../lib/statusDomains";
+import { TONE_DOT, NOTE_TEXT } from "../lib/tones";
+import { filterSelectClass } from "../lib/filterStyles";
+import { PEDIDO_GROUPS, groupOrders, matchesOrderSearch, orderTimeNote } from "../lib/orderList";
 
-// Chips de la lista: key -> filtro sobre el pedido.
-const CHIP_FILTERS = {
-  all: () => true,
-  pendientes: (o) => o.status === "Pendiente",
-  enRuta: (o) => o.status === "En Tránsito",
-};
+// Valores de ?estado=: «todos» o la clave de un grupo de PEDIDO_GROUPS.
+const STATE_KEYS = ["todos", ...PEDIDO_GROUPS.map((g) => g.key)];
 
 // Los pedidos llegan de la tienda en línea (ya pagados): el panel no los crea ni
 // los edita. Lo único que modifica es eliminar los ya entregados para que no se
@@ -42,10 +44,21 @@ function deleteBlocker(order) {
 }
 
 function OrderRow({ order, selected, onSelect }) {
+  const note = orderTimeNote(order);
   return (
     <ListRow selected={selected} onClick={onSelect}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="shrink-0 text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+          {note ? (
+            <span
+              className={`inline-flex min-w-0 items-center gap-1 text-[11.5px] tabular-nums ${note.bold ? "font-bold" : ""} ${NOTE_TEXT[note.tone] || "text-muted"}`}
+            >
+              <IconClock width={11} height={11} className="shrink-0" />
+              <span className="truncate">{note.text}</span>
+            </span>
+          ) : null}
+        </span>
         <StatusPill status={order.status} domain="pedido" variant="dot" />
       </div>
       <div className="mt-1 flex items-center justify-between gap-3">
@@ -185,31 +198,33 @@ function Pedidos() {
   const { data, loading, error, refetch } = useFetch("/orders");
   const [selectedId, setSelectedId] = useUrlState("id");
   const [search, setSearch] = useState("");
-  const [chip, setChip] = useState("all");
+  const range = useDateRange();
+  const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });
 
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const activeCount = useMemo(() => list.filter((o) => o.status !== "Entregado").length, [list]);
 
-  const chipOptions = useMemo(
+  // Grupos con la búsqueda (N° de pedido, cliente o correo) y el rango (los
+  // conteos del combobox salen de aquí). El rango solo filtra «Entregado»; no
+  // se muestran los grupos vacíos ni los que no son el estado elegido.
+  const found = useMemo(() => list.filter((o) => matchesOrderSearch(o, search)), [list, search]);
+  const allGroups = useMemo(() => groupOrders(found, range), [found, range]);
+  const sections = useMemo(() => allGroups.filter((g) => g.items.length > 0 && (estado === "todos" || g.key === estado)), [allGroups, estado]);
+  const filteredList = useMemo(() => sections.flatMap((g) => g.items), [sections]);
+  const stateOptions = useMemo(
     () => [
-      { key: "all", label: "Todos", count: list.length },
-      { key: "pendientes", label: "Pendientes", count: list.filter(CHIP_FILTERS.pendientes).length, tone: statusTone("Pendiente", "pedido") },
-      { key: "enRuta", label: "En ruta", count: list.filter(CHIP_FILTERS.enRuta).length, tone: statusTone("En Tránsito", "pedido") },
+      { value: "todos", label: "Todos", meta: fmtNumber(allGroups.reduce((n, g) => n + g.items.length, 0)) },
+      ...allGroups.map((g) => ({
+        value: g.key,
+        label: g.status,
+        dot: TONE_DOT[statusTone(g.status, "pedido")],
+        meta: fmtNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
     ],
-    [list],
+    [allGroups],
   );
-
-  // Búsqueda por N° de pedido, cliente o correo + chip activo.
-  const filteredList = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const byChip = CHIP_FILTERS[chip] || CHIP_FILTERS.all;
-    return list.filter((o) => {
-      if (!byChip(o)) return false;
-      if (!q) return true;
-      const haystack = `${o.orderNumber || ""} ${o.customer?.name || ""} ${o.customer?.email || ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [list, search, chip]);
+  const estadoGroup = PEDIDO_GROUPS.find((g) => g.key === estado);
 
   const selected = useMemo(() => list.find((o) => o._id === selectedId) || null, [list, selectedId]);
   useRememberedSelection("pedidos", { selectedId, setSelectedId, ids: filteredList.map((o) => o._id), ready: !loading });
@@ -233,14 +248,33 @@ function Pedidos() {
       <PageHeader
         title="Pedidos"
         subtitle={`${fmtNumber(activeCount)} activos · los pedidos llegan desde la tienda en línea`}
+        actions={<DateRangePicker />}
       />
 
       <MasterDetail listWidth={452}>
         <ListPanel
           header={
             <>
-              <SearchInput value={search} onChange={setSearch} placeholder="Buscar pedido" />
-              <FilterChips options={chipOptions} value={chip} onChange={setChip} />
+              <div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(filteredList.length)} {filteredList.length === 1 ? "pedido" : "pedidos"}
+                  </span>
+                </div>
+                <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <SearchInput value={search} onChange={setSearch} placeholder="Buscar pedido, cliente o correo" className="min-w-0 flex-1" />
+                <FilterSelect
+                  label="Estado"
+                  value={estado}
+                  onChange={(e) => setEstado(e.target.value)}
+                  options={stateOptions}
+                  panelMinWidth={208}
+                  className={`${filterSelectClass} w-[140px] !min-w-0 !gap-1 !px-2`}
+                />
+              </div>
             </>
           }
         >
@@ -248,14 +282,22 @@ function Pedidos() {
             <EmptyState title="Cargando pedidos…" />
           ) : error ? (
             <EmptyState title="No se pudieron cargar los pedidos" description={error} />
-          ) : filteredList.length === 0 ? (
-            <EmptyState
-              title={list.length === 0 ? "No hay pedidos." : "Ningún pedido coincide con la búsqueda."}
-              description={list.length === 0 ? "Los pedidos llegan desde la tienda en línea." : undefined}
-            />
+          ) : sections.length === 0 ? (
+            estadoGroup ? (
+              <EmptyState title={`No hay pedidos «${estadoGroup.status}» ${estadoGroup.ranged ? "en este rango" : "con estos filtros"}.`} />
+            ) : search.trim() ? (
+              <EmptyState title="No hay pedidos con estos filtros." />
+            ) : (
+              <EmptyState title="No hay pedidos." description="Los pedidos llegan desde la tienda en línea." />
+            )
           ) : (
-            filteredList.map((o) => (
-              <OrderRow key={o._id} order={o} selected={o._id === selectedId} onSelect={() => setSelectedId(o._id)} />
+            sections.map((g) => (
+              <Fragment key={g.key}>
+                <ListGroupHeader label={g.label} note={g.note} count={g.items.length} />
+                {g.items.map((o) => (
+                  <OrderRow key={o._id} order={o} selected={o._id === selectedId} onSelect={() => setSelectedId(o._id)} />
+                ))}
+              </Fragment>
             ))
           )}
         </ListPanel>
