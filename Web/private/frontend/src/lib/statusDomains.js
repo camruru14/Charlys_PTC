@@ -6,7 +6,7 @@
   (pedido, ruta, parada) y ámbar en los financieros (transacción).
   Criterio: azul = pasando ahora mismo (Procesando, En proceso, En
   fabricación, Recolectando); ámbar = programado o en espera (Programado,
-  Esperando lote, Por enviar).
+  Esperando lote). «Por enviar» (lote completado, falta enviarlo a bodega) va en morado para no confundirse con «Programado».
   Tonos: gray, blue, amber, green, rose, purple, teal.
 */
 export const STATUS_DOMAINS = {
@@ -42,8 +42,8 @@ export const STATUS_DOMAINS = {
     "En proceso": "blue",
     Detenido: "rose",
     Completado: "green",
-    "Por enviar": "amber",
-    "Completado · por enviar": "amber",
+    "Por enviar": "purple",
+    "Completado · por enviar": "purple",
     "En bodega": "green",
     Empacado: "purple",
   },
