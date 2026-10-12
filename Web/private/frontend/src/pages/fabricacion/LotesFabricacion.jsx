@@ -16,7 +16,7 @@ import BatchDetail from "../../components/batches/BatchDetail";
 import SendToWarehouseModal from "../../components/batches/SendToWarehouseModal";
 import { toastUndo } from "../../lib/toastUndo";
 import { statusTone } from "../../lib/statusDomains";
-import { TONE_DOT } from "../../lib/tones";
+import { TONE_DOT, NOTE_TEXT } from "../../lib/tones";
 import { filterSelectClass } from "../../lib/filterStyles";
 import { fmtNumber, formatBatchNumber } from "../../lib/format";
 import { IconFactory, IconClock } from "../../lib/icons";
@@ -25,9 +25,6 @@ import { useProductionLines } from "../../hooks/useProductionLines";
 
 // Valores de ?estadoLote=: «todos» o la clave de un grupo de BATCH_GROUPS.
 const STATE_KEYS = ["todos", ...BATCH_GROUPS.map((g) => g.key)];
-
-// Color del texto de la nota de tiempo según su tono.
-const NOTE_TEXT = { rose: "text-tone-rose-text", amber: "text-tone-amber-text" };
 
 // Fila del lote (62px): número y nota de tiempo con el estado; producto, línea
 // y «Producido / Meta».

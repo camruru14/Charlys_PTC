@@ -7,6 +7,7 @@ import { useDateRange } from "../context/dateRange";
 import { useUrlState } from "../hooks/useUrlState";
 import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
 import { isStockBatch } from "../lib/batchFlow";
+import { buildGroups, inMfgRange, MFG_GROUPS } from "../lib/orderManufacturing";
 import { fmtNumber, fromDateOnly } from "../lib/format";
 import { IconPlus } from "../lib/icons";
 import { getPageMeta } from "../lib/nav";
@@ -68,6 +69,8 @@ function Fabricacion() {
   const stockList = useMemo(() => list.filter(isStockBatch), [list]);
   const dailyList = useMemo(() => (Array.isArray(dailyBatches) ? dailyBatches : []), [dailyBatches]);
   const orders = useMemo(() => (Array.isArray(ordersData) ? ordersData : []), [ordersData]);
+  // Pedidos con lotes de fabricación (para la pestaña Pedidos y sus KPIs).
+  const orderGroups = useMemo(() => buildGroups(orders, list), [orders, list]);
   // Líneas activas de Configuración > Líneas de producción (para iniciar lotes de pedido).
   const { options: lines } = useProductionLines();
 
@@ -136,13 +139,24 @@ function Fabricacion() {
         { label: "Esta semana", value: fmtNumber(dates.filter((d) => d >= weekStart && d < weekEnd).length), tone: "green" },
       ];
     }
+    if (activeTab === "pedidos") {
+      const packedGroup = MFG_GROUPS.find((g) => g.macro === "Empacado");
+      const count = (test) => fmtNumber(orderGroups.filter(test).length);
+      // Los tres primeros no dependen del rango; Empacados solo cuenta los del rango.
+      return [
+        { label: "Por empacar", value: count((g) => g.macro === "Por empacar"), tone: statusTone("Por empacar", "pedido-fabricacion") },
+        { label: "En proceso", value: count((g) => g.macro.startsWith("En proceso")), tone: statusTone("En proceso", "pedido-fabricacion") },
+        { label: "Detenidos", value: count((g) => g.macro === "En proceso · detenido"), tone: statusTone("En proceso · detenido", "pedido-fabricacion") },
+        { label: "Empacados", value: count((g) => g.macro === "Empacado" && inMfgRange(g, packedGroup, range)), tone: statusTone("Empacado", "pedido-fabricacion") },
+      ];
+    }
     return [
       { label: "Producción", value: fmtNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
       // En proceso y Detenidos cuentan los lotes activos de la lista, sin importar el rango.
       { label: "En proceso", value: fmtNumber(stockList.filter((b) => b.status === "En Proceso").length), tone: statusTone("En proceso", "lote") },
       { label: "Detenidos", value: fmtNumber(stockList.filter((b) => b.status === "Detenido").length), tone: statusTone("Detenido", "lote") },
     ];
-  }, [activeTab, rangeList, stockList, dailyList]);
+  }, [activeTab, rangeList, stockList, dailyList, orderGroups, range]);
 
   function newBatch() {
     if (activeTab === "diaria") {
@@ -168,28 +182,22 @@ function Fabricacion() {
             : getPageMeta("/fabricacion").subtitle
         }
         actions={
-          activeTab === "pedidos" ? (
-            // En Pedidos las pestañas suben al encabezado, junto al título: sin
-            // KPIs, selector de fechas ni «Nuevo lote» (los lotes de pedido
-            // llegan solos desde Inventario).
-            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
-          ) : (
-            <>
-              <DateRangePicker />
+          <>
+            <DateRangePicker />
+            {/* Los lotes de pedido llegan solos desde Inventario: sin «Nuevo lote». */}
+            {activeTab === "pedidos" ? null : (
               <Button icon={IconPlus} onClick={newBatch}>
                 Nuevo lote
               </Button>
-            </>
-          )
+            )}
+          </>
         }
       />
 
-      {activeTab === "pedidos" ? null : (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <KpiInline items={kpiItems} />
-          <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <KpiInline items={kpiItems} />
+        <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
+      </div>
 
       {activeTab === "lotes" ? (
         <LotesFabricacion
@@ -216,8 +224,7 @@ function Fabricacion() {
         />
       ) : (
         <PedidosFabricacion
-          orders={orders}
-          batches={list}
+          groups={orderGroups}
           loading={ordersLoading || loading}
           error={ordersError || error}
           refetchAll={refetchBatchesAndOrders}

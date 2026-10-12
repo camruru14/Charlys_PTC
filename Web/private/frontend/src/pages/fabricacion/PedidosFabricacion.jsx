@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useUrlState } from "../../hooks/useUrlState";
+import { useDateRange, rangeLabel } from "../../context/dateRange";
 import { useRememberedSelection } from "../../hooks/useRememberedSelection";
 import { replaceById } from "../../hooks/useFetch";
 import { withCurrentLine } from "../../hooks/useProductionLines";
@@ -10,22 +11,27 @@ import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
 import SearchInput from "../../components/ui/SearchInput";
-import FilterChips from "../../components/ui/FilterChips";
+import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import Stepper from "../../components/ui/Stepper";
 import MiniStepper from "../../components/ui/MiniStepper";
 import InlineResolveBox from "../../components/ui/InlineResolveBox";
 import DisclosureChevron from "../../components/ui/DisclosureChevron";
 import ColorSwatch from "../../components/ui/ColorSwatch";
-import { SelectField } from "../../components/ui/Field";
+import { SelectField, FilterSelect } from "../../components/ui/Field";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { toastUndo } from "../../lib/toastUndo";
 import { buttonClass } from "../../lib/buttonStyles";
+import { filterSelectClass } from "../../lib/filterStyles";
+import { TONE_DOT, NOTE_TEXT } from "../../lib/tones";
+import { statusTone } from "../../lib/statusDomains";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { fmtNumber, fmtDate, fmtTime, fmtDateTime, formatBatchNumber } from "../../lib/format";
-import { IconAlert, IconBox, IconCheck, IconOrders, IconPlay } from "../../lib/icons";
+import { IconAlert, IconBox, IconCheck, IconClock, IconOrders, IconPlay } from "../../lib/icons";
 import { batchStart, batchEnd } from "../../lib/batchFlow";
 import {
-  buildGroups,
+  MFG_GROUPS,
+  groupMfgOrders,
+  mfgTimeNote,
   lotState,
   miniSegments,
   stepperDates,
@@ -33,21 +39,8 @@ import {
   STEP_LABELS,
 } from "../../lib/orderManufacturing";
 
-// Colores de los chips (mockup): Todos azul sólido al activarse, En proceso
-// azul claro, Por empacar morado claro y Detenidos rojo claro.
-const CHIPS = [
-  { key: "all", label: "Todos", tone: "gray" },
-  { key: "enProceso", label: "En proceso", tone: "blue" },
-  { key: "porEmpacar", label: "Por empacar", tone: "purple" },
-  { key: "detenidos", label: "Detenidos", tone: "rose" },
-];
-
-const CHIP_TEST = {
-  all: () => true,
-  enProceso: (g) => g.macro.startsWith("En proceso"),
-  porEmpacar: (g) => g.macro === "Por empacar",
-  detenidos: (g) => g.stopped.length > 0,
-};
+// Valores de ?estadoPedido=: «todos» o la clave de un grupo de MFG_GROUPS.
+const STATE_KEYS = ["todos", ...MFG_GROUPS.map((g) => g.key)];
 
 // Tabla de lotes: Lote · Producto · Color · Cantidad · Estado · Acción · ⌄.
 // Se acomoda según el ancho del propio panel (container query): si no caben
@@ -63,6 +56,7 @@ const runAll = (calls) => calls.reduce((p, fn) => p.then(async (results) => [...
 function OrderListRow({ group, selected, onSelect }) {
   const { order } = group;
   const count = (order.items || []).length;
+  const note = mfgTimeNote(group);
   return (
     <button
       type="button"
@@ -73,7 +67,17 @@ function OrderListRow({ group, selected, onSelect }) {
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5">
         <span className="flex items-center justify-between gap-3">
-          <span className="text-[13px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="shrink-0 text-[13px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
+            {note ? (
+              <span
+                className={`inline-flex min-w-0 items-center gap-1 text-[11.5px] tabular-nums ${note.bold ? "font-bold" : ""} ${NOTE_TEXT[note.tone] || "text-muted"}`}
+              >
+                <IconClock width={11} height={11} className="shrink-0" />
+                <span className="truncate">{note.text}</span>
+              </span>
+            ) : null}
+          </span>
           <StatusPill status={group.macro} domain="pedido-fabricacion" variant="dot" />
         </span>
         <span className="flex items-center justify-between gap-3">
@@ -488,22 +492,37 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   (Programado) y avanzan con acciones directas hasta el empaque, que queda
   para recoger en «Fabricación» en Logística.
 */
-function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
+function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
   const [selectedId, setSelectedId] = useUrlState("id");
   const [query, setQuery] = useState("");
-  const [chip, setChip] = useState("all");
+  const range = useDateRange();
+  const [estado, setEstado] = useUrlState("estadoPedido", "todos", { allowed: STATE_KEYS });
   const [busy, setBusy] = useState(false);
 
-  const groups = useMemo(() => buildGroups(orders, batches), [orders, batches]);
-  const counts = useMemo(
-    () => Object.fromEntries(CHIPS.map((c) => [c.key, groups.filter(CHIP_TEST[c.key]).length])),
-    [groups],
-  );
-  const visible = useMemo(() => {
+  // Grupos con la búsqueda y el rango (los conteos del combobox salen de aquí);
+  // no se muestran los vacíos ni los que no son el estado elegido.
+  const found = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return groups.filter((g) => CHIP_TEST[chip](g) && (!q || groupSearchText(g).includes(q)));
-  }, [groups, chip, query]);
-  const selected = groups.find((g) => g.order._id === selectedId) || null;
+    return q ? allOrderGroups.filter((g) => groupSearchText(g).includes(q)) : allOrderGroups;
+  }, [allOrderGroups, query]);
+  const allGroups = useMemo(() => groupMfgOrders(found, range), [found, range]);
+  const sections = useMemo(() => allGroups.filter((g) => g.items.length > 0 && (estado === "todos" || g.key === estado)), [allGroups, estado]);
+  const visible = useMemo(() => sections.flatMap((g) => g.items), [sections]);
+  const stateOptions = useMemo(
+    () => [
+      { value: "todos", label: "Todos", meta: fmtNumber(allGroups.reduce((n, g) => n + g.items.length, 0)) },
+      ...allGroups.map((g) => ({
+        value: g.key,
+        label: g.state,
+        dot: TONE_DOT[statusTone(g.macro, "pedido-fabricacion")],
+        meta: fmtNumber(g.items.length),
+        muted: g.items.length === 0,
+      })),
+    ],
+    [allGroups],
+  );
+  const estadoGroup = MFG_GROUPS.find((g) => g.key === estado);
+  const selected = allOrderGroups.find((g) => g.order._id === selectedId) || null;
   useRememberedSelection("fabricacion/pedidos", { selectedId, setSelectedId, ids: visible.map((g) => g.order._id), ready: !loading });
 
   // Aplica la respuesta de una acción sin recargar todo:
@@ -596,20 +615,51 @@ function PedidosFabricacion({ orders, batches, loading, error, refetchAll, refet
       <ListPanel
         header={
           <>
-            <SearchInput value={query} onChange={setQuery} placeholder="Buscar pedido o cliente" />
-            <FilterChips compact value={chip} onChange={setChip} options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
+                <span className="t-aux tabular-nums">
+                  {fmtNumber(visible.length)} {visible.length === 1 ? "pedido" : "pedidos"}
+                </span>
+              </div>
+              <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <SearchInput value={query} onChange={setQuery} placeholder="Buscar pedido, cliente o lote" className="min-w-0 flex-1" />
+              <FilterSelect
+                label="Estado"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                options={stateOptions}
+                panelMinWidth={208}
+                className={`${filterSelectClass} w-[140px] !min-w-0 !gap-1 !px-2`}
+              />
+            </div>
           </>
         }
       >
-        {loading && !groups.length ? (
+        {loading && !allOrderGroups.length ? (
           <EmptyState title="Cargando pedidos…" />
         ) : error ? (
           <EmptyState title="No se pudieron cargar los pedidos" description={error} />
-        ) : visible.length === 0 ? (
-          <EmptyState title={groups.length ? "Ningún pedido coincide con la búsqueda." : "No hay pedidos en fabricación."} />
+        ) : sections.length === 0 ? (
+          <EmptyState
+            title={
+              estadoGroup
+                ? `No hay pedidos «${estadoGroup.state}» ${estadoGroup.ranged ? "en este rango" : "con estos filtros"}.`
+                : query.trim()
+                  ? "No hay pedidos con estos filtros."
+                  : "No hay pedidos en fabricación."
+            }
+          />
         ) : (
-          visible.map((g) => (
-            <OrderListRow key={g.order._id} group={g} selected={g.order._id === selectedId} onSelect={() => setSelectedId(g.order._id)} />
+          sections.map((s) => (
+            <Fragment key={s.key}>
+              <ListGroupHeader label={s.label} note={s.note} count={s.items.length} />
+              {s.items.map((g) => (
+                <OrderListRow key={g.order._id} group={g} selected={g.order._id === selectedId} onSelect={() => setSelectedId(g.order._id)} />
+              ))}
+            </Fragment>
           ))
         )}
       </ListPanel>

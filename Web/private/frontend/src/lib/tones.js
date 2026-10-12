@@ -37,3 +37,7 @@ export const CHART_COLORS = [
   "var(--color-chart-4)",
   "var(--color-chart-5)",
 ];
+
+// Color del texto de la nota de tiempo de una fila (batchTimeNote,
+// mfgTimeNote): «rose» (detenido), «amber» (atrasado); sin tono, gris.
+export const NOTE_TEXT = { rose: "text-tone-rose-text", amber: "text-tone-amber-text" };

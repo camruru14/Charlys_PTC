@@ -1,4 +1,5 @@
-import { batchNumberSearchText } from "./format";
+import { batchNumberSearchText, fmtDate, fmtWhen } from "./format";
+import { sinceText } from "./batchFlow";
 
 /*
   Fabricación > Pedidos a partir de /orders y /productionBatches: cada pedido
@@ -119,4 +120,92 @@ export function groupSearchText(group) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+/*
+  Lista de Pedidos agrupada por estado (como Lotes e Inventario > Pedidos).
+  `macro` es el estado macro (macroStatus); `state` el nombre en el combobox
+  «Estado»; `tone` el estado cuyo color lleva el punto (dominio
+  pedido-fabricacion). `ranged`: solo «Empacado» se filtra por el rango de
+  fechas (por el último empaque); los pedidos activos se ven siempre.
+  `key` va en la URL (?estadoPedido=).
+*/
+export const MFG_GROUPS = [
+  { key: "detenido", macro: "En proceso · detenido", state: "Detenido", label: "Detenidos", note: "algún lote parado · requieren atención" },
+  { key: "por-empacar", macro: "Por empacar", state: "Por empacar", label: "Por empacar", note: "lotes terminados, falta empacar" },
+  { key: "en-proceso", macro: "En proceso", state: "En proceso", label: "En proceso" },
+  { key: "programado", macro: "Programado", state: "Programado", label: "Programados", note: "esperan iniciar" },
+  { key: "empacado", macro: "Empacado", state: "Empacado", label: "Empacados", note: "más recientes primero", ranged: true },
+];
+
+const ms = (value) => {
+  const t = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(t) ? 0 : t;
+};
+
+// Fecha del último empaque del pedido (el mismo dato de stepperDates).
+export const lastPackedAt = (group) => maxDate(group.lots.map((l) => l.packedAt));
+
+// Cuándo se detuvo el lote parado que lleva más tiempo (para «Detenidos»).
+const stoppedSince = (group) => minDate(group.stopped.map((l) => l.batch.stoppedAt || l.batch.updatedAt));
+
+// Cuándo terminó el último lote (para «Por empacar»).
+const lastCompletedAt = (group) => maxDate(group.lots.map((l) => l.batch.completedAt || l.batch.updatedAt));
+
+// Valor por el que se ordena cada grupo (ascendente, menos «Empacado»).
+const SORT_KEY = {
+  "En proceso · detenido": (g) => ms(stoppedSince(g)),
+  "Por empacar": (g) => ms(lastCompletedAt(g)),
+  "En proceso": (g) => ms(g.arrivedAt),
+  Programado: (g) => ms(g.arrivedAt),
+  Empacado: (g) => ms(lastPackedAt(g)),
+};
+
+// ¿El pedido se ve con el rango de fechas? Solo «Empacado» se filtra.
+export function inMfgRange(group, mfgGroup, range) {
+  if (!mfgGroup.ranged || !range?.from || !range?.to) return true;
+  const at = ms(lastPackedAt(group));
+  return !at || (at >= range.from.getTime() && at <= range.to.getTime());
+}
+
+// Pedidos por grupo, en el orden de MFG_GROUPS y con el orden de cada uno.
+// Devuelve [{ ...grupo, items }], incluidos los vacíos.
+export function groupMfgOrders(groups, range) {
+  const byMacro = new Map(MFG_GROUPS.map((g) => [g.macro, []]));
+  for (const g of groups) byMacro.get(g.macro)?.push(g);
+  return MFG_GROUPS.map((mfg) => {
+    const key = SORT_KEY[mfg.macro];
+    const items = byMacro.get(mfg.macro).filter((g) => inMfgRange(g, mfg, range));
+    items.sort((a, b) => (mfg.macro === "Empacado" ? key(b) - key(a) : key(a) - key(b)));
+    return { ...mfg, items };
+  });
+}
+
+/*
+  Nota de tiempo de la fila de un pedido: { text, tone, bold } (tone: «rose»,
+  «amber» o null = gris).
+    Detenidos: «detenido hace 2 h» · Por empacar: «listo ayer 17:40» (ámbar
+    pasadas 24 h) · En proceso y Programados: «llegó hoy 08:20» (ámbar pasados
+    2 días) · Empacados: «empacado 11 oct».
+*/
+export function mfgTimeNote(group, now = new Date()) {
+  if (group.macro === "En proceso · detenido") {
+    const text = sinceText(stoppedSince(group), now);
+    return text ? { text: `detenido ${text}`, tone: "rose", bold: true } : null;
+  }
+  if (group.macro === "Por empacar") {
+    const at = lastCompletedAt(group);
+    const when = fmtWhen(at, now);
+    if (!when) return null;
+    const late = now - at > 86400000;
+    return { text: `listo ${when.text}`, tone: late ? "amber" : null, bold: late };
+  }
+  if (group.macro === "Empacado") {
+    const at = lastPackedAt(group);
+    return at ? { text: `empacado ${fmtDate(at)}`, tone: null, bold: false } : null;
+  }
+  const when = fmtWhen(group.arrivedAt, now);
+  if (!when) return null;
+  const late = when.days > 2;
+  return { text: `llegó ${when.text}`, tone: late ? "amber" : null, bold: late };
 }
