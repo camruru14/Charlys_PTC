@@ -49,12 +49,13 @@ import {
 // Valores de ?estado=: «todos» o la clave de un grupo de ORDER_GROUPS.
 const STATE_KEYS = ["todos", ...ORDER_GROUPS.map((g) => g.key)];
 // Producto · Color · Cant. · Existencia · Estado · Acción · caret.
-// Producto acotado (96–130px) para que Color quede junto a él; el espacio que
-// sobra se lo lleva Cant. (alineada a la derecha, junto a Existencia).
+// Producto acotado (120–170px) y Color de 96px (incluye el pl-6 que lo separa de
+// Producto; la cuadrícula no lleva gap para no mover las demás columnas); el
+// espacio que sobra se lo lleva Cant. (alineada a la derecha, junto a Existencia).
 // Existencia llega a 200px para que «Bodega Central · 4,750 disp.» quepa
 // completo (solo en pantallas angostas cede hasta 150px). La última columna
 // (30px) deja el caret separado del borde.
-const PRODUCTS_GRID = "minmax(96px,130px) 72px minmax(44px,1fr) minmax(150px,200px) 124px 178px 30px";
+const PRODUCTS_GRID = "minmax(120px,170px) 96px minmax(44px,1fr) minmax(150px,200px) 124px 178px 30px";
 
 // [clave de lineCounts, singular, plural, estado de la píldora de la línea]
 const COUNT_LABELS = [
@@ -381,11 +382,11 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 
         <div className="overflow-hidden rounded-[12px] border border-line">
           <div className="overflow-x-auto">
-            {/* Suma de los mínimos de PRODUCTS_GRID (96+72+44+150+124+178+30). */}
-            <div className="min-w-[694px]">
+            {/* Suma de los mínimos de PRODUCTS_GRID (120+96+44+150+124+178+30). */}
+            <div className="min-w-[742px]">
               <div className="grid h-8 items-center border-b border-line-soft bg-surface-2" style={{ gridTemplateColumns: PRODUCTS_GRID }}>
                 <span className="t-label pl-4">Producto</span>
-                <span className="t-label">Color</span>
+                <span className="t-label pl-6">Color</span>
                 <span className="t-label text-right">Cant.</span>
                 <span className="t-label pl-3">Existencia</span>
                 <span className="t-label">Estado</span>
@@ -411,13 +412,13 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                             {pi === 0 ? (
                               <>
                                 <ColorSwatch color={item.color} />
-                                <span className="truncate text-[13.5px] font-semibold text-ink">{item.product}</span>
+                                <span title={item.product} className="truncate text-[13.5px] font-semibold text-ink">{item.product}</span>
                               </>
                             ) : (
                               <span className="t-aux pl-[19px]">↳ a fabricar</span>
                             )}
                           </span>
-                          <span className="truncate pr-3 text-[13px] text-ink-2">{pi === 0 ? item.color || "—" : ""}</span>
+                          <span className="truncate pl-6 pr-3 text-[13px] text-ink-2">{pi === 0 ? item.color || "—" : ""}</span>
                           <span className="text-right text-[13px] tabular-nums text-ink">{fmtNumber(part.qty)}</span>
                           <span className="truncate px-3 text-[12.5px] tabular-nums text-ink-2">{existenceText(item, part)}</span>
                           <span>
