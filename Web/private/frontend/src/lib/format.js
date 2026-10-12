@@ -162,6 +162,26 @@ export function fmtRelativeDay(value) {
   return fmtDate(d);
 }
 
+// Días de calendario entre hoy y la fecha (0 hoy, 1 ayer, -1 mañana).
+export function calendarDaysAgo(value, now = new Date()) {
+  const d = toDate(value);
+  if (!d) return null;
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return Math.round((day(now) - day(d)) / 86400000);
+}
+
+// «hoy 08:20», «ayer 15:30» o «hace N días» (una fecha futura cuenta como hoy),
+// con los días de calendario que pasaron. Lo usan Inventario > Pedidos
+// (cuándo llegó) y Fabricación > Lotes (notas de tiempo).
+export function fmtWhen(value, now = new Date()) {
+  const d = toDate(value);
+  if (!d) return null;
+  const days = calendarDaysAgo(d, now);
+  if (days <= 0) return { text: `hoy ${fmtTime(d)}`, days: 0 };
+  if (days === 1) return { text: `ayer ${fmtTime(d)}`, days };
+  return { text: `hace ${days} días`, days };
+}
+
 // Número de lote para mostrar: «LOTE-2026-0098» -> «L-2026-0098». Es solo de
 // visualización: el batchNumber guardado y las búsquedas no cambian.
 export function formatBatchNumber(value) {

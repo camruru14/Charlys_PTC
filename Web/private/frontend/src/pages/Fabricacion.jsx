@@ -6,6 +6,7 @@ import { useDailyBatchForm } from "../hooks/useDailyBatchForm";
 import { useDateRange } from "../context/dateRange";
 import { useUrlState } from "../hooks/useUrlState";
 import { defaultBatchFilters, filterBatches } from "../lib/batchFilters";
+import { isStockBatch } from "../lib/batchFlow";
 import { fmtNumber, fromDateOnly } from "../lib/format";
 import { IconPlus } from "../lib/icons";
 import { getPageMeta } from "../lib/nav";
@@ -62,7 +63,9 @@ function Fabricacion() {
 
   const list = useMemo(() => (Array.isArray(batches) ? batches : []), [batches]);
   const rangeList = useMemo(() => filterBatches(list, defaultBatchFilters, range), [list, range]);
-  const stockRangeList = useMemo(() => rangeList.filter((b) => b.category !== "Pedido"), [rangeList]);
+  // Lotes de stock sin filtrar por fecha: la pestaña Lotes agrupa por estado y
+  // el rango solo afecta a «En bodega» (ver groupBatches).
+  const stockList = useMemo(() => list.filter(isStockBatch), [list]);
   const dailyList = useMemo(() => (Array.isArray(dailyBatches) ? dailyBatches : []), [dailyBatches]);
   const orders = useMemo(() => (Array.isArray(ordersData) ? ordersData : []), [ordersData]);
   // Líneas activas de Configuración > Líneas de producción (para iniciar lotes de pedido).
@@ -135,10 +138,11 @@ function Fabricacion() {
     }
     return [
       { label: "Producción", value: fmtNumber(rangeList.reduce((s, b) => s + (b.producedQuantity || 0), 0)), tone: "blue" },
-      { label: "En proceso", value: fmtNumber(rangeList.filter((b) => b.status === "En Proceso").length), tone: statusTone("En proceso", "lote") },
-      { label: "Detenidos", value: fmtNumber(rangeList.filter((b) => b.status === "Detenido").length), tone: statusTone("Detenido", "lote") },
+      // En proceso y Detenidos cuentan los lotes activos de la lista, sin importar el rango.
+      { label: "En proceso", value: fmtNumber(stockList.filter((b) => b.status === "En Proceso").length), tone: statusTone("En proceso", "lote") },
+      { label: "Detenidos", value: fmtNumber(stockList.filter((b) => b.status === "Detenido").length), tone: statusTone("Detenido", "lote") },
     ];
-  }, [activeTab, rangeList, dailyList]);
+  }, [activeTab, rangeList, stockList, dailyList]);
 
   function newBatch() {
     if (activeTab === "diaria") {
@@ -190,7 +194,7 @@ function Fabricacion() {
       {activeTab === "lotes" ? (
         <LotesFabricacion
           batches={list}
-          list={stockRangeList}
+          list={stockList}
           loading={loading}
           error={error}
           // Los lotes de stock no afectan a los pedidos: basta con los lotes.

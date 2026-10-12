@@ -1,5 +1,5 @@
 import { routeLabel } from "./logistics";
-import { formatBatchNumber, fmtDate, fmtTime } from "./format";
+import { formatBatchNumber, fmtDate, fmtTime, fmtWhen } from "./format";
 
 /*
   Lógica de Inventario > Pedidos a partir de /orders y /inventory:
@@ -231,18 +231,11 @@ export function groupInventoryOrders(orders, range) {
   });
 }
 
-const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
 // Cuándo llegó a Inventario: «hoy 08:20», «ayer 15:30» o «hace N días».
 // `late`: lleva más de 2 días.
 export function arrivalLabel(order, now = new Date()) {
-  const at = arrivedAt(order);
-  const d = new Date(at);
-  if (!at || Number.isNaN(d.getTime())) return null;
-  const days = Math.round((dayStart(now) - dayStart(d)) / 86400000);
-  if (days <= 0) return { text: `hoy ${fmtTime(d)}`, late: false };
-  if (days === 1) return { text: `ayer ${fmtTime(d)}`, late: false };
-  return { text: `hace ${days} días`, late: days > 2 };
+  const when = fmtWhen(arrivedAt(order), now);
+  return when ? { text: when.text, late: when.days > 2 } : null;
 }
 
 // Segunda línea de un pedido que ya salió de bodega: «R-2026-0048 · salió
