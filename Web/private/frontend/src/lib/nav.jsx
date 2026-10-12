@@ -27,13 +27,6 @@ export const NAV_ITEMS = [
     subtitle: "Control de líneas de producción y calidad",
   },
   {
-    to: "/finanzas",
-    label: "Finanzas",
-    icon: IconFinance,
-    title: "Finanzas",
-    subtitle: "Ingresos, gastos, flujo de caja y rentabilidad",
-  },
-  {
     to: "/pedidos",
     label: "Pedidos",
     icon: IconOrders,
@@ -53,6 +46,13 @@ export const NAV_ITEMS = [
     icon: IconBox,
     title: "Inventario",
     subtitle: "Materia prima y stock de productos terminados",
+  },
+  {
+    to: "/finanzas",
+    label: "Finanzas",
+    icon: IconFinance,
+    title: "Finanzas",
+    subtitle: "Ingresos, gastos, flujo de caja y rentabilidad",
   },
   {
     to: "/catalogo",

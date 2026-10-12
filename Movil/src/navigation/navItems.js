@@ -13,11 +13,6 @@ export const NAV_ITEMS = {
     icon: "factory",
     subtitle: "Control de líneas de producción y calidad",
   },
-  Inventario: {
-    label: "Inventario",
-    icon: "box",
-    subtitle: "Materia prima y stock de productos terminados",
-  },
   Pedidos: {
     label: "Pedidos",
     icon: "orders",
@@ -27,6 +22,11 @@ export const NAV_ITEMS = {
     label: "Logística",
     icon: "truck",
     subtitle: "Asignación de motoristas, vehículos y seguimiento de entregas",
+  },
+  Inventario: {
+    label: "Inventario",
+    icon: "box",
+    subtitle: "Materia prima y stock de productos terminados",
   },
   Finanzas: {
     label: "Finanzas",
@@ -59,7 +59,7 @@ export const NAV_ITEMS = {
 };
 
 export const NAV_SECTIONS = [
-  { title: "Operación", routes: ["Dashboard", "Fabricacion", "Inventario", "Pedidos", "Logistica"] },
+  { title: "Operación", routes: ["Dashboard", "Fabricacion", "Pedidos", "Logistica", "Inventario"] },
   { title: "Negocio", routes: ["Finanzas", "Catalogo", "Empleados", "Asistencia"] },
   { title: "Sistema", routes: ["Configuracion"] },
 ];

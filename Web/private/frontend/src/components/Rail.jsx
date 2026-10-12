@@ -13,7 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 
 // Secciones del menú lateral: agrupan por ruta los módulos de nav.js.
 const NAV_SECTIONS = [
-  { title: "Operación", paths: ["/", "/fabricacion", "/inventario", "/pedidos", "/logistica"] },
+  { title: "Operación", paths: ["/", "/fabricacion", "/pedidos", "/logistica", "/inventario"] },
   { title: "Negocio", paths: ["/finanzas", "/catalogo", "/empleados"] },
   { title: "Sistema", paths: ["/configuracion"] },
 ];

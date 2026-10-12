@@ -31,9 +31,9 @@ const Drawer = createDrawerNavigator();
 const SCREENS = [
   { name: "Dashboard", component: DashboardScreen, showDateRange: true },
   { name: "Fabricacion", component: FabricacionScreen, showDateRange: true },
-  { name: "Inventario", component: InventarioScreen },
   { name: "Pedidos", component: PedidosScreen },
   { name: "Logistica", component: LogisticaScreen },
+  { name: "Inventario", component: InventarioScreen },
   { name: "Finanzas", component: FinanzasScreen, showDateRange: true },
   { name: "Catalogo", component: CatalogoScreen },
   { name: "Empleados", component: EmpleadosScreen },
