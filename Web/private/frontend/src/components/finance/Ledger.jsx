@@ -9,10 +9,10 @@ import StatusPill from "../ui/StatusPill";
 import Tabs from "../ui/Tabs";
 import { AsyncState } from "../ui/SectionCard";
 import { usePagedGroups } from "../../hooks/usePagedGroups";
-import { IconBank, IconCard, IconCash, IconChevronDown, IconDoc, IconDollar, IconDownload, IconLock, IconOrders, IconPaperclip, IconTag } from "../../lib/icons";
+import { IconBank, IconCard, IconCash, IconChevronDown, IconDoc, IconDollar, IconDownload, IconOrders, IconPaperclip, IconTag } from "../../lib/icons";
 import { categoryIcon, categoryTone } from "../../lib/expenseCategories";
 import { dayLabel, dueText, LEDGER_TABS, money, orderRangeText, plural } from "../../lib/finance";
-import { fmtTime } from "../../lib/format";
+import { fmtDate, fmtTime } from "../../lib/format";
 import { filterSelectClass } from "../../lib/filterStyles";
 import { statusLabel } from "../../lib/transactionFilters";
 
@@ -20,7 +20,8 @@ import { statusLabel } from "../../lib/transactionFilters";
   Libro de movimientos de Finanzas (columna derecha): pestañas, filtros, una
   franja de una línea (36 px) con las cifras del rango y la lista agrupada por día. Lo manual lleva
   su menú (editar, marcar pagado, ver factura, eliminar); las ventas de la
-  tienda se juntan en UNA fila por día, se expanden y no se editan. Abrir una venta no cambia la
+  tienda se juntan en UNA fila por día (toda la fila es el botón que abre y cierra sus pedidos, con el
+  chevron a la derecha) y no se editan. Abrir una venta no cambia la
   paginación: las páginas se arman solo con filas y encabezados de día, y el área de filas hace scroll
   por dentro cuando las subfilas no caben (la página no hace scroll).
 */
@@ -30,7 +31,6 @@ const HEADER_HEIGHT = 32;
 const SUBROWS_PREVIEW = 6; // pedidos que muestra una venta abierta antes de «Ver los N pedidos»
 const COLUMNS = "minmax(0,1fr) 116px 100px 108px 32px";
 const METHOD_ICONS = { Efectivo: IconCash, Transferencia: IconBank, Cheque: IconDoc, Wompi: IconCard };
-const LOCKED = "Las ventas de la tienda no se editan";
 
 function Avatar({ icon: Icon, className }) {
   return (
@@ -111,75 +111,77 @@ function ManualRow({ tx, categoryByName, now, highlighted, onEdit, onPay, onDele
   );
 }
 
-function SalesRow({ sales, day, open, showAll, onToggle, onShowAll }) {
+function SalesRow({ sales, day, dateText, open, showAll, onToggle, onShowAll }) {
   const total = sales.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const count = plural(sales.length, "pedido", "pedidos");
+  const panelId = `ventas-${day}`;
   // Una venta con muchos pedidos muestra los primeros y «Ver los N pedidos» para el resto.
   const preview = showAll ? sales : sales.slice(0, SUBROWS_PREVIEW);
   const hidden = sales.length - preview.length;
   return (
     <>
-      <div style={{ gridTemplateColumns: COLUMNS, height: ROW_HEIGHT }} className="grid items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-label={open ? "Ocultar los pedidos" : "Ver los pedidos"}
-            title={open ? "Ocultar los pedidos" : "Ver los pedidos"}
-            onClick={onToggle}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-muted transition hover:bg-surface-2 hover:text-ink"
-          >
-            <IconChevronDown width={15} height={15} className={`transition ${open ? "" : "-rotate-90"}`} />
-          </button>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={`Ventas de la tienda del ${dateText}, ${count}, +${money(total)}. ${open ? "Ocultar" : "Mostrar"} pedidos`}
+        onClick={onToggle}
+        style={{ gridTemplateColumns: COLUMNS, height: ROW_HEIGHT }}
+        className={`grid w-full cursor-pointer items-center gap-3 border-b border-line-soft px-4 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] ${open ? "bg-surface-2/70" : "bg-surface-2/40"}`}
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
           <Avatar icon={IconOrders} className="bg-tone-green text-tone-green-text" />
-          <div className="min-w-0">
-            <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <span className="truncate" title={`Ventas de la tienda · ${plural(sales.length, "pedido", "pedidos")}`}>
-                Ventas de la tienda · {plural(sales.length, "pedido", "pedidos")}
+          <span className="block min-w-0">
+            <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <span className="truncate" title={`Ventas de la tienda · ${count}`}>
+                Ventas de la tienda · {count}
               </span>
               <span className="shrink-0 rounded-[6px] bg-tone-green px-1.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-tone-green-text">automático</span>
-            </p>
-            <p className="t-aux truncate tabular-nums">{orderRangeText(sales)} · no se editan</p>
-          </div>
-        </div>
+            </span>
+            <span className="t-aux block truncate tabular-nums">{orderRangeText(sales)} · no se editan</span>
+          </span>
+        </span>
         <Method method="Wompi" />
         <span>
           <StatusPill status="Pagado" domain="movimiento" />
         </span>
         <Amount value={total} income />
-        <span className="flex justify-center text-faint" title={LOCKED}>
-          <IconLock width={15} height={15} aria-label={LOCKED} />
+        <span className="flex justify-center text-muted">
+          <IconChevronDown width={15} height={15} aria-hidden="true" className={`transition-transform ${open ? "" : "-rotate-90"}`} />
         </span>
+      </button>
+      <div id={panelId}>
+        {open
+          ? preview.map((t, i) => (
+              <div
+                key={t._id}
+                data-last-sub={hidden === 0 && i === preview.length - 1 ? day : undefined}
+                style={{ gridTemplateColumns: COLUMNS }}
+                className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]"
+              >
+                <span className="truncate pl-[44px] tabular-nums text-ink-2">
+                  {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
+                  <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
+                </span>
+                <span />
+                <span />
+                <Amount value={t.amount} income />
+                <span />
+              </div>
+            ))
+          : null}
+        {open && hidden > 0 ? (
+          <div data-last-sub={day} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
+            <button type="button" onClick={onShowAll} className="justify-self-start pl-[44px] font-semibold text-primary-soft-text transition hover:text-primary">
+              Ver los {sales.length} pedidos
+            </button>
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
       </div>
-      {open
-        ? preview.map((t, i) => (
-            <div
-              key={t._id}
-              data-last-sub={hidden === 0 && i === preview.length - 1 ? day : undefined}
-              style={{ gridTemplateColumns: COLUMNS }}
-              className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]"
-            >
-              <span className="truncate pl-[84px] tabular-nums text-ink-2">
-                {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
-                <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
-              </span>
-              <span />
-              <span />
-              <Amount value={t.amount} income />
-              <span />
-            </div>
-          ))
-        : null}
-      {open && hidden > 0 ? (
-        <div data-last-sub={day} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
-          <button type="button" onClick={onShowAll} className="justify-self-start pl-[84px] font-semibold text-primary-soft-text transition hover:text-primary">
-            Ver los {sales.length} pedidos
-          </button>
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-      ) : null}
     </>
   );
 }
@@ -283,7 +285,7 @@ function Ledger({
     body.push(
       row.kind === "sales" ? (
         <Fragment key={row.id}>
-          <SalesRow sales={row.sales} day={row.day} open={current.open.has(row.day)} showAll={current.all.has(row.day)} onToggle={() => toggleDay(row.day)} onShowAll={() => showAllOf(row.day)} />
+          <SalesRow sales={row.sales} day={row.day} dateText={fmtDate(days.get(row.day).date)} open={current.open.has(row.day)} showAll={current.all.has(row.day)} onToggle={() => toggleDay(row.day)} onShowAll={() => showAllOf(row.day)} />
         </Fragment>
       ) : (
         <ManualRow
