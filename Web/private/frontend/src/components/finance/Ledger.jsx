@@ -21,7 +21,7 @@ import { statusLabel } from "../../lib/transactionFilters";
   franja de una línea (36 px) con las cifras del rango y la lista agrupada por día. Lo manual lleva
   su menú (editar, marcar pagado, ver factura, eliminar); las ventas de la
   tienda se juntan en UNA fila por día (toda la fila es el botón que abre y cierra sus pedidos, con el
-  chevron a la derecha) y no se editan. Abrir una venta no cambia la
+  chevron a la derecha, y se despliegan animando la altura) y no se editan. Abrir una venta no cambia la
   paginación: las páginas se arman solo con filas y encabezados de día, y el área de filas hace scroll
   por dentro cuando las subfilas no caben (la página no hace scroll).
 */
@@ -111,13 +111,63 @@ function ManualRow({ tx, categoryByName, now, highlighted, onEdit, onPay, onDele
   );
 }
 
+// Región que se despliega animando la altura (0fr → 1fr, sin medir en JS), con un fundido del contenido.
+// Cerrada sigue montada (para animar al cerrar) pero inerte: sin foco ni clics. `onOpened` avisa al
+// terminar de abrir (no se dispara con «reducir movimiento», que abre al instante).
+function Collapse({ open, onOpened, id, children }) {
+  return (
+    <div
+      id={id}
+      inert={!open}
+      aria-hidden={!open}
+      onTransitionEnd={(e) => {
+        if (open && e.target === e.currentTarget && e.propertyName === "grid-template-rows") onOpened?.();
+      }}
+      className={`grid transition-[grid-template-rows] motion-reduce:transition-none ${open ? "grid-rows-[1fr] duration-[220ms] ease-out" : "grid-rows-[0fr] duration-[180ms] ease-in"}`}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div className={`transition-opacity motion-reduce:transition-none ${open ? "opacity-100 delay-[60ms] duration-[160ms]" : "opacity-0 duration-100"}`}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function SubRow({ t, last, day }) {
+  return (
+    <div
+      data-last-sub={last ? day : undefined}
+      style={{ gridTemplateColumns: COLUMNS }}
+      className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]"
+    >
+      <span className="truncate pl-[44px] tabular-nums text-ink-2">
+        {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
+        <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
+      </span>
+      <span />
+      <span />
+      <Amount value={t.amount} income />
+      <span />
+    </div>
+  );
+}
+
 function SalesRow({ sales, day, dateText, open, showAll, onToggle, onShowAll }) {
+  const panelRef = useRef(null);
   const total = sales.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const count = plural(sales.length, "pedido", "pedidos");
   const panelId = `ventas-${day}`;
   // Una venta con muchos pedidos muestra los primeros y «Ver los N pedidos» para el resto.
-  const preview = showAll ? sales : sales.slice(0, SUBROWS_PREVIEW);
-  const hidden = sales.length - preview.length;
+  const head = sales.slice(0, SUBROWS_PREVIEW);
+  const rest = sales.slice(SUBROWS_PREVIEW);
+
+  // Al terminar de abrir (o de desplegar todos los pedidos) se desplaza el área lo justo para ver la última subfila.
+  const scrollToLast = (behavior = "smooth") => panelRef.current?.querySelector("[data-last-sub]")?.scrollIntoView({ block: "nearest", behavior });
+  useEffect(() => {
+    if (open && reducedMotion()) panelRef.current?.querySelector("[data-last-sub]")?.scrollIntoView({ block: "nearest" });
+  }, [open, showAll]);
+
   return (
     <>
       <button
@@ -147,40 +197,35 @@ function SalesRow({ sales, day, dateText, open, showAll, onToggle, onShowAll }) 
         </span>
         <Amount value={total} income />
         <span className="flex justify-center text-muted">
-          <IconChevronDown width={15} height={15} aria-hidden="true" className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+          <IconChevronDown width={15} height={15} aria-hidden="true" className={`transition-transform duration-[220ms] motion-reduce:transition-none ${open ? "" : "-rotate-90"}`} />
         </span>
       </button>
-      <div id={panelId}>
-        {open
-          ? preview.map((t, i) => (
-              <div
-                key={t._id}
-                data-last-sub={hidden === 0 && i === preview.length - 1 ? day : undefined}
-                style={{ gridTemplateColumns: COLUMNS }}
-                className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]"
-              >
-                <span className="truncate pl-[44px] tabular-nums text-ink-2">
-                  {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
-                  <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
-                </span>
-                <span />
-                <span />
-                <Amount value={t.amount} income />
-                <span />
-              </div>
-            ))
-          : null}
-        {open && hidden > 0 ? (
-          <div data-last-sub={day} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
-            <button type="button" onClick={onShowAll} className="justify-self-start pl-[44px] font-semibold text-primary-soft-text transition hover:text-primary">
-              Ver los {sales.length} pedidos
-            </button>
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-        ) : null}
+      <div ref={panelRef}>
+        <Collapse id={panelId} open={open} onOpened={scrollToLast}>
+          {head.map((t, i) => (
+            <SubRow key={t._id} t={t} day={day} last={rest.length === 0 && i === head.length - 1} />
+          ))}
+          {rest.length > 0 ? (
+            <>
+              <Collapse open={showAll} onOpened={scrollToLast}>
+                {rest.map((t, i) => (
+                  <SubRow key={t._id} t={t} day={day} last={showAll && i === rest.length - 1} />
+                ))}
+              </Collapse>
+              <Collapse open={!showAll}>
+                <div data-last-sub={showAll ? undefined : day} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
+                  <button type="button" onClick={onShowAll} className="justify-self-start pl-[44px] font-semibold text-primary-soft-text transition hover:text-primary">
+                    Ver los {sales.length} pedidos
+                  </button>
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </Collapse>
+            </>
+          ) : null}
+        </Collapse>
       </div>
     </>
   );
@@ -213,7 +258,6 @@ function Ledger({
   // Ventas abiertas ({ open, all }: días) y a qué página/filtros pertenecen: al cambiar de página,
   // rango, pestaña, categoría o búsqueda se cierran todas.
   const [expanded, setExpanded] = useState({ key: "", open: new Set(), all: new Set() });
-  const scrollToDay = useRef(null);
   // `fill`: la grilla de Finanzas ya fija el alto del libro (una sola medición); aquí solo se
   // reparten las filas en páginas según el alto del área. Abrir una venta NO las vuelve a repartir.
   const { cardRef, areaRef, visible, page, setPage, pages, from, to, total, paged } = usePagedGroups(rows, {
@@ -228,34 +272,16 @@ function Ledger({
   const update = (patch) => setExpanded({ key: viewKey, open: current.open, all: current.all, ...patch });
   const toggleDay = (day) => {
     const open = new Set(current.open);
-    if (open.has(day)) {
-      open.delete(day);
-      const all = new Set(current.all);
-      all.delete(day);
-      update({ open, all });
-    } else {
-      open.add(day);
-      scrollToDay.current = day;
-      update({ open });
-    }
+    if (open.has(day)) open.delete(day);
+    else open.add(day);
+    update({ open });
   };
-  const showAllOf = (day) => {
-    scrollToDay.current = day;
-    update({ all: new Set(current.all).add(day) });
-  };
+  const showAllOf = (day) => update({ all: new Set(current.all).add(day) });
 
   // Al cambiar de página o de filtros, el área regresa arriba.
   useEffect(() => {
     if (areaRef.current) areaRef.current.scrollTop = 0;
   }, [viewKey, areaRef]);
-
-  // Al abrir una venta (o desplegar todos sus pedidos), se desplaza el área lo justo para ver su última subfila.
-  useEffect(() => {
-    const day = scrollToDay.current;
-    if (!day) return;
-    scrollToDay.current = null;
-    areaRef.current?.querySelector(`[data-last-sub="${day}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [expanded, areaRef]);
 
   const net = summary.net;
   const tabs = LEDGER_TABS.map((t) => (t.key === "porpagar" ? { ...t, label: `Por pagar (${pendingCount})` } : t));
