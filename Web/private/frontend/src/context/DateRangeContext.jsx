@@ -63,6 +63,11 @@ export function DateRangeProvider({ children }) {
       },
       // from/to son objetos Date (inicio y fin de día).
       setCustom: (from, to) => setRange({ from, to, preset: null }),
+      // Rango por meses (pestaña «Por mes»): del 1.º del primer mes al último
+      // día del último. Igual que un rango personalizado (preset null) pero
+      // marcado con granularity "month" para la etiqueta y para reabrir el
+      // selector en la pestaña correcta.
+      setMonths: (from, to) => setRange({ from, to, preset: null, granularity: "month" }),
       reset: () => setRange(defaultRange()),
     }),
     [range],

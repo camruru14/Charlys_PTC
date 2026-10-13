@@ -24,10 +24,12 @@ export const PRESETS = {
 export const DEFAULT_PRESET = "week";
 
 // Etiqueta legible del rango actual (botón del selector): las fechas reales
-// («1 – 19 sep 2026»; por meses «Abr – sep 2026»); «Todo» sin rango.
+// («1 – 19 sep 2026»; por meses «Abr – sep 2026»); «Todo» sin rango. Un rango
+// elegido en «Por mes» lleva granularity: "month" y se muestra por meses
+// («Octubre 2026», «Ago – oct 2026», «Nov 2025 – feb 2026»).
 export function rangeLabel(range) {
   if (!range.from || !range.to) return PRESETS.all.label;
-  return fmtRange(range.from, range.to, { months: Boolean(PRESETS[range.preset]?.months) });
+  return fmtRange(range.from, range.to, { months: range.granularity === "month" || Boolean(PRESETS[range.preset]?.months) });
 }
 
 export function useDateRange() {

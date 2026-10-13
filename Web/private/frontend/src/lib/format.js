@@ -15,7 +15,8 @@
     fromDateOnly(d)        -> fecha guardada sin hora (medianoche UTC, p. ej.
                               startDate de un lote) como Date local del mismo día
     fmtRange(a, b)         -> "1 – 19 sep 2026" | "22 sep – 3 oct 2026"
-    fmtRange(a, b, { months: true }) -> "Abr – sep 2026"
+    fmtRange(a, b, { months: true }) -> "Abr – sep 2026" | "Nov 2025 – feb 2026"
+                           (un solo mes: "Octubre 2026")
     fmtCompactMoney(20000) -> "$20k" (ejes de gráficas)
     fmtPercent(0.123)      -> "+12%"
     formatBatchNumber(n)   -> "L-2026-0098" (el lote se guarda como «LOTE-2026-0098»)
@@ -111,7 +112,7 @@ export function fmtRange(fromValue, toValue, { months = false } = {}) {
   const sameYear = a.getFullYear() === b.getFullYear();
   if (months) {
     const start = sameYear ? MONTHS[a.getMonth()] : `${MONTHS[a.getMonth()]} ${a.getFullYear()}`;
-    if (sameYear && a.getMonth() === b.getMonth()) return `${capitalize(MONTHS[b.getMonth()])} ${b.getFullYear()}`;
+    if (sameYear && a.getMonth() === b.getMonth()) return `${capitalize(MONTHS_LONG[b.getMonth()])} ${b.getFullYear()}`;
     return `${capitalize(start)} – ${MONTHS[b.getMonth()]} ${b.getFullYear()}`;
   }
   let start;

@@ -196,6 +196,18 @@ export const IconChevronDown = (p) => (
   </svg>
 );
 
+export const IconChevronLeft = (p) => (
+  <svg {...base} {...p}>
+    <path d="m15 18-6-6 6-6" />
+  </svg>
+);
+
+export const IconChevronRight = (p) => (
+  <svg {...base} {...p}>
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+);
+
 export const IconTag = (p) => (
   <svg {...base} {...p}>
     <path d="M12.59 2H6a2 2 0 0 0-2 2v6.59c0 .53.21 1.04.59 1.41l8.83 8.83a2 2 0 0 0 2.82 0l6.18-6.18a2 2 0 0 0 0-2.82l-8.83-8.83A2 2 0 0 0 12.59 2Z" />
