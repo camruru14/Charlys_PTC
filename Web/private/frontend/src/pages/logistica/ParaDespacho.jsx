@@ -7,7 +7,6 @@ import { useMovedIds } from "../../hooks/useMovedIds";
 import Button from "../../components/ui/Button";
 import StatusPill from "../../components/ui/StatusPill";
 import EmptyState from "../../components/ui/EmptyState";
-import FilterChips from "../../components/ui/FilterChips";
 import SearchInput from "../../components/ui/SearchInput";
 import PillSelector from "../../components/ui/PillSelector";
 import Avatar from "../../components/ui/Avatar";
@@ -16,8 +15,10 @@ import VehiclePhoto from "../../components/ui/VehiclePhoto";
 import ActionsMenu from "../../components/ui/ActionsMenu";
 import ConfirmModal from "../../components/ui/ConfirmModal";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
+import { TONE_DOT } from "../../lib/tones";
+import { filterSelectClass } from "../../lib/filterStyles";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
-import { SelectField } from "../../components/ui/Field";
+import { SelectField, FilterSelect } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
 import { toastUndo } from "../../lib/toastUndo";
 import { TONE_SOFT } from "../../lib/tones";
@@ -49,8 +50,6 @@ import {
   crewSelectOptions,
 } from "../../lib/logistics";
 
-// Chips: «Todos» más uno por grupo de la jerarquía (lib/logistics.js).
-const CHIPS = [{ key: "todos", label: "Todos", tone: "gray" }, ...DISPATCH_GROUPS.map((g) => ({ key: g.key, label: g.chip, tone: g.tone }))];
 const LOCATION_ICON = { "Almacén": IconWarehouse, "Fabricación": IconFactory };
 const routeIdOf = (order) => String(order.delivery?.route?._id || order.delivery?.route || "");
 
@@ -488,6 +487,19 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
   );
   const counts = useMemo(() => dispatchCounts(found), [found]);
   const groups = useMemo(() => groupDispatchOrders(found, filter), [found, filter]);
+  const stateOptions = useMemo(
+    () => [
+      { value: "todos", label: "Todos", meta: fmtNumber(counts.todos) },
+      ...DISPATCH_GROUPS.map((g) => ({
+        value: g.key,
+        label: g.label,
+        dot: TONE_DOT[g.tone],
+        meta: fmtNumber(counts[g.key]),
+        muted: counts[g.key] === 0,
+      })),
+    ],
+    [counts],
+  );
   const moved = useMovedIds(orders, dispatchGroup);
   const routesById = useMemo(() => new Map(routes.map((r) => [String(r._id), r])), [routes]);
 
@@ -502,18 +514,30 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
   }
 
   return (
-    <MasterDetail listWidth={392}>
+    <MasterDetail listWidth={424}>
       <ListPanel
         header={
           <>
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[15px] font-bold text-ink">Pedidos para despacho</h2>
-              <span className="t-aux tabular-nums">
-                {fmtDate(new Date())} · {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
-              </span>
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-bold text-ink">Pedidos para despacho</h2>
+                <span className="t-aux tabular-nums">
+                  {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
+                </span>
+              </div>
+              <p className="t-aux tabular-nums">{fmtDate(new Date())}</p>
             </div>
-            <SearchInput value={query} onChange={setQuery} placeholder="Buscar por pedido, cliente o ruta" />
-            <FilterChips compact value={filter} onChange={onFilter} showEmpty options={CHIPS.map((c) => ({ ...c, count: counts[c.key] }))} />
+            <div className="flex items-center gap-1.5">
+              <SearchInput value={query} onChange={setQuery} placeholder="Buscar por pedido, cliente o ruta" className="min-w-0 flex-1" />
+              <FilterSelect
+                label="Estado"
+                value={filter}
+                onChange={(e) => onFilter(e.target.value)}
+                options={stateOptions}
+                panelMinWidth={208}
+                className={`${filterSelectClass} w-[140px] !min-w-0 !gap-1 !px-2`}
+              />
+            </div>
           </>
         }
       >

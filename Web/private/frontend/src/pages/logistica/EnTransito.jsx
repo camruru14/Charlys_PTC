@@ -9,12 +9,13 @@ import StatTile from "../../components/ui/StatTile";
 import EmptyState from "../../components/ui/EmptyState";
 import Avatar from "../../components/ui/Avatar";
 import PillSelector from "../../components/ui/PillSelector";
-import FilterChips from "../../components/ui/FilterChips";
+import { FilterSelect } from "../../components/ui/Field";
 import SearchInput from "../../components/ui/SearchInput";
 import ListGroupHeader from "../../components/ui/ListGroupHeader";
 import { MasterDetail, ListPanel, DetailPanel } from "../../components/ui/MasterDetail";
 import { statusTone } from "../../lib/statusDomains";
 import { TONE_DOT } from "../../lib/tones";
+import { filterSelectClass } from "../../lib/filterStyles";
 import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/format";
 import { IconTruck } from "../../lib/icons";
 import {
@@ -32,12 +33,6 @@ import {
   progressNote,
   personName,
 } from "../../lib/logistics";
-
-// Chips de «Rutas de hoy»: «Todas» más uno por grupo (Pendiente, En tránsito, Completadas).
-const ROUTE_CHIPS = [
-  { key: "todas", label: "Todas", tone: "gray" },
-  ...ROUTE_GROUPS.map((g) => ({ key: g.key, label: g.chip, tone: g.tone })),
-];
 
 // Cliente y Dirección se reparten el espacio (con truncate); con min-w-[680px]
 // la tabla entera, botón «Entregado» incluido, cabe en el panel de detalle a
@@ -265,6 +260,20 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
   const found = useMemo(() => routes.filter((r) => matchesQuery(routeSearchText(r), query)), [routes, query]);
   const counts = useMemo(() => routeCounts(found), [found]);
   const groups = useMemo(() => groupRoutes(found, filter), [found, filter]);
+  // Combobox «Estado»: «Todas» más uno por grupo (Pendiente, En tránsito, Completadas).
+  const stateOptions = useMemo(
+    () => [
+      { value: "todas", label: "Todas", meta: fmtNumber(counts.todas) },
+      ...ROUTE_GROUPS.map((g) => ({
+        value: g.key,
+        label: g.label,
+        dot: TONE_DOT[g.tone],
+        meta: fmtNumber(counts[g.key]),
+        muted: counts[g.key] === 0,
+      })),
+    ],
+    [counts],
+  );
   const moved = useMovedIds(routes, routeGroup);
   const ordered = useMemo(() => groupRoutes(routes).flatMap((g) => g.items), [routes]);
   useRememberedSelection("logistica/transito", { selectedId, setSelectedId: onSelect, ids: ordered.map((r) => r._id), ready: !loading });
@@ -282,14 +291,17 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
               </div>
               <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
             </div>
-            <SearchInput value={query} onChange={setQuery} placeholder="Buscar por código, zona o motorista" />
-            <FilterChips
-              compact
-              showEmpty
-              value={filter}
-              onChange={onFilter}
-              options={ROUTE_CHIPS.map((c) => ({ ...c, count: counts[c.key] }))}
-            />
+            <div className="flex items-center gap-1.5">
+              <SearchInput value={query} onChange={setQuery} placeholder="Buscar por código, zona o motorista" className="min-w-0 flex-1" />
+              <FilterSelect
+                label="Estado"
+                value={filter}
+                onChange={(e) => onFilter(e.target.value)}
+                options={stateOptions}
+                panelMinWidth={208}
+                className={`${filterSelectClass} w-[140px] !min-w-0 !gap-1 !px-2`}
+              />
+            </div>
           </>
         }
         footer={
