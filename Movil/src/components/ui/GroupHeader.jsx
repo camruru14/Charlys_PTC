@@ -7,7 +7,8 @@ import { fonts } from "../../lib/typography";
 //   renderSectionHeader={({ section }) => (
 //     <GroupHeader title={section.title} note={section.note} count={section.count} />
 //   )}
-export default function GroupHeader({ title, note, count }) {
+// `countColor` (opcional) tiñe el número de la derecha (p. ej. el neto del día en Finanzas).
+export default function GroupHeader({ title, note, count, countColor }) {
   return (
     <View style={styles.header}>
       <View style={styles.titleBox}>
@@ -18,7 +19,7 @@ export default function GroupHeader({ title, note, count }) {
           </Text>
         ) : null}
       </View>
-      <Text style={styles.count}>{count}</Text>
+      <Text style={[styles.count, countColor && { color: countColor }]}>{count}</Text>
     </View>
   );
 }

@@ -197,6 +197,49 @@ const ICONS = {
     </>
   ),
 
+  // Íconos de las categorías de gasto y de los métodos de pago (Finanzas), con
+  // los mismos trazos que la web.
+  bolt: () => <Path d="M13 2 3 14h9l-1 8 10-12h-9Z" />,
+  wrench: () => (
+    <Path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94Z" />
+  ),
+  doc: () => (
+    <>
+      <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <Path d="M14 2v6h6" />
+      <Path d="M8 13h8M8 17h5" />
+    </>
+  ),
+  cash: () => (
+    <>
+      <Rect x="2" y="6" width="20" height="12" rx="2" />
+      <Circle cx="12" cy="12" r="2.5" />
+      <Path d="M6 12h.01M18 12h.01" />
+    </>
+  ),
+  bank: () => (
+    <>
+      <Path d="m3 9 9-6 9 6" />
+      <Path d="M5 9v9M9.5 9v9M14.5 9v9M19 9v9" />
+      <Path d="M3 21h18" />
+    </>
+  ),
+  card: () => (
+    <>
+      <Rect x="2" y="5" width="20" height="14" rx="2" />
+      <Path d="M2 10h20" />
+    </>
+  ),
+  lock: () => (
+    <>
+      <Rect x="4" y="11" width="16" height="10" rx="2" />
+      <Path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  paperclip: () => (
+    <Path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  ),
+
   // ---- Solo de la app ----
   back: () => <Path d="m15 18-6-6 6-6" />,
   chevronRight: () => <Path d="m9 18 6-6-6-6" />,

@@ -71,10 +71,6 @@ export const EXTRA_META = {
     title: "Historial de lotes",
     subtitle: "Todos los lotes con búsqueda, filtros y rango de fechas",
   },
-  HistorialTransacciones: {
-    title: "Historial de transacciones",
-    subtitle: "Todas las transacciones con búsqueda, filtros y rango de fechas",
-  },
 };
 
 const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];

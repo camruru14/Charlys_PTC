@@ -4,6 +4,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
 import Constants from "expo-constants";
 import { useCompanySettings } from "../hooks/useCompanySettings";
 import { useEmployees } from "../hooks/useEmployees";
+import { useExpenseCategories } from "../hooks/useExpenseCategories";
 import { useProductionLines } from "../hooks/useProductionLines";
 import { useVehicles } from "../hooks/useVehicles";
 import { useWarehouses } from "../hooks/useWarehouses";
@@ -37,6 +38,7 @@ export default function ConfiguracionScreen({ navigation }) {
   const { vehicles, loading: vehiclesLoading, refresh: refreshVehicles } = useVehicles();
   const { lines, loading: linesLoading, refresh: refreshLines } = useProductionLines();
   const { employees, loading: employeesLoading, refresh: refreshEmployees } = useEmployees();
+  const { categories, loading: categoriesLoading, refresh: refreshCategories } = useExpenseCategories();
   // El contador solo aparece cuando ya cargó (mientras tanto no se muestra «0»).
   const countOf = (list, loading) => (loading && !list.length ? null : list.length);
 
@@ -46,7 +48,8 @@ export default function ConfiguracionScreen({ navigation }) {
     refreshVehicles();
     refreshLines();
     refreshEmployees();
-  }, [refreshCompany, refreshWarehouses, refreshVehicles, refreshLines, refreshEmployees]);
+    refreshCategories();
+  }, [refreshCompany, refreshWarehouses, refreshVehicles, refreshLines, refreshEmployees, refreshCategories]);
 
   useFocusEffect(reload);
 
@@ -55,6 +58,16 @@ export default function ConfiguracionScreen({ navigation }) {
     { screen: "ConfigBodegas", icon: "box", title: "Bodegas", description: "Destinos del inventario", count: countOf(warehouses, warehousesLoading) },
     { screen: "ConfigVehiculos", icon: "truck", title: "Vehículos", description: "Flota para armar rutas", count: countOf(vehicles, vehiclesLoading) },
     { screen: "ConfigLineas", icon: "factory", title: "Líneas de producción", description: "Opciones al crear lotes", count: countOf(lines, linesLoading) },
+    {
+      screen: "ConfigCategorias",
+      icon: "tag",
+      title: "Categorías de gasto",
+      description: "Presupuesto mensual por categoría",
+      count: countOf(
+        categories.filter((c) => !c.archived),
+        categoriesLoading,
+      ),
+    },
     { screen: "ConfigPersonal", icon: "users", title: "Personal y permisos", description: "Alta y edición de empleados", count: countOf(employees, employeesLoading) },
     { screen: "MiCuenta", icon: "user", title: "Mi cuenta", description: "Tu correo, contraseña y datos" },
   ];

@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, useState } from "react";
 // Web/private/frontend/src/context/DateRangeContext.jsx. Lo comparten el
 // botón de rango en el header (DateRangeButton) y las pantallas que filtran
 // por fecha: DashboardScreen, FabricacionScreen, FinanzasScreen,
-// BatchHistoryScreen, HistorialTransaccionesScreen. InventarioScreen NO lo
+// BatchHistoryScreen. InventarioScreen NO lo
 // usa — Inventario.jsx tampoco lo usa en la web.
 const DateRangeContext = createContext(null);
 

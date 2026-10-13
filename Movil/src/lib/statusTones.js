@@ -94,6 +94,14 @@ export const STATUS_DOMAINS = {
     Pendiente: "amber",
     Completado: "green",
   },
+  // Movimientos de Finanzas (statusLabel en lib/transactionFilters.js): en la base
+  // siguen siendo Pendiente y Completado; en pantalla se ven así.
+  movimiento: {
+    Pagado: "green",
+    "Por pagar": "amber",
+    "Por cobrar": "amber",
+    Vencido: "rose",
+  },
   catalogo: {
     Destacado: "blue",
     Activo: "green",

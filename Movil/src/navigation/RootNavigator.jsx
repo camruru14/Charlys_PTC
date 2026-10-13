@@ -24,7 +24,8 @@ import ConfigLineasScreen from "../screens/ConfigLineasScreen";
 import ConfigPersonalScreen from "../screens/ConfigPersonalScreen";
 import MiCuentaScreen from "../screens/MiCuentaScreen";
 import LineaFormScreen from "../screens/LineaFormScreen";
-import HistorialTransaccionesScreen from "../screens/HistorialTransaccionesScreen";
+import ConfigCategoriasScreen from "../screens/ConfigCategoriasScreen";
+import VentasDiaScreen from "../screens/VentasDiaScreen";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import DetailHeader from "../components/ui/DetailHeader";
 import { colors } from "../lib/theme";
@@ -89,6 +90,8 @@ export default function RootNavigator() {
           {/* Un vehículo (crear o editar): foto, modelo, placa y uso actual. */}
           <Stack.Screen name="VehiculoDetalle" component={VehiculoDetalleScreen} options={{ ...detailHeader, title: "Vehículo" }} />
           <Stack.Screen name="ConfigLineas" component={ConfigLineasScreen} options={{ ...detailHeader, title: "Líneas de producción" }} />
+          {/* Categorías de gasto de Finanzas, con su presupuesto mensual. */}
+          <Stack.Screen name="ConfigCategorias" component={ConfigCategoriasScreen} options={{ ...detailHeader, title: "Categorías de gasto" }} />
           <Stack.Screen name="ConfigPersonal" component={ConfigPersonalScreen} options={{ ...detailHeader, title: "Personal y permisos" }} />
           <Stack.Screen name="MiCuenta" component={MiCuentaScreen} options={{ ...detailHeader, title: "Mi cuenta" }} />
 
@@ -98,9 +101,13 @@ export default function RootNavigator() {
             options={{ ...detailHeader, title: "Empleado" }}
           />
 
-          {/* Historial de lotes / de transacciones (Fase 5): también
-              push normal, drill-down desde el "Ver todo" del Dashboard (y,
-              en una fase futura, desde Fabricación con editable:true). */}
+          {/* Ventas de la tienda de un día (Finanzas): solo lectura. */}
+          <Stack.Screen name="VentasDia" component={VentasDiaScreen} options={{ ...detailHeader, title: "Ventas" }} />
+
+          {/* Historial de lotes (Fase 5): también push normal, drill-down
+              desde el "Ver todo" del Dashboard (y, en una fase futura, desde
+              Fabricación con editable:true). El historial de transacciones se
+              unió a los Movimientos de Finanzas. */}
           <Stack.Screen
             name="HistorialLotes"
             component={BatchHistoryScreen}
@@ -108,16 +115,6 @@ export default function RootNavigator() {
               ...detailHeader,
               title: EXTRA_META.HistorialLotes.title,
               headerSubtitle: EXTRA_META.HistorialLotes.subtitle,
-              headerRight: () => <DateRangeButton />,
-            }}
-          />
-          <Stack.Screen
-            name="HistorialTransacciones"
-            component={HistorialTransaccionesScreen}
-            options={{
-              ...detailHeader,
-              title: EXTRA_META.HistorialTransacciones.title,
-              headerSubtitle: EXTRA_META.HistorialTransacciones.subtitle,
               headerRight: () => <DateRangeButton />,
             }}
           />
