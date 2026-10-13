@@ -1,5 +1,6 @@
 import Modal from "../ui/Modal";
 import { Field, SelectField, ReadonlyField } from "../ui/Field";
+import DateField from "../ui/DateField";
 import { buttonClass } from "../../lib/buttonStyles";
 import { blockNegativeKey } from "../../lib/numberInput";
 import ProductSelect from "../ui/ProductSelect";
@@ -28,7 +29,7 @@ function DailyBatchFormModal({ open, onClose, editingId, form, handleChange, han
         <div className="sm:col-span-2">
           <ReadonlyField label="ID de lote diario" value={form.dailyBatchNumber} />
         </div>
-        <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} required />
+        <DateField label="Fecha" name="date" value={form.date} onChange={handleChange} required />
         <ProductSelect value={form.product} onChange={handleChange} />
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <Field label="Meta (unidades)" name="targetQuantity" type="number" min="1" step="1" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} placeholder="Ej. 5000" required />

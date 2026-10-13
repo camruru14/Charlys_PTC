@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useDateRange, rangeLabel } from "../../context/dateRange";
 import { fmtDate, fmtDateYear } from "../../lib/format";
+import { capitalize, dayIndex, formatInput, MONTHS_LONG, parseInput } from "../../lib/calendar";
 import { IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight } from "../../lib/icons";
 import Button from "./Button";
+import MonthCalendar, { NavButton } from "./MonthCalendar";
 
 const POPOVER_WIDTH = 330;
 const SCREEN_MARGIN = 8;
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-const MONTHS_LONG = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
-const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
 const TABS = [
   { key: "rapido", label: "Rápido" },
@@ -20,31 +17,11 @@ const TABS = [
   { key: "personalizado", label: "Personalizado" },
 ];
 
-const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // Índice de mes (año * 12 + mes) para comparar y recorrer meses de varios años.
 const monthIndex = (date) => date.getFullYear() * 12 + date.getMonth();
 const monthOf = (index) => ({ year: Math.floor(index / 12), month: index % 12 });
-
-// Número de día (sin horas ni husos) para comparar y contar días.
-const dayIndex = (date) => Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
-
-// "dd/mm/aaaa" -> Date local a las 00:00, o null si no es una fecha real.
-function parseInput(text) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text.trim());
-  if (!m) return null;
-  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (year < 1900) return null;
-  const date = new Date(year, month - 1, day);
-  return date.getDate() === day && date.getMonth() === month - 1 ? date : null;
-}
-
-function formatInput(date) {
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${date.getFullYear()}`;
-}
 
 function monthsSummary(lo, hi) {
   const a = monthOf(lo);
@@ -65,20 +42,6 @@ function daysSummary(from, to) {
         ? `${fmtDate(from)} – ${fmtDateYear(to)}`
         : `${fmtDateYear(from)} – ${fmtDateYear(to)}`;
   return `${label} · ${plural(days, "día", "días")}`;
-}
-
-function NavButton({ label, onClick, disabled, children }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="grid h-8 w-8 place-items-center rounded-[8px] text-muted transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent"
-    >
-      {children}
-    </button>
-  );
 }
 
 // Pie de «Por mes» y «Personalizado»: Restablecer a la izquierda, Aplicar a la derecha.
@@ -248,18 +211,8 @@ function CustomPanel({ range, onApply, onReset }) {
     }
   };
 
-  const shiftMonth = (delta) => {
-    const d = new Date(view.year, view.month + delta, 1);
-    setView({ year: d.getFullYear(), month: d.getMonth() });
-  };
-
-  // 6 semanas fijas (lunes a domingo) para que el alto no cambie de un mes a otro.
-  const firstOffset = (new Date(view.year, view.month, 1).getDay() + 6) % 7;
-  const cells = Array.from({ length: 42 }, (_, k) => new Date(view.year, view.month, 1 - firstOffset + k));
-
   const startIdx = fromDate ? dayIndex(fromDate) : null;
   const endIdx = fromDate && toDate && !toInvalid ? dayIndex(toDate) : startIdx;
-  const todayIdx = dayIndex(today);
 
   const apply = () =>
     onApply(
@@ -300,57 +253,7 @@ function CustomPanel({ range, onApply, onReset }) {
         {field("to", "Hasta", toText, toInvalid, toRef)}
       </div>
 
-      <div className="mb-1 mt-3 flex items-center justify-between">
-        <NavButton label="Mes anterior" onClick={() => shiftMonth(-1)}>
-          <IconChevronLeft width={16} height={16} />
-        </NavButton>
-        <span className="text-[13px] font-bold text-ink">
-          {capitalize(MONTHS_LONG[view.month])} {view.year}
-        </span>
-        <NavButton label="Mes siguiente" onClick={() => shiftMonth(1)}>
-          <IconChevronRight width={16} height={16} />
-        </NavButton>
-      </div>
-
-      <div className="grid grid-cols-7">
-        {WEEKDAYS.map((d, i) => (
-          <span key={i} className="grid h-7 place-items-center text-[11px] font-bold text-subtle">
-            {d}
-          </span>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-y-0.5">
-        {cells.map((date) => {
-          const idx = dayIndex(date);
-          const inMonth = date.getMonth() === view.month;
-          const isStart = idx === startIdx;
-          const isEnd = idx === endIdx;
-          const edge = isStart || isEnd;
-          const between = startIdx != null && idx > startIdx && idx < endIdx;
-          // Franja continua: de medio día de inicio a medio día de fin.
-          const band = between ? "inset-x-0" : endIdx > startIdx && isStart ? "left-1/2 right-0" : endIdx > startIdx && isEnd ? "left-0 right-1/2" : null;
-          return (
-            <div key={idx} className="relative flex h-9 items-center justify-center">
-              {band ? <span className={`absolute inset-y-0 bg-primary-soft ${band}`} /> : null}
-              <button
-                type="button"
-                aria-pressed={edge || between}
-                aria-label={`${date.getDate()} de ${MONTHS_LONG[date.getMonth()]} de ${date.getFullYear()}`}
-                onClick={() => pickDay(date)}
-                className={`relative h-9 w-9 rounded-full text-[12.5px] tabular-nums transition ${
-                  edge
-                    ? "bg-primary font-semibold text-white"
-                    : `${idx === todayIdx ? "font-semibold text-primary ring-[1.5px] ring-inset ring-primary" : inMonth ? "text-ink-2" : "text-faint"} ${
-                        between ? "hover:bg-white/70" : "hover:bg-surface-2"
-                      }`
-                }`}
-              >
-                {date.getDate()}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <MonthCalendar className="mt-3" view={view} onViewChange={setView} startIdx={startIdx} endIdx={endIdx} onPick={pickDay} />
 
       <Summary>
         {canApply ? daysSummary(fromDate, toDate) : <span className="font-medium text-muted">Elige «Desde» y «Hasta».</span>}

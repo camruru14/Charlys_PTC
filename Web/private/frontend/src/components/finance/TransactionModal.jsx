@@ -4,10 +4,13 @@ import { api } from "../../lib/api";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import { Field, ReadonlyField, SelectField } from "../ui/Field";
+import DateField from "../ui/DateField";
 import { IconLink, IconPaperclip } from "../../lib/icons";
 import { blockNegativeKey } from "../../lib/numberInput";
 import { buttonClass } from "../../lib/buttonStyles";
 import { invoiceError, PAYMENT_METHODS } from "../../lib/finance";
+import { endOfMonthInput, inDays } from "../../lib/calendar";
+import { todayInput } from "../../hooks/useBatchForm";
 
 /*
   Editar un movimiento manual de Finanzas: los mismos campos del registro
@@ -16,6 +19,12 @@ import { invoiceError, PAYMENT_METHODS } from "../../lib/finance";
   el momento; el resto se guarda con «Guardar». Las ventas de la tienda no se
   editan (no llegan aquí).
 */
+
+// Atajos de «Fecha» (el movimiento no puede ser futuro).
+const dateShortcuts = () => [
+  { label: "Hoy", value: todayInput() },
+  { label: "Ayer", value: inDays(-1) },
+];
 
 const dateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
@@ -185,11 +194,24 @@ function TransactionModal({ transaction: t, categories, onClose, onSaved }) {
           ]}
         />
         {form.status === "Pendiente" ? (
-          <Field label="Vence" name="dueDate" type="date" value={form.dueDate} onChange={change} />
+          <DateField
+            label="Vence"
+            name="dueDate"
+            value={form.dueDate}
+            onChange={change}
+            min={todayInput()}
+            shortcuts={[
+              { label: "En 7 días", value: inDays(7) },
+              { label: "En 15 días", value: inDays(15) },
+              { label: "Fin de mes", value: endOfMonthInput() },
+            ]}
+          />
         ) : (
-          <Field label="Fecha" name="date" type="date" value={form.date} onChange={change} />
+          <DateField label="Fecha" name="date" value={form.date} onChange={change} max={todayInput()} shortcuts={dateShortcuts()} />
         )}
-        {form.status === "Pendiente" ? <Field label="Fecha del movimiento" name="date" type="date" value={form.date} onChange={change} /> : null}
+        {form.status === "Pendiente" ? (
+          <DateField label="Fecha del movimiento" name="date" value={form.date} onChange={change} max={todayInput()} shortcuts={dateShortcuts()} />
+        ) : null}
 
         <div className="rounded-[12px] border border-line-soft bg-surface-2 px-3.5 py-3 sm:col-span-2">
           <p className="mb-2 text-[12.5px] font-semibold text-ink-2">Factura</p>

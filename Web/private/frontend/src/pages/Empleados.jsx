@@ -11,6 +11,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import Button from "../components/ui/Button";
 import { Field, SelectField } from "../components/ui/Field";
+import DateField from "../components/ui/DateField";
 import { IconPlus } from "../lib/icons";
 import { buttonClass } from "../lib/buttonStyles";
 import { attendanceDays, attendanceMonths, defaultMonth } from "../lib/attendance";
@@ -157,7 +158,7 @@ function Empleados() {
             placeholder="Selecciona un empleado"
             options={list.map((e) => ({ value: e._id, label: `${e.name} ${e.lastName}` }))}
           />
-          <Field label="Fecha" name="date" type="date" value={attendanceForm.date} onChange={handleAttendanceChange} max={todayInput()} required />
+          <DateField label="Fecha" name="date" value={attendanceForm.date} onChange={handleAttendanceChange} max={todayInput()} required />
           <div className="grid grid-cols-2 gap-4">
             <Field label="Entrada" name="checkIn" type="time" value={attendanceForm.checkIn} onChange={handleAttendanceChange} required />
             <Field label="Salida" name="checkOut" type="time" value={attendanceForm.checkOut} onChange={handleAttendanceChange} required />

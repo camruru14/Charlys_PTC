@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import Button from "../ui/Button";
+import DateField from "../ui/DateField";
+import DatePicker from "../ui/DatePicker";
+import { endOfMonthInput, inDays } from "../../lib/calendar";
 import { useDropdown } from "../../hooks/useDropdown";
 import CategoryCombobox from "./CategoryCombobox";
 import { IconCalendar, IconCheck, IconChevronDown, IconClose, IconPaperclip } from "../../lib/icons";
@@ -132,18 +135,21 @@ function PaymentSelector({ isExpense, method, setMethod, status, setStatus, dueD
             />
           </div>
           {pending ? (
-            <label className="block rounded-[10px] bg-tone-amber px-3 py-2.5">
-              <span className="mb-1 block text-[12px] font-semibold text-tone-amber-text">Vence</span>
-              <input
-                type="date"
+            <div className="rounded-[10px] bg-tone-amber px-3 py-2.5">
+              <DateField
+                label="Vence"
+                name="dueDate"
                 value={dueDate}
                 min={todayInput()}
+                shortcuts={[
+                  { label: "En 7 días", value: inDays(7) },
+                  { label: "En 15 días", value: inDays(15) },
+                  { label: "Fin de mes", value: endOfMonthInput() },
+                ]}
                 onChange={(e) => setDueDate(e.target.value)}
-                aria-label="Fecha de vencimiento"
-                className="h-9 w-full rounded-[8px] border border-tone-amber-line bg-surface px-2.5 text-[13px] text-ink outline-none focus:border-select-bar"
               />
-              <span className="mt-1 block text-[11.5px] text-tone-amber-strong">Solo aparece con «Por pagar»</span>
-            </label>
+              <span className="mt-1.5 block text-[11.5px] text-tone-amber-strong">Solo aparece con «Por pagar»</span>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -168,6 +174,7 @@ function QuickEntry({ categories, onSaved }) {
   const conceptRef = useRef(null);
   const fileRef = useRef(null);
   const dateRef = useRef(null);
+  const [dateOpen, setDateOpen] = useState(false);
 
   const isExpense = type === "Gasto";
   // Las no archivadas, con la última usada primero (si ya no existe o está archivada, se ignora).
@@ -189,14 +196,6 @@ function QuickEntry({ categories, onSaved }) {
     const error = invoiceError(picked);
     if (error) return toast.error(error);
     setFile(picked);
-  }
-
-  function openDatePicker() {
-    try {
-      dateRef.current?.showPicker();
-    } catch {
-      dateRef.current?.focus();
-    }
   }
 
   async function submit(e) {
@@ -364,8 +363,11 @@ function QuickEntry({ categories, onSaved }) {
 
       <span className="relative shrink-0">
         <button
+          ref={dateRef}
           type="button"
-          onClick={openDatePicker}
+          aria-haspopup="dialog"
+          aria-expanded={dateOpen}
+          onClick={() => setDateOpen((o) => !o)}
           aria-label={`Fecha del movimiento: ${isToday ? `hoy, ${fmtDate(new Date())}` : fmtDate(dateOf(date))}`}
           title="Cambiar la fecha del movimiento"
           className={`${iconButtonClass} px-2.5 ${isToday ? "border-line bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink" : "border-transparent bg-primary-soft text-primary-soft-text"}`}
@@ -373,15 +375,17 @@ function QuickEntry({ categories, onSaved }) {
           <IconCalendar width={15} height={15} />
           {dateLabel}
         </button>
-        <input
-          ref={dateRef}
-          type="date"
+        <DatePicker
+          open={dateOpen}
           value={date}
           max={todayInput()}
-          onChange={(e) => setDate(e.target.value)}
-          aria-hidden="true"
-          tabIndex={-1}
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-0 w-full opacity-0"
+          shortcuts={[
+            { label: "Hoy", value: todayInput() },
+            { label: "Ayer", value: inDays(-1) },
+          ]}
+          anchorRef={dateRef}
+          onClose={() => setDateOpen(false)}
+          onChange={setDate}
         />
       </span>
 

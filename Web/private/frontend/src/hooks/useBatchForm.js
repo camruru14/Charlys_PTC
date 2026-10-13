@@ -18,7 +18,7 @@ export const emptyBatchForm = {
   startDate: "",
 };
 
-// Fecha ya guardada -> "yyyy-mm-dd" para el <input type="date">.
+// Fecha ya guardada -> "yyyy-mm-dd" (el valor de DateField / DatePicker).
 // El backend guarda startDate como medianoche UTC del día elegido (Mongoose castea
 // el string "yyyy-mm-dd" así), así que lo leemos de vuelta en UTC para no correrlo
 // un día hacia atrás en husos horarios detrás de UTC (p. ej. El Salvador, UTC-6).
