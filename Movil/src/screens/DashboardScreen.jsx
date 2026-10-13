@@ -1,89 +1,96 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDashboard } from "../hooks/useDashboard";
-import { useBatches } from "../hooks/useBatches";
-import { useInventory } from "../hooks/useInventory";
-import { useOrders } from "../hooks/useOrders";
+import { useProductColors } from "../hooks/useProductColors";
 import { useDateRange } from "../context/DateRangeContext";
 import { useAuth } from "../hooks/useAuth";
-import BatchRow from "../components/batches/BatchRow";
-import DonutChart from "../components/dashboard/DonutChart";
+import ColumnChart from "../components/dashboard/ColumnChart";
+import Donut from "../components/dashboard/Donut";
+import HBarList from "../components/dashboard/HBarList";
+import KpiTile from "../components/dashboard/KpiTile";
+import LineChart from "../components/dashboard/LineChart";
 import Card from "../components/ui/Card";
-import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
-import Icon from "../components/ui/Icon";
-import ListGroup from "../components/ui/ListGroup";
 import LoadingState from "../components/ui/LoadingState";
-import Pill from "../components/ui/Pill";
-import SearchField from "../components/ui/SearchField";
-import SelectField from "../components/ui/SelectField";
-import StatTile from "../components/ui/StatTile";
-import { chartColors, colors, getTone, tones } from "../lib/theme";
+import { colors, tones } from "../lib/theme";
+import { SERIES_COLORS } from "../lib/chartColors";
 import { fonts, type } from "../lib/typography";
-import { formatMoney, formatNumber, formatPercent } from "../lib/format";
-import { defaultBatchFilters, batchFilterOptions, filterBatches } from "../lib/batchFilters";
-import { dashboardAlerts } from "../lib/dashboardAlerts";
+import { formatCompactMoney, formatNumber, formatWeekdayDate } from "../lib/format";
+import {
+  change,
+  dayDate,
+  monthDate,
+  monthOfRange,
+  money,
+  MONTHS_LONG,
+  MONTHS_SHORT,
+  ORDER_STAGES,
+  previousLabel,
+  rangeOf,
+  units,
+} from "../lib/dashboard";
 import { todayLabel } from "../navigation/navItems";
 import { useBottomPad } from "../hooks/useBottomPad";
 
-// Lotes que se muestran en la tarjeta antes de "Ver historial completo".
-const BATCHES_PREVIEW_LIMIT = 8;
+const TONE_COLOR = { up: tones.green.text, down: tones.rose.text, flat: colors.muted };
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// Ícono de cada tipo de alerta (lib/dashboardAlerts.js).
-const ALERT_ICON = { stopped: "alert", lowStock: "box", incomplete: "truck" };
-
-// Variación de ingresos contra el rango anterior; solo si se puede calcular
-// (igual que IncomeChange en la web).
-function incomeNote(income, previous) {
-  if (previous == null || !(previous > 0)) return { text: "en el rango" };
-  const ratio = (income - previous) / previous;
-  const color = ratio > 0 ? tones.green.text : ratio < 0 ? tones.rose.text : colors.muted;
-  return { change: formatPercent(ratio), color, text: "vs. rango anterior" };
-}
-
-function AlertRow({ alert, onPress }) {
-  const tone = getTone(alert.tone);
+// «+8%» en verde o rosa seguido del texto de comparación (igual que ChangeNote de la web).
+function ChangeNote({ value, previous, label }) {
+  const c = change(value, previous);
+  if (!c) return label || "sin período anterior";
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.alertRow, pressed && styles.pressed]}
-    >
-      <View style={[styles.alertIcon, { backgroundColor: tone.bg }]}>
-        <Icon name={ALERT_ICON[alert.kind] || "alert"} size={17} color={tone.text} />
-      </View>
-      <View style={styles.alertTexts}>
-        <Text style={styles.alertTitle} numberOfLines={2}>
-          {alert.title}
-        </Text>
-        {alert.detail ? (
-          <Text style={styles.alertDetail} numberOfLines={2}>
-            {alert.detail}
-          </Text>
-        ) : null}
-      </View>
-      <Icon name="chevronRight" size={16} color={colors.chevron} />
-    </Pressable>
+    <Text>
+      <Text style={[styles.noteStrong, { color: TONE_COLOR[c.tone] }]}>{c.text}</Text> {label}
+    </Text>
   );
 }
 
-// Dashboard: KPIs del rango (GET /dashboard), alertas que llevan a la
-// pantalla donde se resuelven, producción por producto e historial de lotes
-// con filtros — lo mismo que Web/private/frontend/src/pages/Dashboard.jsx,
-// filtrado por el rango de fechas global (chip del encabezado).
+// Tarjeta de sección: título (con subtítulo y un enlace opcional) y el cuerpo, o «Sin datos en este rango».
+function Section({ title, subtitle, link, onLink, empty, emptyText = "Sin datos en este rango", children }) {
+  return (
+    <Card style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardTitles}>
+          <Text style={type.cardTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.cardAux}>{subtitle}</Text> : null}
+        </View>
+        {link ? (
+          <Pressable onPress={onLink} hitSlop={8} accessibilityRole="link">
+            <Text style={styles.link}>{link}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {empty ? <Text style={styles.placeholder}>{emptyText}</Text> : children}
+    </Card>
+  );
+}
+
+// Dashboard: resumen ejecutivo del rango (GET /dashboard), lo mismo que
+// Web/private/frontend/src/pages/Dashboard.jsx en una sola columna: 4 tarjetas KPI en 2×2, ventas y
+// gastos de 12 meses, ventas por producto, producción diaria, pedidos activos y gastos por categoría.
 export default function DashboardScreen({ navigation }) {
   const bottomPad = useBottomPad(32);
   const range = useDateRange();
   const { user } = useAuth();
-  const { dashboard, kpis, productionMix, loading, refreshing, error, refresh } = useDashboard(range);
-  const { batches, loading: batchesLoading, refreshing: batchesRefreshing, error: batchesError, refresh: refreshBatches } =
-    useBatches();
-  const { items: inventory, refresh: refreshInventory } = useInventory();
-  const { orders, refresh: refreshOrders } = useOrders();
+  const { dashboard, kpis, sparks, monthly, salesByProduct, dailyProduction, activeOrders, expensesByCategory, loading, refreshing, error, refresh } =
+    useDashboard(range);
 
-  const [query, setQuery] = useState("");
-  const [product, setProduct] = useState("");
-  const [line, setLine] = useState("");
+  // Globo de las gráficas: una sola activa a la vez ({ chart, index }). Tocar fuera de ella (o
+  // desplazar la pantalla) lo quita: cada gráfica marca `touchedChart` al recibir el toque y el
+  // contenedor raíz, que lo ve después (los toques suben de hijo a padre), cierra el resto.
+  const [active, setActive] = useState(null);
+  const touchedChart = useRef(null);
+  const select = (chart) => (index) => setActive(index == null ? null : { chart, index });
+  const selectedOf = (chart) => (active?.chart === chart ? active.index : null);
+  const chartProps = (chart) => ({ selected: selectedOf(chart), onSelect: select(chart) });
+  const onChartTouch = (chart) => () => {
+    touchedChart.current = chart;
+  };
+  const onRootTouch = () => {
+    if (touchedChart.current !== active?.chart) setActive(null);
+    touchedChart.current = null;
+  };
 
   const firstName = (user?.name || "").trim().split(/\s+/)[0];
   useLayoutEffect(() => {
@@ -93,147 +100,222 @@ export default function DashboardScreen({ navigation }) {
     });
   }, [navigation, firstName]);
 
-  const mix = productionMix.map((d, i) => ({ ...d, color: chartColors[i % chartColors.length] }));
-  const producedInMix = mix.reduce((s, d) => s + d.value, 0);
-
-  const inRange = useMemo(() => filterBatches(batches, defaultBatchFilters, range), [batches, range]);
-  const options = useMemo(() => batchFilterOptions(inRange), [inRange]);
-  const visible = useMemo(
-    () => filterBatches(inRange, { ...defaultBatchFilters, q: query.trim(), product, line }),
-    [inRange, query, product, line],
-  );
-
-  const alerts = useMemo(() => dashboardAlerts({ batches, inventory, orders }), [batches, inventory, orders]);
-  const income = incomeNote(kpis.income || 0, kpis.incomePrevious);
-
-  const onRefresh = () => {
-    refresh();
-    refreshBatches();
-    refreshInventory();
-    refreshOrders();
-  };
+  const colorOf = useProductColors(salesByProduct.map((p) => p.product));
 
   if (loading) return <LoadingState />;
   if (error && !dashboard) return <ErrorState message={error} onRetry={refresh} />;
+
+  const isMonth = Boolean(monthOfRange(range));
+  const compareTo = previousLabel(dashboard?.range);
+  const now = new Date();
+
+  // ---- KPIs ----
+  const netColor = kpis.net > 0 ? tones.green.text : kpis.net < 0 ? tones.rose.text : colors.ink;
+  const unitsPct = kpis.unitsTarget > 0 ? Math.round((kpis.unitsProduced / kpis.unitsTarget) * 100) : null;
+  const onTimePct = kpis.delivered > 0 ? Math.round((kpis.deliveredOnTime / kpis.delivered) * 100) : null;
+
+  // ---- Ventas y gastos por mes ----
+  const lastMonth = monthly[monthly.length - 1];
+  const monthLabels = monthly.map((m, i) => {
+    const d = monthDate(m.month);
+    return `${MONTHS_SHORT[d.getMonth()]}${i === 0 || d.getMonth() === 0 ? ` ${String(d.getFullYear()).slice(2)}` : ""}`;
+  });
+  const monthlyEmpty = monthly.every((m) => m.income === 0 && m.expense === 0);
+  const partialName = lastMonth?.partial ? MONTHS_LONG[monthDate(lastMonth.month).getMonth()] : null;
+
+  // ---- Ventas por producto ----
+  const productTotal = salesByProduct.reduce((s, p) => s + p.amount, 0);
+  const donutData = salesByProduct.map((p) => ({ key: p.product, label: p.product, value: p.amount, color: colorOf(p.product) }));
+  const orderCount = dashboard?.salesOrders || 0;
+
+  // ---- Producción diaria ----
+  const productionData = dailyProduction.map((p, i) => {
+    const d = dayDate(p.date);
+    const monthChanged = i === 0 || dayDate(dailyProduction[i - 1].date).getMonth() !== d.getMonth();
+    return { key: p.date, label: monthChanged ? `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}` : String(d.getDate()), value: p.produced, target: p.target };
+  });
+
+  // ---- Pedidos activos ----
+  const stagesTotal = activeOrders.reduce((s, r) => s + r.count, 0);
+  const stageRows = activeOrders.map((s) => ({
+    key: s.status,
+    label: ORDER_STAGES[s.status]?.label || s.status,
+    value: s.count,
+    display: formatNumber(s.count),
+    onPress: () => navigation.navigate("Pedidos", { estado: ORDER_STAGES[s.status]?.key || "", at: Date.now() }),
+  }));
+  const stagesSubtitle = stagesTotal || kpis.delivered ? `${formatNumber(stagesTotal)} sin entregar · ${formatNumber(kpis.delivered || 0)} entregados` : undefined;
+
+  // ---- Gastos por categoría ----
+  const expensesTotal = expensesByCategory.reduce((s, e) => s + e.amount, 0);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, bottomPad]}
-      refreshControl={<RefreshControl refreshing={refreshing || batchesRefreshing} onRefresh={onRefresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      onScrollBeginDrag={() => setActive(null)}
     >
-      <View style={styles.kpiRow}>
-        <StatTile
-          style={styles.kpiHalf}
-          size="small"
-          tone="green"
-          label="Ingresos"
-          value={formatMoney(kpis.income, 0)}
-          note={
-            income.change ? (
-              <Text>
-                <Text style={[styles.noteStrong, { color: income.color }]}>{income.change}</Text> {income.text}
-              </Text>
-            ) : (
-              income.text
-            )
-          }
-        />
-        <StatTile
-          style={styles.kpiHalf}
-          size="small"
-          tone="teal"
-          label="Pedidos en curso"
-          value={formatNumber(kpis.ordersInProgress)}
-          note={`${formatNumber(kpis.ordersReadyToShip)} listos`}
-        />
-      </View>
-      <StatTile
-        style={styles.kpiFull}
-        size="small"
-        tone="blue"
-        label="Producción total"
-        value={formatNumber(kpis.producedTotal)}
-        note="unidades"
-      />
-
-      <Card style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={type.cardTitle}>Alertas</Text>
-          {alerts.length ? <Pill label={`${alerts.length} activas`} tone="rose" /> : null}
+      <View onTouchStart={onRootTouch}>
+        <View style={styles.kpiRow}>
+          <KpiTile
+            style={styles.kpiHalf}
+            label={isMonth ? "Ventas del mes" : "Ventas"}
+            value={money(kpis.sales || 0)}
+            note={<ChangeNote value={kpis.sales || 0} previous={kpis.salesPrevious} label={compareTo} />}
+            spark={sparks.sales}
+            color={SERIES_COLORS.sales}
+            sparkLabel="Ventas por día del rango"
+          />
+          <KpiTile
+            style={styles.kpiHalf}
+            label="Utilidad"
+            value={`${kpis.net > 0 ? "+" : ""}${money(kpis.net || 0)}`}
+            valueColor={netColor}
+            note={kpis.margin == null ? "sin ingresos en el rango" : `${Math.round(kpis.margin * 100)}% de las ventas`}
+            spark={sparks.net}
+            color={kpis.net < 0 ? SERIES_COLORS.negative : SERIES_COLORS.positive}
+            sparkLabel="Utilidad neta por día del rango"
+          />
         </View>
-        {alerts.length === 0 ? (
-          <Text style={styles.placeholder}>Sin alertas activas.</Text>
-        ) : (
-          alerts.map((a, i) => (
-            <View key={a.key} style={i > 0 && styles.divider}>
-              <AlertRow alert={a} onPress={() => navigation.navigate(a.screen)} />
+        <View style={[styles.kpiRow, styles.kpiRowGap]}>
+          <KpiTile
+            style={styles.kpiHalf}
+            label="Producidas"
+            value={units(kpis.unitsProduced)}
+            note={
+              unitsPct == null ? (
+                "sin meta en el rango"
+              ) : (
+                <Text style={[styles.noteStrong, { color: unitsPct < 100 ? tones.amber.text : tones.green.text }]}>{unitsPct}% de la meta</Text>
+              )
+            }
+            spark={sparks.units}
+            color={SERIES_COLORS.sales}
+            sparkLabel="Unidades producidas por día del rango"
+          />
+          <KpiTile
+            style={styles.kpiHalf}
+            label="A tiempo"
+            value={onTimePct == null ? "—" : `${onTimePct}%`}
+            note={kpis.delivered > 0 ? `${formatNumber(kpis.deliveredOnTime)} de ${formatNumber(kpis.delivered)} entregas` : "sin entregas en el rango"}
+            spark={sparks.onTime}
+            color={SERIES_COLORS.positive}
+            sparkLabel="Porcentaje de entregas a tiempo por día del rango"
+          />
+        </View>
+
+        <Section
+          title="Ventas y gastos"
+          subtitle={partialName ? `Últimos 12 meses · ${partialName} está en curso (tramo punteado)` : "Últimos 12 meses"}
+          empty={monthlyEmpty}
+        >
+          <View onTouchStart={onChartTouch("monthly")}>
+            <LineChart
+              {...chartProps("monthly")}
+              labels={monthLabels}
+              series={[
+                { key: "income", label: "Ventas", color: SERIES_COLORS.sales, values: monthly.map((m) => m.income), fill: true },
+                { key: "expense", label: "Gastos", color: SERIES_COLORS.expense, values: monthly.map((m) => m.expense) },
+              ]}
+              partialLast={Boolean(lastMonth?.partial)}
+              formatAxis={formatCompactMoney}
+              accessibilityLabel={`Ventas y gastos de los últimos 12 meses. ${
+                lastMonth ? `${MONTHS_LONG[monthDate(lastMonth.month).getMonth()]}: ventas ${money(lastMonth.income)}, gastos ${money(lastMonth.expense)}.` : ""
+              }`}
+              tooltip={(i) => {
+                const m = monthly[i];
+                const d = monthDate(m.month);
+                const net = m.income - m.expense;
+                return {
+                  title: `${capitalize(MONTHS_LONG[d.getMonth()])} ${d.getFullYear()}${m.partial ? " · en curso" : ""}`,
+                  rows: [
+                    { color: SERIES_COLORS.sales, label: "Ventas", value: money(m.income) },
+                    { color: SERIES_COLORS.expense, label: "Gastos", value: money(m.expense) },
+                    { label: "Neto", value: `${net > 0 ? "+" : ""}${money(net)}`, valueColor: net > 0 ? tones.green.text : net < 0 ? tones.rose.text : colors.ink },
+                  ],
+                };
+              }}
+            />
+          </View>
+        </Section>
+
+        <Section title="Ventas por producto" subtitle={`Pedidos ${rangeOf(range, now)}`} empty={productTotal === 0}>
+          <View style={styles.donutRow}>
+            <Donut
+              data={donutData}
+              size={112}
+              centerLabel={money(productTotal)}
+              centerCaption={`${formatNumber(orderCount)} ${orderCount === 1 ? "pedido" : "pedidos"}`}
+              accessibilityLabel={`Ventas por producto: ${salesByProduct.map((p) => `${p.product} ${money(p.amount)}`).join(", ")}`}
+            />
+            <View style={styles.legend}>
+              {salesByProduct.map((p) => (
+                <View key={p.product} style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colorOf(p.product) }]} />
+                  <Text style={styles.legendName} numberOfLines={1}>
+                    {p.product}
+                  </Text>
+                  <Text style={styles.legendPct}>{Math.round((p.amount / productTotal) * 100)}%</Text>
+                </View>
+              ))}
             </View>
-          ))
-        )}
-      </Card>
+          </View>
+        </Section>
 
-      <Card style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={type.cardTitle}>Producción por producto</Text>
-          {producedInMix > 0 ? <Text style={styles.cardAux}>{formatNumber(producedInMix)} u en el rango</Text> : null}
-        </View>
-        {mix.length === 0 || producedInMix === 0 ? (
-          <Text style={styles.placeholder}>Sin producción en el rango.</Text>
-        ) : (
-          <DonutChart data={mix} centerLabel={formatNumber(producedInMix)} centerCaption="unidades" />
-        )}
-      </Card>
+        <Section
+          title="Producción diaria"
+          subtitle={kpis.unitsProduced > 0 ? `${formatNumber(kpis.unitsProduced)} unidades${unitsPct == null ? "" : ` · ${unitsPct}% de la meta`}` : undefined}
+          empty={dailyProduction.length === 0}
+        >
+          <View onTouchStart={onChartTouch("production")}>
+            <ColumnChart
+              {...chartProps("production")}
+              data={productionData}
+              color={SERIES_COLORS.sales}
+              accessibilityLabel={`Producción diaria: ${dailyProduction.length} días con lotes, ${formatNumber(kpis.unitsProduced)} unidades en total.`}
+              tooltip={(i) => {
+                const p = dailyProduction[i];
+                return {
+                  title: capitalize(formatWeekdayDate(dayDate(p.date))),
+                  rows: [
+                    { color: SERIES_COLORS.sales, label: "Producido", value: formatNumber(p.produced) },
+                    ...(p.target > 0 ? [{ label: "Meta", value: `${formatNumber(p.target)} · ${Math.round((p.produced / p.target) * 100)}%` }] : []),
+                  ],
+                };
+              }}
+            />
+          </View>
+        </Section>
 
-      <View style={styles.sectionHeader}>
-        <Text style={type.cardTitle}>Historial de lotes</Text>
-        <Pressable onPress={() => navigation.navigate("HistorialLotes")} hitSlop={8} accessibilityRole="link">
-          <Text style={styles.link}>Ver todo</Text>
-        </Pressable>
-      </View>
-      <SearchField value={query} onChangeText={setQuery} placeholder="Buscar lote" style={styles.search} />
-      <View style={styles.filterRow}>
-        <SelectField
-          style={styles.filterItem}
-          title="Producto"
-          value={product}
-          onChange={setProduct}
-          options={[{ label: "Producto: todos", value: "" }, ...options.products.map((p) => ({ label: p, value: p }))]}
-        />
-        <SelectField
-          style={styles.filterItem}
-          title="Línea"
-          value={line}
-          onChange={setLine}
-          options={[{ label: "Línea: todas", value: "" }, ...options.lines.map((l) => ({ label: l, value: l }))]}
-        />
-      </View>
+        <Section
+          title="Pedidos activos"
+          subtitle={stagesSubtitle}
+          link="Pedidos ›"
+          onLink={() => navigation.navigate("Pedidos")}
+          empty={stagesTotal === 0}
+          emptyText="No hay pedidos activos"
+        >
+          <HBarList
+            rows={stageRows}
+            color={SERIES_COLORS.sales}
+            accessibilityLabel={`Pedidos activos por etapa: ${activeOrders.map((s) => `${ORDER_STAGES[s.status]?.label || s.status} ${s.count}`).join(", ")}`}
+          />
+        </Section>
 
-      {batchesLoading ? (
-        <Text style={styles.placeholder}>Cargando lotes…</Text>
-      ) : batchesError && visible.length === 0 ? (
-        <View style={styles.inlineError}>
-          <Text style={styles.placeholder}>{batchesError}</Text>
-          <Pressable onPress={refreshBatches} hitSlop={8}>
-            <Text style={styles.link}>Reintentar</Text>
-          </Pressable>
-        </View>
-      ) : visible.length === 0 ? (
-        <EmptyState message="No hay lotes con esos criterios." icon="factory" />
-      ) : (
-        <ListGroup>
-          {visible.slice(0, BATCHES_PREVIEW_LIMIT).map((b) => (
-            <BatchRow key={b._id} batch={b} />
-          ))}
-        </ListGroup>
-      )}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          {formatNumber(visible.length)} de {formatNumber(inRange.length)} lotes en el rango
-        </Text>
-        <Pressable onPress={() => navigation.navigate("HistorialLotes")} hitSlop={8} accessibilityRole="link">
-          <Text style={styles.link}>Ver historial completo</Text>
-        </Pressable>
+        <Section
+          title="Gastos por categoría"
+          subtitle={expensesByCategory.length ? `${money(expensesTotal)} pagados` : undefined}
+          link="Finanzas ›"
+          onLink={() => navigation.navigate("Finanzas")}
+          empty={expensesByCategory.length === 0}
+        >
+          <HBarList
+            rows={expensesByCategory.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: money(e.amount) }))}
+            color={SERIES_COLORS.expense}
+            accessibilityLabel={`Gastos por categoría: ${expensesByCategory.map((e) => `${e.category} ${money(e.amount)}`).join(", ")}`}
+          />
+        </Section>
       </View>
     </ScrollView>
   );
@@ -243,38 +325,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32 },
   kpiRow: { flexDirection: "row", gap: 10 },
+  kpiRowGap: { marginTop: 10 },
   kpiHalf: { flex: 1 },
-  kpiFull: { marginTop: 10 },
   noteStrong: { fontFamily: fonts.semibold },
   card: { marginTop: 12, marginBottom: 0 },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 8,
-  },
-  cardAux: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
-  placeholder: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, paddingVertical: 8 },
-  divider: { borderTopWidth: 1, borderTopColor: colors.lineSoft },
-  pressed: { opacity: 0.6 },
-  alertRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  alertIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  alertTexts: { flex: 1, gap: 2 },
-  alertTitle: { fontFamily: fonts.semibold, fontSize: 13.5, color: colors.ink },
-  alertDetail: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 22,
-    marginBottom: 10,
-  },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 },
+  cardTitles: { flex: 1 },
+  cardAux: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 1 },
+  placeholder: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, paddingVertical: 14, textAlign: "center" },
   link: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
-  search: { marginBottom: 10 },
-  filterRow: { flexDirection: "row", gap: 10 },
-  filterItem: { flex: 1, marginBottom: 10 },
-  inlineError: { paddingVertical: 8, gap: 4 },
-  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 4 },
-  footerText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  donutRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  legend: { flex: 1, gap: 6 },
+  legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendName: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
+  legendPct: { fontFamily: fonts.semibold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
 });

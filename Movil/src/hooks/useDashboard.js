@@ -1,23 +1,26 @@
 import { useApi } from "./useApi";
 
-// GET /dashboard/mobile (private/backend): resumen de KPIs, alertas, mezcla de
-// producción y lotes recientes para DashboardScreen. `range` (Fase 11)
-// agrega los query params from/to — el filtrado real lo hace el backend;
-// "Todo" (sin range) sigue pegándole a /dashboard/mobile tal cual.
-// (/dashboard, sin «mobile», es ahora el resumen ejecutivo del Dashboard web.)
+// GET /dashboard (private/backend): el resumen ejecutivo que muestra DashboardScreen — KPIs con su
+// período anterior y mini series, ventas y gastos de 12 meses, ventas por producto, producción
+// diaria, pedidos activos y gastos por categoría (misma respuesta que lee
+// Web/private/frontend/src/pages/Dashboard.jsx). `range` agrega los query params from/to — el
+// cálculo real lo hace el backend; "Todo" (sin range) sigue pegándole a /dashboard tal cual.
 export function useDashboard(range) {
   const path =
     range?.from && range?.to
-      ? `/dashboard/mobile?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
-      : "/dashboard/mobile";
+      ? `/dashboard?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
+      : "/dashboard";
   const { data, loading, refreshing, error, refresh } = useApi(path);
 
   return {
     dashboard: data,
     kpis: data?.kpis || {},
-    recentBatches: data?.recentBatches || [],
-    productionMix: data?.productionMix || [],
-    alerts: data?.alerts || [],
+    sparks: data?.sparks || {},
+    monthly: data?.monthly || [],
+    salesByProduct: data?.salesByProduct || [],
+    dailyProduction: data?.dailyProduction || [],
+    activeOrders: data?.activeOrders || [],
+    expensesByCategory: data?.expensesByCategory || [],
     loading,
     refreshing,
     error,

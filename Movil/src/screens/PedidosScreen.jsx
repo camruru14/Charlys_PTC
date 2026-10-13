@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { RefreshControl, SectionList, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
@@ -24,12 +24,20 @@ import { useBottomPad } from "../hooks/useBottomPad";
 // pedidos no entregados se ven siempre. Al tocar uno se abre su detalle
 // (PedidoDetalleScreen). Los pedidos llegan de la tienda en línea: la
 // app no los crea ni los edita.
-export default function PedidosScreen({ navigation }) {
+export default function PedidosScreen({ navigation, route }) {
   const bottomPad = useBottomPad(32);
   const { orders, loading, refreshing, error, refresh } = useOrders();
   const [search, setSearch] = useState("");
   const range = useDateRange();
   const [estado, setEstado] = useState("");
+
+  // El Dashboard abre Pedidos ya filtrado por etapa: navigate("Pedidos", { estado: "empacado", at }).
+  // `at` distingue una visita nueva con la misma etapa.
+  const estadoParam = route?.params?.estado;
+  const estadoAt = route?.params?.at;
+  useEffect(() => {
+    if (estadoParam !== undefined) setEstado(estadoParam);
+  }, [estadoParam, estadoAt]);
 
   useFocusEffect(
     useCallback(() => {
