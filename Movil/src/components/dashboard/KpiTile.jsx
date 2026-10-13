@@ -20,7 +20,7 @@ export default function KpiTile({ label, value, valueColor, note, spark, color, 
         {note}
       </Text>
       <View style={styles.spark} onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))}>
-        {width > 0 ? <Sparkline data={spark} color={color} width={width} height={34} accessibilityLabel={sparkLabel} /> : null}
+        {width > 0 ? <Sparkline data={spark} color={color} width={width} height={36} accessibilityLabel={sparkLabel} /> : null}
       </View>
     </View>
   );
@@ -38,5 +38,5 @@ const styles = StyleSheet.create({
   label: { flexShrink: 1 },
   value: { fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.4, color: colors.ink, fontVariant: ["tabular-nums"] },
   note: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, minHeight: 32 },
-  spark: { height: 34, marginTop: 2 },
+  spark: { height: 36, marginTop: 2 },
 });

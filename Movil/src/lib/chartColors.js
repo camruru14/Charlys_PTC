@@ -11,4 +11,6 @@ export const SERIES_COLORS = {
 
 // Colores categóricos en orden fijo (dona de ventas por producto) y el gris de «Otros».
 export const CATEGORICAL_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
-export const OTHERS_COLOR = "#9aa3b5";
+export const OTHERS_COLOR = "#A9B3C4";
+// Meta de producción: columna gris clara detrás de la producida.
+export const TARGET_COLOR = "#E3E8F1";

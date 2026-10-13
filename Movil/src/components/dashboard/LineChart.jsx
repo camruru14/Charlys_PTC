@@ -16,7 +16,8 @@ import { fonts } from "../../lib/typography";
 //   selected / onSelect   casillero tocado (guía vertical y globo); tocar el mismo lo quita
 //   tooltip       (index) => { title, rows } del globo
 //   accessibilityLabel    resumen para lectores de pantalla
-// Con 2 series o más muestra la leyenda arriba a la derecha.
+// Cada línea termina en un punto (radio 4, con anillo blanco). La leyenda va a la derecha del título de
+// la tarjeta (ChartLegend); con `legend` (por omisión) la dibuja aquí, arriba a la derecha.
 const MARGIN = { left: 44, right: 8, top: 8, bottom: 22 };
 
 export default function LineChart({
@@ -29,6 +30,7 @@ export default function LineChart({
   onSelect,
   tooltip,
   accessibilityLabel,
+  legend = true,
 }) {
   const [width, setWidth] = useState(0);
   const count = labels.length;
@@ -50,7 +52,7 @@ export default function LineChart({
 
   return (
     <View>
-      {series.length >= 2 ? (
+      {legend && series.length >= 2 ? (
         <View style={styles.legend}>
           {series.map((s) => (
             <View key={s.key} style={styles.legendItem}>
@@ -94,7 +96,7 @@ export default function LineChart({
                     {partialLast && count > 1 ? (
                       <Polyline points={pointsOf(s, count - 2, count - 1).join(" ")} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeDasharray="4 4" />
                     ) : null}
-                    {count === 1 ? <Circle cx={x(0)} cy={y(s.values[0])} r={3} fill={s.color} /> : null}
+                    <Circle cx={x(count - 1)} cy={y(s.values[count - 1])} r={4} fill={s.color} stroke={colors.surface} strokeWidth={2} />
                   </G>
                 );
               })}

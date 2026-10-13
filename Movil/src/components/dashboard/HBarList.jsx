@@ -1,19 +1,37 @@
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Rect } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
-// Lista de barras horizontales (un solo color), portada de HBarList.jsx de la web: etiqueta, la barra
-// (SVG) y el número al final. La fila tiene 36 px de alto, así que el área de toque es mayor que la barra.
+// Lista de barras horizontales (un solo color), como HBarList.jsx de la web: etiqueta, la barra (SVG)
+// y el número al final. La barra no lleva fondo: solo la barra de color, desde el inicio, de 12 px de
+// alto y con el extremo derecho redondeado a 4 px. Las etiquetas (110 px) y los números (56 px) tienen
+// ancho fijo, así que las barras de todas las listas empiezan y terminan alineadas. La fila mide 36 px,
+// así que el área de toque es mayor que la barra.
 //   rows       [{ key, label, value, display?, onPress? }]  (display: texto del número; onPress: toque de la fila)
 //   color      color de las barras
 //   max        valor que llena la barra completa (por omisión, el mayor de las filas)
+const BAR_HEIGHT = 12;
+const RADIUS = 4;
+
+// Rectángulo con solo el extremo derecho redondeado.
+function rightRounded(w, h, r) {
+  const radius = Math.min(r, w, h / 2);
+  return `M0,0 H${w - radius} Q${w},0 ${w},${radius} V${h - radius} Q${w},${h} ${w - radius},${h} H0 Z`;
+}
+
 function Bar({ ratio, color }) {
+  const [width, setWidth] = useState(0);
+  const w = Math.max(RADIUS, width * ratio);
   return (
-    <Svg width="100%" height={14}>
-      <Rect x="0" y="0" width="100%" height={14} rx={4} fill={colors.lineSoft} />
-      {ratio > 0 ? <Rect x="0" y="0" width={`${Math.max(2, ratio * 100)}%`} height={14} rx={4} fill={color} /> : null}
-    </Svg>
+    <View style={styles.bar} onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))}>
+      {width > 0 && ratio > 0 ? (
+        <Svg width={width} height={BAR_HEIGHT}>
+          <Path d={rightRounded(w, BAR_HEIGHT, RADIUS)} fill={color} />
+        </Svg>
+      ) : null}
+    </View>
   );
 }
 
@@ -27,9 +45,7 @@ export default function HBarList({ rows = [], color, max, accessibilityLabel }) 
             <Text style={styles.label} numberOfLines={1}>
               {r.label}
             </Text>
-            <View style={styles.bar}>
-              <Bar ratio={(Number(r.value) || 0) / top} color={color} />
-            </View>
+            <Bar ratio={(Number(r.value) || 0) / top} color={color} />
             <Text style={styles.value}>{r.display ?? r.value}</Text>
           </>
         );
@@ -56,7 +72,7 @@ export default function HBarList({ rows = [], color, max, accessibilityLabel }) 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10, height: 36 },
   pressed: { opacity: 0.6 },
-  label: { width: "32%", fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
-  bar: { flex: 1 },
-  value: { minWidth: 44, textAlign: "right", fontFamily: fonts.semibold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
+  label: { width: 110, fontFamily: fonts.regular, fontSize: 13, color: colors.ink2 },
+  bar: { flex: 1, height: BAR_HEIGHT },
+  value: { width: 56, textAlign: "right", fontFamily: fonts.semibold, fontSize: 13, color: colors.ink, fontVariant: ["tabular-nums"] },
 });

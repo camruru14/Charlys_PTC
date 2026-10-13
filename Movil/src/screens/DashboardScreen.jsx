@@ -1,9 +1,10 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDashboard } from "../hooks/useDashboard";
-import { useProductColors } from "../hooks/useProductColors";
+import { useProductNames } from "../hooks/useProductNames";
 import { useDateRange } from "../context/DateRangeContext";
 import { useAuth } from "../hooks/useAuth";
+import ChartLegend from "../components/dashboard/ChartLegend";
 import ColumnChart from "../components/dashboard/ColumnChart";
 import Donut from "../components/dashboard/Donut";
 import HBarList from "../components/dashboard/HBarList";
@@ -13,9 +14,10 @@ import Card from "../components/ui/Card";
 import ErrorState from "../components/ui/ErrorState";
 import LoadingState from "../components/ui/LoadingState";
 import { colors, tones } from "../lib/theme";
-import { SERIES_COLORS } from "../lib/chartColors";
+import { SERIES_COLORS, TARGET_COLOR } from "../lib/chartColors";
+import { productColors } from "../lib/productColors";
 import { fonts, type } from "../lib/typography";
-import { formatCompactMoney, formatNumber, formatWeekdayDate } from "../lib/format";
+import { formatCompactMoney, formatMoney, formatNumber, formatWeekdayDate } from "../lib/format";
 import {
   change,
   dayDate,
@@ -35,6 +37,12 @@ import { useBottomPad } from "../hooks/useBottomPad";
 const TONE_COLOR = { up: tones.green.text, down: tones.rose.text, flat: colors.muted };
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+// Serie acumulada: cada punto es la suma hasta ese casillero (igual que cumulative() de la web).
+function cumulative(values = []) {
+  let total = 0;
+  return values.map((v) => (total += Number(v) || 0));
+}
+
 // «+8%» en verde o rosa seguido del texto de comparación (igual que ChangeNote de la web).
 function ChangeNote({ value, previous, label }) {
   const c = change(value, previous);
@@ -47,7 +55,7 @@ function ChangeNote({ value, previous, label }) {
 }
 
 // Tarjeta de sección: título (con subtítulo y un enlace opcional) y el cuerpo, o «Sin datos en este rango».
-function Section({ title, subtitle, link, onLink, empty, emptyText = "Sin datos en este rango", children }) {
+function Section({ title, subtitle, legend, link, onLink, empty, emptyText = "Sin datos en este rango", children }) {
   return (
     <Card style={styles.card}>
       <View style={styles.cardHeader}>
@@ -55,6 +63,7 @@ function Section({ title, subtitle, link, onLink, empty, emptyText = "Sin datos 
           <Text style={type.cardTitle}>{title}</Text>
           {subtitle ? <Text style={styles.cardAux}>{subtitle}</Text> : null}
         </View>
+        {legend ? <ChartLegend items={legend} /> : null}
         {link ? (
           <Pressable onPress={onLink} hitSlop={8} accessibilityRole="link">
             <Text style={styles.link}>{link}</Text>
@@ -100,7 +109,8 @@ export default function DashboardScreen({ navigation }) {
     });
   }, [navigation, firstName]);
 
-  const colorOf = useProductColors(salesByProduct.map((p) => p.product));
+  const { products: catalog } = useProductNames();
+  const colorOf = useMemo(() => productColors(catalog), [catalog]);
 
   if (loading) return <LoadingState />;
   if (error && !dashboard) return <ErrorState message={error} onRetry={refresh} />;
@@ -116,12 +126,14 @@ export default function DashboardScreen({ navigation }) {
 
   // ---- Ventas y gastos por mes ----
   const lastMonth = monthly[monthly.length - 1];
+  // «Oct», «Nov»…; el primero lleva el año («Oct 25») si es de otro año que el último mes.
+  const lastYear = lastMonth ? monthDate(lastMonth.month).getFullYear() : null;
   const monthLabels = monthly.map((m, i) => {
     const d = monthDate(m.month);
-    return `${MONTHS_SHORT[d.getMonth()]}${i === 0 || d.getMonth() === 0 ? ` ${String(d.getFullYear()).slice(2)}` : ""}`;
+    const name = capitalize(MONTHS_SHORT[d.getMonth()]);
+    return i === 0 && d.getFullYear() !== lastYear ? `${name} ${String(d.getFullYear()).slice(2)}` : name;
   });
   const monthlyEmpty = monthly.every((m) => m.income === 0 && m.expense === 0);
-  const partialName = lastMonth?.partial ? MONTHS_LONG[monthDate(lastMonth.month).getMonth()] : null;
 
   // ---- Ventas por producto ----
   const productTotal = salesByProduct.reduce((s, p) => s + p.amount, 0);
@@ -163,9 +175,9 @@ export default function DashboardScreen({ navigation }) {
             label={isMonth ? "Ventas del mes" : "Ventas"}
             value={money(kpis.sales || 0)}
             note={<ChangeNote value={kpis.sales || 0} previous={kpis.salesPrevious} label={compareTo} />}
-            spark={sparks.sales}
+            spark={cumulative(sparks.sales)}
             color={SERIES_COLORS.sales}
-            sparkLabel="Ventas por día del rango"
+            sparkLabel="Ventas acumuladas en el rango"
           />
           <KpiTile
             style={styles.kpiHalf}
@@ -173,9 +185,9 @@ export default function DashboardScreen({ navigation }) {
             value={`${kpis.net > 0 ? "+" : ""}${money(kpis.net || 0)}`}
             valueColor={netColor}
             note={kpis.margin == null ? "sin ingresos en el rango" : `${Math.round(kpis.margin * 100)}% de las ventas`}
-            spark={sparks.net}
-            color={kpis.net < 0 ? SERIES_COLORS.negative : SERIES_COLORS.positive}
-            sparkLabel="Utilidad neta por día del rango"
+            spark={cumulative(sparks.net)}
+            color={SERIES_COLORS.positive}
+            sparkLabel="Utilidad neta acumulada en el rango"
           />
         </View>
         <View style={[styles.kpiRow, styles.kpiRowGap]}>
@@ -201,18 +213,23 @@ export default function DashboardScreen({ navigation }) {
             note={kpis.delivered > 0 ? `${formatNumber(kpis.deliveredOnTime)} de ${formatNumber(kpis.delivered)} entregas` : "sin entregas en el rango"}
             spark={sparks.onTime}
             color={SERIES_COLORS.positive}
-            sparkLabel="Porcentaje de entregas a tiempo por día del rango"
+            sparkLabel="Porcentaje de entregas a tiempo por semana del rango"
           />
         </View>
 
         <Section
           title="Ventas y gastos"
-          subtitle={partialName ? `Últimos 12 meses · ${partialName} está en curso (tramo punteado)` : "Últimos 12 meses"}
+          subtitle={lastMonth?.partial ? "Últimos 12 meses · el mes actual va incompleto" : "Últimos 12 meses"}
+          legend={[
+            { key: "income", label: "Ventas", color: SERIES_COLORS.sales },
+            { key: "expense", label: "Gastos", color: SERIES_COLORS.expense },
+          ]}
           empty={monthlyEmpty}
         >
           <View onTouchStart={onChartTouch("monthly")}>
             <LineChart
               {...chartProps("monthly")}
+              legend={false}
               labels={monthLabels}
               series={[
                 { key: "income", label: "Ventas", color: SERIES_COLORS.sales, values: monthly.map((m) => m.income), fill: true },
@@ -266,6 +283,10 @@ export default function DashboardScreen({ navigation }) {
         <Section
           title="Producción diaria"
           subtitle={kpis.unitsProduced > 0 ? `${formatNumber(kpis.unitsProduced)} unidades${unitsPct == null ? "" : ` · ${unitsPct}% de la meta`}` : undefined}
+          legend={[
+            { key: "produced", label: "Producido", color: SERIES_COLORS.sales, shape: "square" },
+            { key: "target", label: "Meta", color: TARGET_COLOR, shape: "square" },
+          ]}
           empty={dailyProduction.length === 0}
         >
           <View onTouchStart={onChartTouch("production")}>
@@ -280,7 +301,12 @@ export default function DashboardScreen({ navigation }) {
                   title: capitalize(formatWeekdayDate(dayDate(p.date))),
                   rows: [
                     { color: SERIES_COLORS.sales, label: "Producido", value: formatNumber(p.produced) },
-                    ...(p.target > 0 ? [{ label: "Meta", value: `${formatNumber(p.target)} · ${Math.round((p.produced / p.target) * 100)}%` }] : []),
+                    ...(p.target > 0
+                      ? [
+                          { color: TARGET_COLOR, label: "Meta", value: formatNumber(p.target) },
+                          { label: "De la meta", value: `${Math.round((p.produced / p.target) * 100)}%` },
+                        ]
+                      : []),
                   ],
                 };
               }}
@@ -305,15 +331,15 @@ export default function DashboardScreen({ navigation }) {
 
         <Section
           title="Gastos por categoría"
-          subtitle={expensesByCategory.length ? `${money(expensesTotal)} pagados` : undefined}
+          subtitle={expensesByCategory.length ? `${formatMoney(expensesTotal, 0)} pagados` : undefined}
           link="Finanzas ›"
           onLink={() => navigation.navigate("Finanzas")}
           empty={expensesByCategory.length === 0}
         >
           <HBarList
-            rows={expensesByCategory.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: money(e.amount) }))}
+            rows={expensesByCategory.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: formatMoney(e.amount, 0) }))}
             color={SERIES_COLORS.expense}
-            accessibilityLabel={`Gastos por categoría: ${expensesByCategory.map((e) => `${e.category} ${money(e.amount)}`).join(", ")}`}
+            accessibilityLabel={`Gastos por categoría: ${expensesByCategory.map((e) => `${e.category} ${formatMoney(e.amount, 0)}`).join(", ")}`}
           />
         </Section>
       </View>
