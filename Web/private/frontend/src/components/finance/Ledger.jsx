@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import ActionsMenu from "../ui/ActionsMenu";
 import EmptyState from "../ui/EmptyState";
 import { FilterSelect } from "../ui/Field";
@@ -20,12 +20,14 @@ import { statusLabel } from "../../lib/transactionFilters";
   Libro de movimientos de Finanzas (columna derecha): pestañas, filtros, una
   franja de una línea (36 px) con las cifras del rango y la lista agrupada por día. Lo manual lleva
   su menú (editar, marcar pagado, ver factura, eliminar); las ventas de la
-  tienda se juntan en UNA fila por día, se expanden y no se editan.
+  tienda se juntan en UNA fila por día, se expanden y no se editan. Abrir una venta no cambia la
+  paginación: las páginas se arman solo con filas y encabezados de día, y el área de filas hace scroll
+  por dentro cuando las subfilas no caben (la página no hace scroll).
 */
 
 const ROW_HEIGHT = 56;
 const HEADER_HEIGHT = 32;
-const SUBROW_HEIGHT = 36; // h-9: una subfila por pedido de una venta abierta
+const SUBROWS_PREVIEW = 6; // pedidos que muestra una venta abierta antes de «Ver los N pedidos»
 const COLUMNS = "minmax(0,1fr) 116px 100px 108px 32px";
 const METHOD_ICONS = { Efectivo: IconCash, Transferencia: IconBank, Cheque: IconDoc, Wompi: IconCard };
 const LOCKED = "Las ventas de la tienda no se editan";
@@ -109,8 +111,11 @@ function ManualRow({ tx, categoryByName, now, highlighted, onEdit, onPay, onDele
   );
 }
 
-function SalesRow({ sales, open, onToggle }) {
+function SalesRow({ sales, day, open, showAll, onToggle, onShowAll }) {
   const total = sales.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  // Una venta con muchos pedidos muestra los primeros y «Ver los N pedidos» para el resto.
+  const preview = showAll ? sales : sales.slice(0, SUBROWS_PREVIEW);
+  const hidden = sales.length - preview.length;
   return (
     <>
       <div style={{ gridTemplateColumns: COLUMNS, height: ROW_HEIGHT }} className="grid items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4">
@@ -146,8 +151,13 @@ function SalesRow({ sales, open, onToggle }) {
         </span>
       </div>
       {open
-        ? sales.map((t) => (
-            <div key={t._id} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
+        ? preview.map((t, i) => (
+            <div
+              key={t._id}
+              data-last-sub={hidden === 0 && i === preview.length - 1 ? day : undefined}
+              style={{ gridTemplateColumns: COLUMNS }}
+              className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]"
+            >
               <span className="truncate pl-[84px] tabular-nums text-ink-2">
                 {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
                 <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
@@ -159,6 +169,17 @@ function SalesRow({ sales, open, onToggle }) {
             </div>
           ))
         : null}
+      {open && hidden > 0 ? (
+        <div data-last-sub={day} style={{ gridTemplateColumns: COLUMNS }} className="grid h-9 items-center gap-3 border-b border-line-soft bg-surface-2/40 px-4 text-[12.5px]">
+          <button type="button" onClick={onShowAll} className="justify-self-start pl-[84px] font-semibold text-primary-soft-text transition hover:text-primary">
+            Ver los {sales.length} pedidos
+          </button>
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : null}
     </>
   );
 }
@@ -187,24 +208,52 @@ function Ledger({
   error,
   now = new Date(),
 }) {
-  const [openDays, setOpenDays] = useState(() => new Set());
+  // Ventas abiertas ({ open, all }: días) y a qué página/filtros pertenecen: al cambiar de página,
+  // rango, pestaña, categoría o búsqueda se cierran todas.
+  const [expanded, setExpanded] = useState({ key: "", open: new Set(), all: new Set() });
+  const scrollToDay = useRef(null);
   // `fill`: la grilla de Finanzas ya fija el alto del libro (una sola medición); aquí solo se
-  // reparten las filas en páginas según el alto del área, contando las subfilas de las ventas abiertas.
+  // reparten las filas en páginas según el alto del área. Abrir una venta NO las vuelve a repartir.
   const { cardRef, areaRef, visible, page, setPage, pages, from, to, total, paged } = usePagedGroups(rows, {
     rowHeight: ROW_HEIGHT,
     headerHeight: HEADER_HEIGHT,
     groupOf: (r) => r.day,
-    extraOf: (r) => (r.kind === "sales" && openDays.has(r.day) ? r.sales.length * SUBROW_HEIGHT : 0),
     fill,
     resetKey,
   });
-  const toggleDay = (key) =>
-    setOpenDays((s) => {
-      const next = new Set(s);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const viewKey = `${resetKey}|${page}`;
+  const current = expanded.key === viewKey ? expanded : { open: new Set(), all: new Set() };
+  const update = (patch) => setExpanded({ key: viewKey, open: current.open, all: current.all, ...patch });
+  const toggleDay = (day) => {
+    const open = new Set(current.open);
+    if (open.has(day)) {
+      open.delete(day);
+      const all = new Set(current.all);
+      all.delete(day);
+      update({ open, all });
+    } else {
+      open.add(day);
+      scrollToDay.current = day;
+      update({ open });
+    }
+  };
+  const showAllOf = (day) => {
+    scrollToDay.current = day;
+    update({ all: new Set(current.all).add(day) });
+  };
+
+  // Al cambiar de página o de filtros, el área regresa arriba.
+  useEffect(() => {
+    if (areaRef.current) areaRef.current.scrollTop = 0;
+  }, [viewKey, areaRef]);
+
+  // Al abrir una venta (o desplegar todos sus pedidos), se desplaza el área lo justo para ver su última subfila.
+  useEffect(() => {
+    const day = scrollToDay.current;
+    if (!day) return;
+    scrollToDay.current = null;
+    areaRef.current?.querySelector(`[data-last-sub="${day}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [expanded, areaRef]);
 
   const net = summary.net;
   const tabs = LEDGER_TABS.map((t) => (t.key === "porpagar" ? { ...t, label: `Por pagar (${pendingCount})` } : t));
@@ -234,7 +283,7 @@ function Ledger({
     body.push(
       row.kind === "sales" ? (
         <Fragment key={row.id}>
-          <SalesRow sales={row.sales} open={openDays.has(row.day)} onToggle={() => toggleDay(row.day)} />
+          <SalesRow sales={row.sales} day={row.day} open={current.open.has(row.day)} showAll={current.all.has(row.day)} onToggle={() => toggleDay(row.day)} onShowAll={() => showAllOf(row.day)} />
         </Fragment>
       ) : (
         <ManualRow
