@@ -20,8 +20,9 @@
   - TextareaField: área de texto.
 */
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { IconChevronDown, IconEye, IconEyeOff } from "../../lib/icons";
+import { useLayoutEffect, useRef, useState } from "react";
+import { useDropdown } from "../../hooks/useDropdown";
+import { IconCheck, IconChevronDown, IconEye, IconEyeOff } from "../../lib/icons";
 
 const labelClass = "mb-1.5 block text-[12.5px] font-semibold text-ink-2";
 const controlClass =
@@ -92,59 +93,6 @@ export function PasswordField({ label, name, value, onChange, required, placehol
   );
 }
 
-// Mecánica compartida por todo dropdown propio del panel (SelectField y
-// FilterSelect): abre/cierra, calcula la posición fija del panel contra el
-// botón disparador, y lo cierra si la ventana cambia de tamaño o se hace
-// scroll afuera del panel — el scroll DENTRO de la lista de opciones no
-// cuenta, así se puede bajar para ver más sin que se cierre solo (ver el
-// porqué de position: fixed en vez de absolute: un ancestro con
-// overflow-y-auto, como el contenido de Modal.jsx, recorta un panel
-// absolute aunque su posición esté bien calculada).
-function useDropdown() {
-  const [open, setOpen] = useState(false);
-  const [rect, setRect] = useState({ top: 0, left: 0, width: 0 });
-  const rootRef = useRef(null);
-  const triggerRef = useRef(null);
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleResize() {
-      setOpen(false);
-    }
-    function handleScroll(e) {
-      if (rootRef.current && rootRef.current.contains(e.target)) return;
-      setOpen(false);
-    }
-    window.addEventListener("resize", handleResize);
-    document.addEventListener("scroll", handleScroll, true);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      document.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [open]);
-
-  // minWidth (opcional): ancho mínimo del panel; si es mayor que el botón, el
-  // panel se alinea a su borde derecho.
-  function toggleOpen(minWidth = 0) {
-    if (!open && triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect();
-      const width = Math.max(r.width, minWidth);
-      setRect({ top: r.bottom + 4, left: r.right - width, width });
-    }
-    setOpen((o) => !o);
-  }
-
-  return { open, setOpen, rect, rootRef, triggerRef, toggleOpen };
-}
-
 // La lista de opciones muestra como máximo 4 filas de 36 px (más el relleno
 // vertical de 4 px arriba y abajo y el borde de 1 px); con más opciones hace scroll.
 const OPTION_HEIGHT = 36;
@@ -152,10 +100,25 @@ const VISIBLE_OPTIONS = 4;
 const LIST_PADDING = 4;
 const LIST_MAX_HEIGHT = VISIBLE_OPTIONS * OPTION_HEIGHT + LIST_PADDING * 2 + 2;
 
-// Panel flotante de opciones, compartido por SelectField y FilterSelect.
-function DropdownOptions({ rect, options, value, onSelect }) {
+// Panel flotante de opciones, compartido por SelectField, FilterSelect y el combobox de categoría
+// del registro rápido de Finanzas. Extras opcionales: `header` (p. ej. un buscador) y `footer`
+// fuera de la lista que hace scroll; `activeValue` (fila resaltada con el teclado); `check` (marca
+// la elegida con un check); `emptyText`; y una opción puede traer `avatar` (nodo a la izquierda).
+export function DropdownOptions({ rect, options, value, onSelect, header, footer, activeValue, check = false, emptyText = "Sin opciones" }) {
   const listRef = useRef(null);
   const selectedRef = useRef(null);
+  const activeRef = useRef(null);
+
+  // La fila resaltada con el teclado siempre queda a la vista dentro de la lista.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const item = activeRef.current;
+    if (!list || !item) return;
+    const top = item.offsetTop;
+    const bottom = top + item.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top - LIST_PADDING;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight + LIST_PADDING;
+  }, [activeValue]);
 
   // Al abrir, si la opción seleccionada queda fuera de las filas visibles, la
   // lista se desplaza hasta mostrarla (sin animación). Se ajusta scrollTop de
@@ -172,12 +135,13 @@ function DropdownOptions({ rect, options, value, onSelect }) {
 
   return (
     <div
-      ref={listRef}
-      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, maxHeight: LIST_MAX_HEIGHT }}
-      className="z-[60] overflow-y-auto overscroll-contain rounded-[10px] border border-line bg-surface py-1 shadow-modal"
+      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width }}
+      className="z-[60] overflow-hidden rounded-[10px] border border-line bg-surface shadow-modal"
     >
+      {header}
+      <div ref={listRef} style={{ maxHeight: LIST_MAX_HEIGHT - 2 }} className="relative overflow-y-auto overscroll-contain py-1">
       {options.length === 0 ? (
-        <p className="px-3.5 py-2 text-[13px] text-faint">Sin opciones</p>
+        <p className="px-3.5 py-2 text-[13px] text-faint">{emptyText}</p>
       ) : (
         options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
@@ -187,11 +151,16 @@ function DropdownOptions({ rect, options, value, onSelect }) {
           const dot = typeof opt === "string" ? null : opt.dot;
           const meta = typeof opt === "string" ? null : opt.meta;
           const muted = typeof opt !== "string" && Boolean(opt.muted);
+          const avatar = typeof opt === "string" ? null : opt.avatar;
           const selected = val === value;
+          const active = activeValue !== undefined && val === activeValue;
           return (
             <button
               key={val}
-              ref={selected ? selectedRef : undefined}
+              ref={(el) => {
+                if (selected) selectedRef.current = el;
+                if (active) activeRef.current = el;
+              }}
               type="button"
               disabled={disabled}
               title={text}
@@ -199,16 +168,20 @@ function DropdownOptions({ rect, options, value, onSelect }) {
               className={`flex h-9 w-full items-center px-3.5 text-left text-[13px] ${
                 disabled
                   ? "cursor-not-allowed text-faint"
-                  : `hover:bg-surface-2 ${selected ? "bg-select-bg font-semibold text-primary-soft-text" : muted ? "text-faint" : "text-ink-2"}`
+                  : `hover:bg-surface-2 ${active ? "bg-surface-2" : ""} ${selected ? "bg-select-bg font-semibold text-primary-soft-text" : muted ? "text-faint" : "text-ink-2"}`
               }`}
             >
+              {avatar ? <span className="mr-2.5 flex shrink-0">{avatar}</span> : null}
               {dot ? <span className={`mr-2 h-2 w-2 shrink-0 rounded-full ${dot} ${muted ? "opacity-40" : ""}`} /> : null}
               <span className="block min-w-0 flex-1 truncate">{text}</span>
               {meta != null ? <span className={`ml-2 shrink-0 text-[12px] font-normal tabular-nums ${muted ? "text-faint" : "text-muted"}`}>{meta}</span> : null}
+              {check && selected ? <IconCheck width={14} height={14} className="ml-2 shrink-0" /> : null}
             </button>
           );
         })
       )}
+      </div>
+      {footer}
     </div>
   );
 }

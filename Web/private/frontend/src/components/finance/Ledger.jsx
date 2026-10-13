@@ -18,7 +18,7 @@ import { statusLabel } from "../../lib/transactionFilters";
 
 /*
   Libro de movimientos de Finanzas (columna derecha): pestañas, filtros, una
-  franja con las cifras del rango y la lista agrupada por día. Lo manual lleva
+  franja de una línea (36 px) con las cifras del rango y la lista agrupada por día. Lo manual lleva
   su menú (editar, marcar pagado, ver factura, eliminar); las ventas de la
   tienda se juntan en UNA fila por día, se expanden y no se editan.
 */
@@ -58,13 +58,14 @@ function Amount({ value, income }) {
   );
 }
 
-function Cell({ label, value, valueClass = "text-ink", sub }) {
+// Un grupo de la franja de cifras: etiqueta gris, monto en negrita y un dato breve. Se trunca, no envuelve.
+function StripGroup({ label, value, valueClass = "text-ink", sub }) {
   return (
-    <div className="min-w-0 px-4 py-2.5">
-      <p className="t-label truncate">{label}</p>
-      <p className={`mt-0.5 truncate text-[17px] font-bold tabular-nums ${valueClass}`}>{value}</p>
-      <p className="t-aux truncate">{sub}</p>
-    </div>
+    <span className="min-w-0 truncate">
+      <span className="text-[12px] text-muted">{label}</span>{" "}
+      <span className={`text-[13.5px] font-bold tabular-nums ${valueClass}`}>{value}</span>
+      {sub ? <span className="text-[12px] tabular-nums text-muted">{` ${sub}`}</span> : null}
+    </span>
   );
 }
 
@@ -269,20 +270,24 @@ function Ledger({
         </div>
       </div>
 
-      <div className="grid shrink-0 grid-cols-2 divide-x divide-line-soft border-y border-line-soft xl:grid-cols-4">
-        <Cell
-          label="Ventas de la tienda"
+      <div className="flex h-9 shrink-0 items-center gap-4 overflow-hidden whitespace-nowrap border-y border-line-soft bg-surface-2 px-5" aria-label="Resumen del rango">
+        <StripGroup
+          label="Ventas tienda"
           value={money(summary.sales)}
-          sub={`${plural(summary.salesCount, "pedido", "pedidos")}${summary.otherIncome > 0 ? ` · + ${money(summary.otherIncome)} otros ingresos` : ""}`}
+          valueClass="text-tone-green-text"
+          sub={`${plural(summary.salesCount, "pedido", "pedidos")}${summary.otherIncome > 0 ? ` · + ${money(summary.otherIncome)} otros` : ""}`}
         />
-        <Cell label="Gastos pagados" value={money(summary.expensesPaid)} sub="en el rango" />
-        <Cell
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <StripGroup label="Gastos pagados" value={`${summary.expensesPaid > 0 ? "−" : ""}${money(summary.expensesPaid)}`} />
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <StripGroup
           label="Neto"
           value={`${net > 0 ? "+" : net < 0 ? "−" : ""}${money(Math.abs(net))}`}
           valueClass={net > 0 ? "text-tone-green-text" : net < 0 ? "text-tone-rose-text" : "text-ink"}
-          sub={summary.netPct == null ? "sin ingresos" : `${Math.round(summary.netPct)}% de los ingresos`}
+          sub={summary.netPct == null ? "sin ingresos" : `${Math.round(summary.netPct)}%`}
         />
-        <Cell label="Por pagar" value={money(summary.pending)} valueClass="text-tone-amber-text" sub={plural(summary.pendingCount, "factura", "facturas")} />
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <StripGroup label="Por pagar" value={money(summary.pending)} valueClass="text-tone-amber-text" sub={plural(summary.pendingCount, "factura", "facturas")} />
       </div>
 
       {/* En pantallas angostas la tabla conserva su ancho y se desplaza de lado. */}
