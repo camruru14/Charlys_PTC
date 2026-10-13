@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -7,6 +7,9 @@ import ActionsMenu from "../../components/ui/ActionsMenu";
 import Button from "../../components/ui/Button";
 import ConfirmModal from "../../components/ui/ConfirmModal";
 import EmptyState from "../../components/ui/EmptyState";
+import Modal from "../../components/ui/Modal";
+import { Field } from "../../components/ui/Field";
+import { buttonClass } from "../../lib/buttonStyles";
 import { IconAlert, IconCheck, IconLock, IconOrders, IconPlus } from "../../lib/icons";
 import { budgetChanges, categoryIcon, categoryTone, COLOR_KEYS, ICON_KEYS, monthKey, parseBudget } from "../../lib/expenseCategories";
 import { daysInMonth, money, plural } from "../../lib/finance";
@@ -168,6 +171,71 @@ function RenameInput({ value, onSave, onCancel }) {
   );
 }
 
+// «Nueva categoría»: nombre, presupuesto opcional, ícono y color, con una vista previa de cómo
+// quedará en la lista y en los chips de Finanzas. Si el backend rechaza el alta (nombre repetido o
+// reservado), avisa con un toast y deja el modal abierto con lo escrito.
+function NewCategoryModal({ onClose, onCreated }) {
+  const [fresh, setFresh] = useState({ name: "", budget: "", icon: "tag", color: "gray" });
+  const [busy, setBusy] = useState(false);
+  const tone = categoryTone(fresh.color);
+  const previewName = fresh.name.trim();
+
+  async function submit(e) {
+    e.preventDefault();
+    if (busy) return;
+    const name = fresh.name.trim();
+    if (!name) return toast.error("Escribe el nombre de la categoría");
+    const budget = parseBudget(fresh.budget);
+    if (Number.isNaN(budget)) return toast.error("El presupuesto debe ser un número mayor o igual a 0");
+    setBusy(true);
+    try {
+      await api.post("/expense-categories", { name, icon: fresh.icon, color: fresh.color, ...(budget != null ? { budget } : {}) });
+      toast.success(`Categoría «${name}» creada`);
+      onCreated();
+    } catch (err) {
+      toast.error(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={() => !busy && onClose()}
+      title="Nueva categoría"
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary", "modal")}>
+            Cancelar
+          </button>
+          <button type="submit" form="new-category-form" disabled={busy} className={buttonClass("primary", "modal")}>
+            {busy ? "Guardando…" : "Agregar"}
+          </button>
+        </>
+      }
+    >
+      <form id="new-category-form" onSubmit={submit} className="flex flex-col gap-4">
+        <Field label="Nombre" name="name" value={fresh.name} onChange={(e) => setFresh((f) => ({ ...f, name: e.target.value }))} placeholder="Ej. Papelería" autoFocus required />
+        <div>
+          <span className="mb-1.5 block text-[12.5px] font-semibold text-ink-2">Presupuesto mensual (opcional)</span>
+          <MoneyInput value={fresh.budget} onChange={(budget) => setFresh((f) => ({ ...f, budget }))} label="Presupuesto mensual de la nueva categoría" />
+          <p className="t-aux mt-1.5">Déjalo vacío si no quieres controlar esta categoría. Aplica desde este mes.</p>
+        </div>
+        <IconColorFields icon={fresh.icon} color={fresh.color} onChange={(patch) => setFresh((f) => ({ ...f, ...patch }))} />
+        <div className="flex items-center gap-3 rounded-[12px] border border-line-soft bg-surface-2 px-3.5 py-3">
+          <span className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] ${tone.soft}`}>
+            {createElement(categoryIcon(fresh.icon), { width: 16, height: 16 })}
+          </span>
+          <span className="min-w-0">
+            <span className="t-label block">Vista previa</span>
+            <span className={`block truncate text-[13.5px] font-semibold ${previewName ? "text-ink" : "text-muted"}`}>{previewName || "Nueva categoría"}</span>
+          </span>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function Stat({ label, value, sub, subClass = "text-muted" }) {
   return (
     <div className="min-w-0 rounded-[12px] border border-line-soft bg-surface-2 px-4 py-3">
@@ -184,7 +252,6 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
   const [renaming, setRenaming] = useState(null);
   const [picker, setPicker] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [fresh, setFresh] = useState({ name: "", budget: "", icon: "tag", color: "gray" });
   const [saving, setSaving] = useState(false);
 
   const now = new Date();
@@ -253,26 +320,6 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
       await update(c, patch);
     } catch (err) {
       toast.error(err.message);
-    }
-  }
-
-  async function addCategory(e) {
-    e.preventDefault();
-    const name = fresh.name.trim();
-    if (!name) return toast.error("Escribe el nombre de la categoría");
-    const budget = parseBudget(fresh.budget);
-    if (Number.isNaN(budget)) return toast.error("El presupuesto debe ser un número mayor o igual a 0");
-    setSaving(true);
-    try {
-      await api.post("/expense-categories", { name, icon: fresh.icon, color: fresh.color, ...(budget != null ? { budget } : {}) });
-      toast.success(`Categoría «${name}» creada`);
-      setFresh({ name: "", budget: "", icon: "tag", color: "gray" });
-      setAdding(false);
-      refetch();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -370,15 +417,7 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
           <Button variant="secondary" size="detail" onClick={() => setShowArchived((v) => !v)}>
             {showArchived ? "Ver activas" : `Archivadas · ${archived.length}`}
           </Button>
-          <Button
-            variant="soft"
-            size="detail"
-            icon={IconPlus}
-            onClick={() => {
-              setShowArchived(false);
-              setAdding(true);
-            }}
-          >
+          <Button variant="soft" size="detail" icon={IconPlus} onClick={() => setAdding(true)}>
             Nueva categoría
           </Button>
         </div>
@@ -451,37 +490,6 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
                 </span>
               </div>
             ) : null}
-
-            {adding && !showArchived ? (
-              <form onSubmit={addCategory} className="m-5 flex flex-col gap-3.5 rounded-[12px] border border-dashed border-line px-4 py-3.5">
-                <p className="text-[13px] font-semibold text-ink">Nueva categoría</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-semibold text-ink-2">Nombre</span>
-                    <input
-                      autoFocus
-                      value={fresh.name}
-                      onChange={(e) => setFresh((f) => ({ ...f, name: e.target.value }))}
-                      placeholder="Ej. Papelería"
-                      className={`${inputClass} w-full`}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-semibold text-ink-2">Presupuesto mensual (opcional)</span>
-                    <MoneyInput value={fresh.budget} onChange={(budget) => setFresh((f) => ({ ...f, budget }))} label="Presupuesto mensual de la nueva categoría" />
-                  </label>
-                </div>
-                <IconColorFields icon={fresh.icon} color={fresh.color} onChange={(patch) => setFresh((f) => ({ ...f, ...patch }))} />
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" size="detail" onClick={() => setAdding(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit" size="detail" disabled={saving}>
-                    Agregar
-                  </Button>
-                </div>
-              </form>
-            ) : null}
           </>
         )}
       </div>
@@ -518,6 +526,16 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
           color={pickerCategory.color}
           onChange={(patch) => changeStyle(pickerCategory, patch)}
           onClose={() => setPicker(null)}
+        />
+      ) : null}
+      {adding ? (
+        <NewCategoryModal
+          onClose={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false);
+            setShowArchived(false);
+            refetch();
+          }}
         />
       ) : null}
       <ConfirmModal {...confirmProps} />
