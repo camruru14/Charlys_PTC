@@ -25,6 +25,7 @@ import { statusLabel } from "../../lib/transactionFilters";
 
 const ROW_HEIGHT = 56;
 const HEADER_HEIGHT = 32;
+const SUBROW_HEIGHT = 36; // h-9: una subfila por pedido de una venta abierta
 const COLUMNS = "minmax(0,1fr) 116px 100px 108px 32px";
 const METHOD_ICONS = { Efectivo: IconCash, Transferencia: IconBank, Cheque: IconDoc, Wompi: IconCard };
 const LOCKED = "Las ventas de la tienda no se editan";
@@ -176,6 +177,7 @@ function Ledger({
   onQuery,
   onExport,
   highlightId,
+  fill,
   onEdit,
   onPay,
   onDelete,
@@ -184,13 +186,17 @@ function Ledger({
   error,
   now = new Date(),
 }) {
-  const { cardRef, areaRef, cardStyle, visible, page, setPage, pages, from, to, total, paged } = usePagedGroups(rows, {
+  const [openDays, setOpenDays] = useState(() => new Set());
+  // `fill`: la grilla de Finanzas ya fija el alto del libro (una sola medición); aquí solo se
+  // reparten las filas en páginas según el alto del área, contando las subfilas de las ventas abiertas.
+  const { cardRef, areaRef, visible, page, setPage, pages, from, to, total, paged } = usePagedGroups(rows, {
     rowHeight: ROW_HEIGHT,
     headerHeight: HEADER_HEIGHT,
     groupOf: (r) => r.day,
+    extraOf: (r) => (r.kind === "sales" && openDays.has(r.day) ? r.sales.length * SUBROW_HEIGHT : 0),
+    fill,
     resetKey,
   });
-  const [openDays, setOpenDays] = useState(() => new Set());
   const toggleDay = (key) =>
     setOpenDays((s) => {
       const next = new Set(s);
@@ -245,7 +251,7 @@ function Ledger({
   }
 
   return (
-    <section ref={cardRef} style={cardStyle} className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface" aria-label="Movimientos">
+    <section ref={cardRef} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface" aria-label="Movimientos">
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-5 py-3.5">
         <Tabs tabs={tabs} value={tab} onChange={onTab} />
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">

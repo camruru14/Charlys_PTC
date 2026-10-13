@@ -30,6 +30,10 @@ function useWideLayout() {
   return wide;
 }
 
+// Alto mínimo del bloque de abajo: más bajo que el predeterminado para que una ventana de
+// 1366×768 siga sin scroll (el panel y el libro hacen scroll o paginan por dentro).
+const MIN_HEIGHT = 380;
+
 // Cuánto tiempo se resalta en verde el movimiento recién registrado.
 const HIGHLIGHT_MS = 4000;
 
@@ -53,7 +57,7 @@ function Finanzas() {
   const [highlightId, setHighlightId] = useState(null);
   const gridRef = useRef(null);
   const wide = useWideLayout();
-  const gridHeight = useFillHeight(gridRef, wide);
+  const gridHeight = useFillHeight(gridRef, wide, MIN_HEIGHT);
   const timer = useRef(null);
   const now = new Date();
 
@@ -165,6 +169,7 @@ function Finanzas() {
           onQuery={setQuery}
           onExport={handleExport}
           highlightId={highlightId}
+          fill={wide}
           onEdit={setEditing}
           onPay={handlePay}
           onDelete={handleDelete}

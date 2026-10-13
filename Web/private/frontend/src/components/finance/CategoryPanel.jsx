@@ -57,7 +57,7 @@ function CategoryPanel({ transactions, categories, range, selected, onSelect, on
   const paidTotal = rows.reduce((s, r) => s + r.paid, 0);
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface" aria-label="Gastos por categoría">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface" aria-label="Gastos por categoría">
       <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-4">
         <div className="min-w-0">
           <h2 className="t-card-title">Gastos por categoría</h2>

@@ -4,7 +4,7 @@ import { useFillHeight } from "./useFillHeight";
 /*
   Paginación de una lista agrupada por día (libro de movimientos de Finanzas),
   con la misma idea que usePagedRows pero con alturas distintas: cada fila mide
-  `rowHeight` y cada vez que cambia el día, dentro de una página, se suma el
+  `rowHeight` (más `extraOf(fila)`, p. ej. las subfilas de una venta abierta) y cada vez que cambia el día, dentro de una página, se suma el
   encabezado del día (`headerHeight`). Los grupos se arman DENTRO de cada
   página: un día que no cabe sigue en la página siguiente con su encabezado.
 
@@ -15,11 +15,15 @@ import { useFillHeight } from "./useFillHeight";
   El área de filas se mide como en useFitPageSize: el pie de paginación va
   fuera de ella, así que al aparecer la achica y la lista sigue paginada (no
   oscila). Sin alto fijo (pantallas chicas) se pagina de a `fallbackSize` filas.
+  Con `fill` (true/false) el alto del contenedor lo da quien lo usa: el hook no mide
+  la tarjeta (cardStyle queda sin alto) y `fill` solo indica si ese alto está activo.
 */
-export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, resetKey = "", fallbackSize = 10 }) {
+export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, extraOf, fill, resetKey = "", fallbackSize = 10 }) {
   const cardRef = useRef(null);
   const areaRef = useRef(null);
-  const fillHeight = useFillHeight(cardRef);
+  // Si el contenedor ya trae un alto fijo (Finanzas: la grilla mide una sola vez), no se
+  // vuelve a medir aquí: `fill` dice si ese alto está activo.
+  const ownHeight = useFillHeight(cardRef, fill === undefined);
   const [areaHeight, setAreaHeight] = useState(0);
 
   useLayoutEffect(() => {
@@ -32,7 +36,7 @@ export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, resetK
     return () => observer.disconnect();
   }, []);
 
-  const filled = fillHeight != null;
+  const filled = fill === undefined ? ownHeight != null : fill;
   const capacity = filled ? areaHeight : Infinity;
 
   // Reparte las filas en páginas: se llena cada una hasta el alto del área.
@@ -41,7 +45,7 @@ export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, resetK
   items.forEach((item, index) => {
     const group = groupOf(item);
     const needsHeader = !current || current.lastGroup !== group;
-    const cost = rowHeight + (needsHeader ? headerHeight : 0);
+    const cost = rowHeight + (extraOf?.(item) ?? 0) + (needsHeader ? headerHeight : 0);
     const full = current && (filled ? current.height + cost > capacity && capacity > 0 : current.items.length >= fallbackSize);
     if (!current || full) {
       current = { items: [], height: 0, lastGroup: null, start: index };
@@ -51,7 +55,7 @@ export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, resetK
       current.height += headerHeight;
     }
     current.items.push(item);
-    current.height += rowHeight;
+    current.height += rowHeight + (extraOf?.(item) ?? 0);
     current.lastGroup = group;
   });
 
@@ -65,7 +69,7 @@ export function usePagedGroups(items, { rowHeight, headerHeight, groupOf, resetK
   return {
     cardRef,
     areaRef,
-    cardStyle: { height: fillHeight ?? undefined },
+    cardStyle: { height: ownHeight ?? undefined },
     visible,
     page,
     setPage: (p) => setState({ key: resetKey, page: p }),
