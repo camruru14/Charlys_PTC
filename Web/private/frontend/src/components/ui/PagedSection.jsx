@@ -3,13 +3,12 @@ import Pagination from "./Pagination";
 import { AsyncState } from "./SectionCard";
 
 /*
-  Tarjeta de sección con una tabla paginada (Finanzas, Historial de
-  transacciones, Historial de lotes). Misma técnica que las listas de
+  Tarjeta de sección con una tabla paginada (historiales de lotes). Misma técnica que las listas de
   Configuración: en lg la tarjeta llega hasta el margen inferior de la página y
   muestra las filas que caben; si no caben todas, aparece el pie «1–8 de 23».
     <PagedSection title="…" action={…} toolbar={…} items={filtrados} resetKey={filtros}
-                  rowHeight={42} noun="transacciones" loading={…} error={…}>
-      {(rows) => <TransactionTable transactions={rows} />}
+                  rowHeight={44} noun="lotes" loading={…} error={…}>
+      {(rows) => <BatchTable batches={rows} />}
     </PagedSection>
   La tabla trae su propio encabezado de columnas (headerHeight, 32px).
 */

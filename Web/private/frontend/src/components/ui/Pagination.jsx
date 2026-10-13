@@ -7,11 +7,13 @@ const arrowClass =
 /*
   Pie de paginación de una lista: «1–8 de 23» y flechas anterior/siguiente.
     page: índice desde 0 · size: filas por página · total: registros
+  Si las páginas no tienen el mismo tamaño (el libro de Finanzas, con encabezados
+  de día de por medio), se pasan `pages`, `from` y `to` ya calculados.
 */
-function Pagination({ page, size, total, onChange, noun = "registros" }) {
-  const pages = Math.max(1, Math.ceil(total / size));
-  const from = page * size + 1;
-  const to = Math.min(total, from + size - 1);
+function Pagination({ page, size, total, onChange, noun = "registros", pages: pagesProp, from: fromProp, to: toProp }) {
+  const pages = pagesProp ?? Math.max(1, Math.ceil(total / size));
+  const from = fromProp ?? page * size + 1;
+  const to = toProp ?? Math.min(total, from + size - 1);
   return (
     <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-5 py-2">
       <span className="t-aux tabular-nums">

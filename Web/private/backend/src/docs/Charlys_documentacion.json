@@ -42,7 +42,11 @@
     },
     {
       "name": "Transacciones",
-      "description": "Registro contable de ingresos y gastos, resumen financiero y vinculación automática con pedidos"
+      "description": "Registro contable de ingresos y gastos: ventas automáticas de la tienda (solo lectura) y movimientos manuales con método de pago, vencimiento y factura adjunta"
+    },
+    {
+      "name": "Categorías de gasto",
+      "description": "Categorías de gasto de Finanzas (Configuración › Categorías de gasto) con presupuesto mensual opcional"
     },
     {
       "name": "Dashboard",
@@ -1427,12 +1431,13 @@
           },
           "category": {
             "type": "string",
-            "example": "Ventas"
+            "description": "Gasto: nombre de una categoría de gasto. Ingreso manual: `Otros ingresos`. Ventas de la tienda: `Ventas`.",
+            "example": "Materia Prima"
           },
           "amount": {
             "type": "number",
             "minimum": 0,
-            "example": 150.0
+            "example": 150
           },
           "status": {
             "type": "string",
@@ -1446,15 +1451,46 @@
           "relatedOrder": {
             "description": "ID del pedido o documento populado con orderNumber",
             "anyOf": [
-              { "type": "string", "example": "664b8a2f1b4e2c001f3a5b72" },
+              {
+                "type": "string",
+                "example": "664b8a2f1b4e2c001f3a5b72"
+              },
               {
                 "type": "object",
                 "properties": {
-                  "_id": { "type": "string" },
-                  "orderNumber": { "type": "string" }
+                  "_id": {
+                    "type": "string"
+                  },
+                  "orderNumber": {
+                    "type": "string"
+                  }
                 }
               }
             ]
+          },
+          "orderNumber": {
+            "type": "string",
+            "description": "N° del pedido como texto (se conserva aunque el pedido se elimine)",
+            "example": "ORD-2026-0001"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": ["Efectivo", "Transferencia", "Cheque", "Wompi"],
+            "description": "Las ventas de la tienda llevan `Wompi`",
+            "example": "Transferencia"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Vencimiento; solo con `status: Pendiente` (se borra al pasar a `Completado`)"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha en que se marcó como pagado"
+          },
+          "attachment": {
+            "$ref": "#/components/schemas/TransactionAttachment"
           },
           "createdAt": {
             "type": "string",
@@ -1466,6 +1502,31 @@
           }
         },
         "required": ["_id", "reference", "concept", "type", "amount"]
+      },
+      "TransactionAttachment": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "secure_url de Cloudinary"
+          },
+          "publicId": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string",
+            "example": "image"
+          },
+          "name": {
+            "type": "string",
+            "example": "factura-001.pdf"
+          },
+          "mimeType": {
+            "type": "string",
+            "example": "application/pdf"
+          }
+        },
+        "required": ["url", "publicId"]
       },
       "TransactionCreateInput": {
         "type": "object",
@@ -1481,12 +1542,13 @@
           },
           "category": {
             "type": "string",
+            "description": "Obligatoria en un gasto: nombre exacto de una categoría no archivada. En un ingreso se ignora (queda `Otros ingresos`).",
             "example": "Materia Prima"
           },
           "amount": {
             "type": "number",
             "minimum": 0,
-            "example": 450.0
+            "example": 450
           },
           "status": {
             "type": "string",
@@ -1497,6 +1559,17 @@
             "type": "string",
             "format": "date-time",
             "example": "2026-08-16T10:00:00.000Z"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": ["Efectivo", "Transferencia", "Cheque"],
+            "example": "Efectivo"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Solo se guarda con `status: Pendiente`",
+            "example": "2026-09-30T00:00:00.000Z"
           }
         },
         "required": ["concept", "type", "amount"]
@@ -1504,10 +1577,6 @@
       "TransactionUpdateInput": {
         "type": "object",
         "properties": {
-          "reference": {
-            "type": "string",
-            "example": "TRAN-2026-0001"
-          },
           "concept": {
             "type": "string",
             "example": "Compra de materia prima corregida"
@@ -1519,12 +1588,13 @@
           },
           "category": {
             "type": "string",
+            "description": "Obligatoria en un gasto: nombre exacto de una categoría no archivada. En un ingreso se ignora (queda `Otros ingresos`).",
             "example": "Materia Prima"
           },
           "amount": {
             "type": "number",
             "minimum": 0,
-            "example": 500.0
+            "example": 500
           },
           "status": {
             "type": "string",
@@ -1533,6 +1603,17 @@
           "date": {
             "type": "string",
             "format": "date-time"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": ["Efectivo", "Transferencia", "Cheque"],
+            "example": "Efectivo"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Solo se guarda con `status: Pendiente`",
+            "example": "2026-09-30T00:00:00.000Z"
           }
         }
       },
@@ -1546,9 +1627,171 @@
           "reference": {
             "type": "string",
             "example": "TRAN-2026-0001"
+          },
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5b73"
           }
         },
-        "required": ["message", "reference"]
+        "required": ["message", "reference", "_id"]
+      },
+      "ExpenseCategory": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "664b8a2f1b4e2c001f3a5c10"
+          },
+          "name": {
+            "type": "string",
+            "example": "Materia Prima"
+          },
+          "icon": {
+            "type": "string",
+            "enum": ["box", "bag", "truck", "bolt", "wrench", "doc", "people", "cash", "tag"],
+            "default": "tag"
+          },
+          "color": {
+            "type": "string",
+            "enum": ["blue", "green", "amber", "purple", "teal", "rose", "gray"],
+            "default": "gray"
+          },
+          "archived": {
+            "type": "boolean",
+            "default": false
+          },
+          "order": {
+            "type": "number",
+            "example": 0
+          },
+          "budgets": {
+            "type": "array",
+            "description": "Historial del presupuesto: cada entrada rige desde su mes. El del mes X es la entrada con el `month` más alto <= X; sin entrada, o con `amount` null, no hay presupuesto.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string",
+                  "example": "2026-10"
+                },
+                "amount": {
+                  "type": ["number", "null"],
+                  "example": 500
+                }
+              },
+              "required": ["month"]
+            }
+          },
+          "usage": {
+            "type": "object",
+            "description": "Solo con `?usage=AAAA-MM` (o al guardar presupuestos)",
+            "properties": {
+              "paid": {
+                "type": "number",
+                "example": 320
+              },
+              "pending": {
+                "type": "number",
+                "example": 80
+              },
+              "count": {
+                "type": "integer",
+                "example": 5
+              },
+              "budget": {
+                "type": ["number", "null"],
+                "example": 500
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["_id", "name"]
+      },
+      "ExpenseCategoryCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Papelería"
+          },
+          "icon": {
+            "type": "string",
+            "enum": ["box", "bag", "truck", "bolt", "wrench", "doc", "people", "cash", "tag"],
+            "default": "tag"
+          },
+          "color": {
+            "type": "string",
+            "enum": ["blue", "green", "amber", "purple", "teal", "rose", "gray"],
+            "default": "gray"
+          },
+          "budget": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "description": "Presupuesto mensual opcional, vigente desde el mes actual",
+            "example": 150
+          }
+        },
+        "required": ["name"]
+      },
+      "ExpenseCategoryUpdateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "enum": ["box", "bag", "truck", "bolt", "wrench", "doc", "people", "cash", "tag"]
+          },
+          "color": {
+            "type": "string",
+            "enum": ["blue", "green", "amber", "purple", "teal", "rose", "gray"]
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "number"
+          }
+        }
+      },
+      "ExpenseCategoryBudgetsInput": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "Mes actual o futuro, \"AAAA-MM\"",
+            "example": "2026-10"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "664b8a2f1b4e2c001f3a5c10"
+                },
+                "amount": {
+                  "type": ["number", "null"],
+                  "minimum": 0,
+                  "description": "null quita el presupuesto desde ese mes",
+                  "example": 500
+                }
+              },
+              "required": ["id", "amount"]
+            }
+          }
+        },
+        "required": ["month", "items"]
       },
       "TransactionSummary": {
         "type": "object",
@@ -6226,7 +6469,7 @@
       "get": {
         "tags": ["Transacciones"],
         "summary": "Obtener todas las transacciones financieras",
-        "description": "Retorna el historial de transacciones financieras ordenadas por fecha descendente con populate del pedido relacionado (`relatedOrder`).\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Retorna el historial de transacciones financieras ordenadas por fecha descendente con populate del pedido relacionado (`relatedOrder`). Incluye las ventas de la tienda y los movimientos manuales del panel (con método de pago, vencimiento y factura adjunta si tienen).\n\n**Acceso:** cualquier empleado autenticado del panel.",
         "security": [
           {
             "cookieAuth": []
@@ -6262,8 +6505,8 @@
       },
       "post": {
         "tags": ["Transacciones"],
-        "summary": "Registrar una nueva transacción contable",
-        "description": "Crea una transacción contable asignando el número de referencia `TRAN-YYYY-XXXX` automáticamente.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "summary": "Registrar un movimiento manual",
+        "description": "Crea un movimiento a mano asignando el número de referencia `TRAN-YYYY-XXXX` automáticamente. Las ventas no se registran aquí: las crea sola la tienda.\n\n- **Gasto:** `category` es obligatoria y debe ser el nombre exacto de una categoría de gasto **no archivada** (ver `/api/expense-categories`).\n- **Ingreso:** `category` se fuerza a `Otros ingresos`.\n- `paymentMethod` es opcional: `Efectivo`, `Transferencia` o `Cheque`.\n- `dueDate` solo se guarda con `status: Pendiente` («por pagar» / «por cobrar»).\n\nResponde con el `_id` para subir la factura justo después (`POST /api/transactions/{id}/attachment`).\n\n**Acceso:** cualquier empleado autenticado del panel.",
         "security": [
           {
             "cookieAuth": []
@@ -6290,6 +6533,19 @@
               }
             }
           },
+          "400": {
+            "description": "Datos no válidos (concepto, tipo, monto, categoría, método de pago o fechas)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Elige la categoría del gasto"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           },
@@ -6308,8 +6564,8 @@
     "/api/transactions/{id}": {
       "put": {
         "tags": ["Transacciones"],
-        "summary": "Actualizar una transacción contable",
-        "description": "Actualiza la información de una transacción existente.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "summary": "Actualizar un movimiento manual",
+        "description": "Actualiza un movimiento manual aplicando las mismas validaciones que el alta (los campos que no se envíen se conservan). Un gasto puede conservar su categoría aunque esté archivada. Pasar a `Completado` registra `paidAt` y quita `dueDate`.\n\n`reference`, `relatedOrder` y `orderNumber` no se pueden cambiar. Las ventas de la tienda (las que tienen `relatedOrder` u `orderNumber`) solo se leen: nunca se editan, se borran ni admiten archivos desde el panel y responden 409.\n\n**Acceso:** cualquier empleado autenticado del panel.",
         "security": [
           {
             "cookieAuth": []
@@ -6350,11 +6606,50 @@
               }
             }
           },
+          "400": {
+            "description": "Datos no válidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "La categoría no existe"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           },
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Transacción no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Transacción no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Es una venta de la tienda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Las ventas de la tienda no se editan"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"
@@ -6367,7 +6662,7 @@
       "delete": {
         "tags": ["Transacciones"],
         "summary": "Eliminar una transacción contable",
-        "description": "Elimina el registro contable.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "description": "Elimina un movimiento manual y, si tenía factura adjunta, también la borra de Cloudinary. Las ventas de la tienda (las que tienen `relatedOrder` u `orderNumber`) solo se leen: nunca se editan, se borran ni admiten archivos desde el panel y responden 409.\n\n**Acceso:** cualquier empleado autenticado del panel.",
         "security": [
           {
             "cookieAuth": []
@@ -6403,6 +6698,594 @@
           },
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Transacción no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Transacción no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Es una venta de la tienda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Las ventas de la tienda no se eliminan"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/transactions/{id}/pay": {
+      "patch": {
+        "tags": ["Transacciones"],
+        "summary": "Marcar un movimiento como pagado",
+        "description": "Pone `status: Completado` y `paidAt` con la fecha actual, y borra `dueDate`. Si ya estaba completado no cambia nada. Las ventas de la tienda (las que tienen `relatedOrder` u `orderNumber`) solo se leen: nunca se editan, se borran ni admiten archivos desde el panel y responden 409.\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la transacción",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transacción pagada (o ya lo estaba)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Transaction paid"
+                    },
+                    "transaction": {
+                      "$ref": "#/components/schemas/Transaction"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Transacción no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Transacción no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Es una venta de la tienda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Las ventas de la tienda no se editan"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/transactions/{id}/attachment": {
+      "post": {
+        "tags": ["Transacciones"],
+        "summary": "Adjuntar o reemplazar la factura de un movimiento",
+        "description": "Sube la factura (imagen o PDF, hasta 10 MB) a Cloudinary (`industrias-charly/finanzas`) y la guarda en `attachment`. Las imágenes se limitan a 1600×1600 y se re-codifican a JPEG. Si ya había una factura, se borra de Cloudinary al guardar la nueva. Las ventas de la tienda no admiten archivos (409).\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la transacción",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Imagen o PDF de la factura (máx. 10 MB)"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transacción con la factura adjunta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No se envió archivo, no es imagen/PDF o pesa más de 10 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "La factura debe ser una imagen o un PDF"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Transacción no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Transacción no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Es una venta de la tienda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Las ventas de la tienda no admiten archivos"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Transacciones"],
+        "summary": "Quitar la factura de un movimiento",
+        "description": "Quita `attachment` y borra el archivo de Cloudinary. Las ventas de la tienda no admiten archivos (409).\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la transacción",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transacción sin factura",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Transacción no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Transacción no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Es una venta de la tienda",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Las ventas de la tienda no admiten archivos"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/expense-categories": {
+      "get": {
+        "tags": ["Categorías de gasto"],
+        "summary": "Listar las categorías de gasto",
+        "description": "Devuelve todas las categorías (activas y archivadas) ordenadas por `order` y luego por nombre. Con `?usage=AAAA-MM` cada una trae `usage` con lo `paid` (gastos completados), lo `pending` (por pagar), el `count` de movimientos y el `budget` vigente de ese mes, calculados con los gastos cuya `date` cae en ese mes (UTC).\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "usage",
+            "in": "query",
+            "required": false,
+            "description": "Mes \"AAAA-MM\" para calcular el uso",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de categorías",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpenseCategory"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mes con formato no válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El mes debe tener el formato AAAA-MM"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Categorías de gasto"],
+        "summary": "Crear una categoría de gasto",
+        "description": "Crea una categoría. Si `budget` es un número >= 0, queda un presupuesto vigente desde el mes actual. El nombre es único sin distinguir mayúsculas y no puede ser `Ventas` ni `Otros ingresos`.\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCategoryCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Categoría creada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseCategory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nombre vacío o reservado, icono/color fuera de la lista o presupuesto negativo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "El icono no es válido"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "409": {
+            "description": "Nombre duplicado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ya existe una categoría con ese nombre"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/expense-categories/budgets": {
+      "put": {
+        "tags": ["Categorías de gasto"],
+        "summary": "Guardar los presupuestos de un mes",
+        "description": "«Guardar cambios» de la pantalla: para cada item inserta o reemplaza la entrada de ese `month` en `budgets` (vigente desde ese mes en adelante). `amount` es un número >= 0, o `null` para quitar el presupuesto desde ese mes. Todo se guarda o nada. Solo se permite el mes actual o uno futuro. Responde con la lista de categorías con el `usage` de ese mes.\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCategoryBudgetsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Categorías con su uso del mes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpenseCategory"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mes no válido o pasado, monto negativo o items no válidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "No se puede cambiar el presupuesto de un mes pasado"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Alguna categoría no existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Categoría no encontrada"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/expense-categories/{id}": {
+      "put": {
+        "tags": ["Categorías de gasto"],
+        "summary": "Editar, archivar o restaurar una categoría",
+        "description": "Actualiza los campos que se envíen. No hay DELETE: las categorías se archivan (`archived: true`) y se restauran (`archived: false`); sus movimientos se conservan. Si cambia el nombre, los gastos que tenían el nombre anterior pasan al nuevo (todo o nada).\n\n**Acceso:** cualquier empleado autenticado del panel.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ObjectId de la categoría",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCategoryUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Categoría actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseCategory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nombre vacío o reservado, icono/color fuera de la lista u orden no válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "«Ventas» es un nombre reservado; elige otro"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "description": "Categoría no encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Categoría no encontrada"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nombre duplicado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "message": "Ya existe una categoría con ese nombre"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"

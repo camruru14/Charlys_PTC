@@ -14,6 +14,7 @@ import dailyBatchesRoutes from "./src/routes/dailyBatches.js";
 import employeesRoutes from "./src/routes/employees.js";
 import inventoryRoutes from "./src/routes/inventory.js";
 import transactionsRoutes from "./src/routes/transactions.js";
+import expenseCategoriesRoutes from "./src/routes/expenseCategories.js";
 import dashboardRoutes from "./src/routes/dashboard.js";
 import warehousesRoutes from "./src/routes/warehouses.js";
 import vehiclesRoutes from "./src/routes/vehicles.js";
@@ -21,7 +22,7 @@ import routesRoutes from "./src/routes/routes.js";
 import settingsRoutes from "./src/routes/settings.js";
 import productionLinesRoutes from "./src/routes/productionLines.js";
 import productsRoutes from "./src/routes/products.js";
-import { PRODUCT_IMAGE_MAX_MB } from "./src/lib/cloudinary.js";
+import { PRODUCT_IMAGE_MAX_MB, TRANSACTION_FILE_MAX_MB } from "./src/lib/cloudinary.js";
 
 // Cargar especificación OpenAPI 3.1.0
 const openapiDoc = JSON.parse(
@@ -124,6 +125,10 @@ app.use("/api/settings", validateAuthCookie(), settingsRoutes);
 // Finanzas (transacciones)
 app.use("/api/transactions", validateAuthCookie(), transactionsRoutes);
 
+// Categorías de gasto de Finanzas (Configuración › Categorías de gasto), con
+// su presupuesto mensual opcional
+app.use("/api/expense-categories", validateAuthCookie(), expenseCategoriesRoutes);
+
 // Resumen del Dashboard
 app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
 
@@ -145,7 +150,9 @@ app.use((err, _req, res, _next) => {
   const status = err.status || err.http_code || (isMulter ? 400 : 500);
   const message =
     err.code === "LIMIT_FILE_SIZE"
-      ? `La imagen no puede pesar más de ${err.field === "images" ? PRODUCT_IMAGE_MAX_MB : 5} MB`
+      ? err.field === "file"
+        ? `La factura no puede pesar más de ${TRANSACTION_FILE_MAX_MB} MB`
+        : `La imagen no puede pesar más de ${err.field === "images" ? PRODUCT_IMAGE_MAX_MB : 5} MB`
       : (isMulter && MULTER_MESSAGES[err.code]) || err.message || "Error interno del servidor.";
   res.status(status).json({ message });
 });

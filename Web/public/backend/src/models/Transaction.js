@@ -6,6 +6,19 @@ import { Schema, model } from "mongoose";
 // que registra el checkout aparece de inmediato en Finanzas del panel.
 // Si se modifica el esquema en el panel privado, este archivo debe
 // actualizarse igual.
+const PAYMENT_METHODS = ["Efectivo", "Transferencia", "Cheque", "Wompi"];
+
+const attachmentSchema = new Schema(
+  {
+    url: { type: String, required: true }, // secure_url de Cloudinary
+    publicId: { type: String, required: true }, // public_id (para poder borrarla)
+    resourceType: { type: String, default: "image" }, // resource_type con el que se subió
+    name: { type: String }, // nombre original del archivo
+    mimeType: { type: String },
+  },
+  { _id: false },
+);
+
 const transactionSchema = new Schema(
   {
     reference: { type: String, required: true, unique: true },
@@ -27,8 +40,22 @@ const transactionSchema = new Schema(
     // N° del pedido como texto: queda legible aunque el pedido se elimine (al
     // eliminarlo se quita relatedOrder y esto se conserva).
     orderNumber: { type: String },
+    // Método de pago. Las ventas de la tienda entran con "Wompi"; los
+    // movimientos manuales del panel usan Efectivo, Transferencia o Cheque.
+    paymentMethod: { type: String, enum: PAYMENT_METHODS },
+    // Vencimiento de lo «por pagar» / «por cobrar». Solo con status
+    // "Pendiente"; se borra al pasar a "Completado".
+    dueDate: { type: Date },
+    // Fecha en que se marcó como pagado.
+    paidAt: { type: Date },
+    // Factura adjunta (imagen o PDF en Cloudinary). No aplica a las ventas.
+    attachment: { type: attachmentSchema },
   },
   { timestamps: true },
 );
+
+// Una venta de la tienda (la crea sola el checkout) lleva el pedido o su N°.
+// Esas ventas no se editan, no se borran y no admiten archivos desde el panel.
+export const isStoreSale = (t) => Boolean(t?.relatedOrder || t?.orderNumber);
 
 export default model("Transaction", transactionSchema);

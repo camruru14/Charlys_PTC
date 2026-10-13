@@ -36,6 +36,7 @@ export async function recordSaleTransaction(order) {
     category: "Ventas",
     amount: order.total,
     status: "Completado",
+    paymentMethod: "Wompi",
     relatedOrder: order._id,
     orderNumber: order.orderNumber,
   });

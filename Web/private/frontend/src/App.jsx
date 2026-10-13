@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import PrivateRoute from "./components/PrivateRoute";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
@@ -12,7 +12,6 @@ import Inventario from "./pages/Inventario";
 import Catalogo from "./pages/Catalogo";
 import Empleados from "./pages/Empleados";
 import Finanzas from "./pages/Finanzas";
-import HistorialTransacciones from "./pages/HistorialTransacciones";
 import Configuracion from "./pages/Configuracion";
 import NotFound from "./pages/NotFound";
 
@@ -30,7 +29,8 @@ function App() {
           <Route path="/fabricacion" element={<Fabricacion />} />
           <Route path="/fabricacion/historial" element={<HistorialLotesFabricacion />} />
           <Route path="/finanzas" element={<Finanzas />} />
-          <Route path="/historial-transacciones" element={<HistorialTransacciones />} />
+          {/* El historial de transacciones se unió al libro de Finanzas: se conservan los enlaces viejos. */}
+          <Route path="/historial-transacciones" element={<Navigate to="/finanzas" replace />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/logistica" element={<Logistica />} />
           <Route path="/inventario" element={<Inventario />} />

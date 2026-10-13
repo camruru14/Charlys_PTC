@@ -1,267 +1,181 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
+import { useFillHeight } from "../hooks/useFillHeight";
 import { useDateRange } from "../context/dateRange";
-import KpiCard from "../components/ui/KpiCard";
-import Modal from "../components/ui/Modal";
 import ConfirmModal from "../components/ui/ConfirmModal";
-import Button from "../components/ui/Button";
-import SearchInput from "../components/ui/SearchInput";
-import { Field, SelectField, FilterSelect, ReadonlyField } from "../components/ui/Field";
-import { AsyncState } from "../components/ui/SectionCard";
-import PagedSection from "../components/ui/PagedSection";
-import MonthlyChart from "../components/finance/MonthlyChart";
-import TransactionTable from "../components/transactions/TransactionTable";
-import { defaultTransactionFilters, filterTransactions, inRange, txDateParts } from "../lib/transactionFilters";
-import { todayInput } from "../hooks/useBatchForm";
-import { blockNegativeKey } from "../lib/numberInput";
-import { IconPlus } from "../lib/icons";
-import { buttonClass } from "../lib/buttonStyles";
-import { fmtMoney, fmtMonth, fmtNumber } from "../lib/format";
 import PageHeader from "../components/ui/PageHeader";
-import { getPageMeta } from "../lib/nav";
 import DateRangePicker from "../components/ui/DateRangePicker";
+import QuickEntry from "../components/finance/QuickEntry";
+import CategoryPanel from "../components/finance/CategoryPanel";
+import Ledger from "../components/finance/Ledger";
+import TransactionModal from "../components/finance/TransactionModal";
+import { categoryTone, useExpenseCategories } from "../lib/expenseCategories";
+import { buildLedger, filterLedger, ledgerSummary, OTHER_INCOME, SALES_CATEGORY, transactionsCsv } from "../lib/finance";
+import { dayKey, inRange, statusLabel } from "../lib/transactionFilters";
+import { getPageMeta } from "../lib/nav";
 
-const TYPES = ["Ingreso", "Gasto"];
-const STATUSES = ["Pendiente", "Completado"];
-const CATEGORIES = ["Materia Prima", "Logística", "Mantenimiento", "Planilla", "Servicios", "Ventas", "Otros"];
-const CHART_MONTHS = 6;
-
-const filterSelectClass =
-  "h-9 min-w-[124px] rounded-[10px] border border-line bg-surface px-3 text-[12.5px] font-semibold text-ink-2 hover:bg-surface-2";
-
-const emptyForm = {
-  reference: "", concept: "", type: "Ingreso", category: "Ventas",
-  amount: "", status: "Completado", date: "",
-};
-
-const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-
-// Vista previa del próximo N° de transacción (el backend genera el definitivo al guardar)
-function previewReference(list) {
-  const prefix = `TRAN-${new Date().getFullYear()}-`;
-  const lastNumber = list.reduce((max, t) => {
-    if (!t.reference?.startsWith(prefix)) return max;
-    const n = parseInt(t.reference.slice(prefix.length), 10);
-    return Number.isNaN(n) ? max : Math.max(max, n);
-  }, 0);
-  return `${prefix}${String(lastNumber + 1).padStart(4, "0")}`;
+// Desde este ancho (xl) el panel y el libro van lado a lado y llenan el alto de la
+// página; más angosto se apilan y la página hace scroll.
+function useWideLayout() {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1280px)");
+    const update = () => setWide(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return wide;
 }
 
-// Ingresos y gastos de los últimos seis meses calendario (el actual incluido),
-// sin importar el rango elegido. txDateParts lee `date` en UTC (fecha sin hora).
-function lastMonths(list) {
-  const now = new Date();
-  return Array.from({ length: CHART_MONTHS }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (CHART_MONTHS - 1 - i), 1);
-    const y = d.getFullYear();
-    const m = d.getMonth();
-    let income = 0;
-    let expense = 0;
-    for (const t of list) {
-      const parts = txDateParts(t);
-      if (!parts || parts.y !== y || parts.m !== m) continue;
-      if (t.type === "Ingreso") income += Number(t.amount) || 0;
-      else expense += Number(t.amount) || 0;
-    }
-    return {
-      key: `${y}-${m}`,
-      label: capitalize(fmtMonth(d).slice(0, 3)),
-      title: `${capitalize(fmtMonth(d))} ${y}`,
-      income,
-      expense,
-      current: i === CHART_MONTHS - 1,
-    };
-  });
-}
+// Cuánto tiempo se resalta en verde el movimiento recién registrado.
+const HIGHLIGHT_MS = 4000;
 
+/*
+  Finanzas: registro rápido arriba; abajo, a la izquierda, los gastos por
+  categoría contra el presupuesto y, a la derecha, el libro de movimientos por
+  día. Las ventas de la tienda entran solas y no se editan ni se borran; todo
+  lo demás se anota a mano. Las categorías vienen de /expense-categories
+  (Configuración › Categorías de gasto).
+*/
 function Finanzas() {
-  const navigate = useNavigate();
-  const { confirm, confirmProps } = useConfirm();
   const range = useDateRange();
+  const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/transactions");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
+  const { categories, loading: categoriesLoading, error: categoriesError } = useExpenseCategories();
+
+  const [tab, setTab] = useState("todos");
+  const [category, setCategory] = useState("");
   const [query, setQuery] = useState("");
-  const [type, setType] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+  const gridRef = useRef(null);
+  const wide = useWideLayout();
+  const gridHeight = useFillHeight(gridRef, wide);
+  const timer = useRef(null);
+  const now = new Date();
+
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   const raw = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const categoryByName = useMemo(() => new Map(categories.map((c) => [c.name, c])), [categories]);
 
-  // Transacciones dentro del rango de fechas (KPIs); "Todo" = sin rango.
-  const rangeList = useMemo(() => raw.filter((t) => inRange(t, range)), [raw, range]);
+  // Lo que se ve en el libro: rango + pestaña + categoría + búsqueda.
+  const list = useMemo(() => filterLedger(raw, { range, tab, category, query }), [raw, range, tab, category, query]);
+  const ledger = useMemo(() => buildLedger(list), [list]);
+  const summary = useMemo(() => ledgerSummary(raw, range), [raw, range]);
+  const pendingCount = useMemo(() => raw.filter((t) => t.status === "Pendiente" && inRange(t, range)).length, [raw, range]);
 
-  // Rango + buscador + tipo (tabla)
-  const tableList = useMemo(
-    () => filterTransactions(raw, { ...defaultTransactionFilters, q: query.trim(), type }, range),
-    [raw, query, type, range],
-  );
+  // «Todas las categorías» + las de gasto (con su color) + las de ingreso que ya tienen movimientos.
+  const categoryOptions = useMemo(() => {
+    const used = new Set(raw.map((t) => t.category));
+    const options = [{ value: "", label: "Todas las categorías" }];
+    for (const c of categories) {
+      if (c.archived && !used.has(c.name)) continue;
+      options.push({ value: c.name, label: c.archived ? `${c.name} (archivada)` : c.name, dot: categoryTone(c.color).dot });
+    }
+    options.push({ value: OTHER_INCOME, label: OTHER_INCOME, dot: categoryTone("green").dot });
+    if (used.has(SALES_CATEGORY)) options.push({ value: SALES_CATEGORY, label: SALES_CATEGORY, dot: categoryTone("green").dot });
+    return options;
+  }, [categories, raw]);
 
-  const kpis = useMemo(() => {
-    const sum = (list) => list.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    const income = sum(rangeList.filter((t) => t.type === "Ingreso"));
-    const expense = sum(rangeList.filter((t) => t.type === "Gasto"));
-    // Lo que todavía no se ha cobrado ni pagado (transacciones «Pendiente»).
-    const pendingList = rangeList.filter((t) => t.status === "Pendiente");
-    const pendingOrders = new Set(pendingList.map((t) => t.relatedOrder?._id || t.relatedOrder).filter(Boolean).map(String));
-    return { income, expense, net: income - expense, pending: sum(pendingList), pendingOrders: pendingOrders.size };
-  }, [rangeList]);
-
-  const months = useMemo(() => lastMonths(raw), [raw]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
-  };
-
-  function openCreate() {
-    setEditingId(null);
-    setForm({ ...emptyForm, reference: previewReference(raw), date: todayInput() });
-    setModalOpen(true);
+  function handleSaved(id) {
+    refetch();
+    if (!id) return;
+    setHighlightId(id);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
   }
 
-  function openEdit(t) {
-    setEditingId(t._id);
-    setForm({
-      reference: t.reference || "",
-      concept: t.concept || "",
-      type: t.type || "Ingreso",
-      category: t.category || "Ventas",
-      amount: t.amount ?? "",
-      status: t.status || "Completado",
-      date: t.date ? new Date(t.date).toISOString().slice(0, 10) : "",
-    });
-    setModalOpen(true);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    const payload = { ...form, amount: Number(form.amount) || 0, date: form.date || undefined };
+  async function handlePay(t) {
     try {
-      if (editingId) {
-        await api.put(`/transactions/${editingId}`, payload);
-        toast.success("Transacción actualizada");
-      } else {
-        const res = await api.post("/transactions", payload);
-        toast.success(res?.reference ? `Transacción ${res.reference} registrada` : "Transacción registrada");
-      }
-      setModalOpen(false);
+      await api.patch(`/transactions/${t._id}/pay`);
+      toast.success(`${t.reference} marcado como pagado`);
       refetch();
     } catch (err) {
       toast.error(err.message);
-    } finally {
-      setSaving(false);
     }
   }
 
   async function handleDelete(t) {
-    if (!(await confirm(`¿Eliminar la transacción ${t.reference}?`, { danger: true }))) return;
+    if (!(await confirm(`¿Eliminar «${t.concept}» (${t.reference})? Si tiene factura adjunta, también se borra.`, { danger: true }))) return;
     try {
       await api.del(`/transactions/${t._id}`);
-      toast.success("Transacción eliminada");
+      toast.success("Movimiento eliminado");
       refetch();
     } catch (err) {
       toast.error(err.message);
     }
   }
 
-  const netPositive = kpis.net > 0;
-  const netNegative = kpis.net < 0;
+  function handleExport() {
+    if (!list.length) return toast.error("No hay movimientos para exportar");
+    const blob = new Blob([transactionsCsv(list, (t) => statusLabel(t, now))], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `movimientos-${dayKey(now)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // «Ver octubre»: el mes en curso completo, para ver los presupuestos.
+  function seeCurrentMonth() {
+    range.setMonths(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0), new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+  }
 
   return (
     <div className="flex flex-col gap-3.5">
-      <PageHeader
-        {...getPageMeta("/finanzas")}
-        actions={
-          <>
-            <DateRangePicker />
-            <Button icon={IconPlus} onClick={openCreate}>
-              Nueva transacción
-            </Button>
-          </>
-        }
-      />
+      <PageHeader {...getPageMeta("/finanzas")} actions={<DateRangePicker />} />
 
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Ingresos" value={fmtMoney(kpis.income, 0)} note="en el rango" />
-        <KpiCard label="Gastos" value={fmtMoney(kpis.expense, 0)} note="en el rango" />
-        <KpiCard
-          label="Rentabilidad neta"
-          value={`${netPositive ? "+" : netNegative ? "−" : ""}${fmtMoney(Math.abs(kpis.net), 0)}`}
-          valueClassName={netPositive ? "!text-tone-green-text" : netNegative ? "!text-tone-rose-text" : ""}
-          note={netPositive ? "positiva" : netNegative ? "negativa" : "en el rango"}
-          noteTone={netPositive ? "green" : netNegative ? "rose" : undefined}
+      <QuickEntry categories={categories} onSaved={handleSaved} />
+
+      <div
+        ref={gridRef}
+        style={{ height: wide ? (gridHeight ?? undefined) : undefined }}
+        className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-cols-[350px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)]"
+      >
+        <CategoryPanel
+          transactions={raw}
+          categories={categories}
+          range={range}
+          selected={category}
+          onSelect={setCategory}
+          onSeeMonth={seeCurrentMonth}
+          loading={loading || categoriesLoading}
+          error={error || categoriesError}
+          now={now}
         />
-        <KpiCard
-          label="Por cobrar / pagar"
-          value={fmtMoney(kpis.pending, 0)}
-          valueClassName="!text-tone-amber-text"
-          note={`${fmtNumber(kpis.pendingOrders)} ${kpis.pendingOrders === 1 ? "pedido" : "pedidos"}`}
-          noteTone="amber"
+        <Ledger
+          rows={ledger.rows}
+          days={ledger.days}
+          summary={summary}
+          categoryByName={categoryByName}
+          categoryOptions={categoryOptions}
+          tab={tab}
+          onTab={setTab}
+          pendingCount={pendingCount}
+          category={category}
+          onCategory={setCategory}
+          query={query}
+          onQuery={setQuery}
+          onExport={handleExport}
+          highlightId={highlightId}
+          onEdit={setEditing}
+          onPay={handlePay}
+          onDelete={handleDelete}
+          resetKey={`${tab}|${category}|${query}|${range.from}|${range.to}`}
+          loading={loading}
+          error={error}
+          now={now}
         />
       </div>
 
-      <AsyncState loading={loading} error={error}>
-        <MonthlyChart months={months} selected={selectedMonth} onSelect={setSelectedMonth} />
-      </AsyncState>
-
-      <PagedSection
-        title="Transacciones"
-        action={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <SearchInput value={query} onChange={setQuery} placeholder="Concepto o referencia" className="w-[220px]" />
-            <FilterSelect
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className={filterSelectClass}
-              options={[{ value: "", label: "Tipo: todos" }, ...TYPES.map((t) => ({ value: t, label: t }))]}
-            />
-            <Button variant="soft" size="detail" onClick={() => navigate("/historial-transacciones")}>
-              Ver historial
-            </Button>
-          </div>
-        }
-        items={tableList}
-        rowHeight={42}
-        resetKey={`${query}|${type}|${range.from}|${range.to}`}
-        noun="transacciones"
-        loading={loading}
-        error={error}
-      >
-        {(rows) => <TransactionTable transactions={rows} onEdit={openEdit} onDelete={handleDelete} />}
-      </PagedSection>
-
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingId ? "Editar transacción" : "Nueva transacción"}
-        size="lg"
-        footer={
-          <>
-            <button onClick={() => setModalOpen(false)} className={buttonClass("secondary", "modal")}>Cancelar</button>
-            <button type="submit" form="trx-form" disabled={saving} className={buttonClass("primary", "modal")}>{saving ? "Guardando…" : "Guardar"}</button>
-          </>
-        }
-      >
-        <form id="trx-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <ReadonlyField label="N° de transacción" value={form.reference} />
-          </div>
-          <Field label="Concepto" name="concept" value={form.concept} onChange={handleChange} required />
-          <SelectField label="Tipo" name="type" value={form.type} onChange={handleChange} options={TYPES} required />
-          <SelectField label="Categoría" name="category" value={form.category} onChange={handleChange} options={CATEGORIES} />
-          <Field label="Monto ($)" name="amount" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} value={form.amount} onChange={handleChange} required />
-          <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={STATUSES} />
-          <Field label="Fecha" name="date" type="date" value={form.date} onChange={handleChange} />
-        </form>
-      </Modal>
-
+      {editing ? <TransactionModal transaction={editing} categories={categories} onClose={() => setEditing(null)} onSaved={refetch} /> : null}
       <ConfirmModal {...confirmProps} />
     </div>
   );

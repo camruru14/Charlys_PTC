@@ -1,90 +1,66 @@
 /*
-  Utilidades de búsqueda y filtrado para las transacciones (Finanzas).
-  Se usan en la card de Finanzas y en la página Historial de Transacciones.
+  Utilidades de los movimientos de Finanzas (transacciones): reconocer una
+  venta de la tienda, el estado que se ve en pantalla y las fechas. Las usa
+  la página Finanzas (registro rápido, panel por categoría y libro).
 */
 import { fromDateOnly } from "./format";
 
-export const defaultTransactionFilters = {
-  q: "", // texto: concepto, referencia, categoría
-  type: "", // Ingreso | Gasto
-  category: "", // categoría exacta
-  status: "", // estado exacto
-  minAmount: "", // monto mínimo
-  maxAmount: "", // monto máximo
-};
-
-// Fecha efectiva de una transacción.
-export function txDate(t) {
-  return t.date || t.createdAt;
+// Venta de la tienda: la crea sola el checkout (lleva el pedido o su N°). No se
+// edita, no se borra y no admite facturas desde el panel.
+export function isStoreSale(t) {
+  return Boolean(t?.relatedOrder || t?.orderNumber);
 }
 
-// Componentes de fecha (año/mes/día) de una transacción, para agrupar por
-// día/mes (ej. gráficas de Finanzas) sin correrla un día en husos detrás de UTC.
-// "date" se guarda como medianoche UTC (fecha sin hora), así que se lee en UTC.
-// "createdAt" (fallback) sí es un instante real, por eso ese se lee en hora local.
-export function txDateParts(t) {
-  const raw = txDate(t);
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+// Día de calendario de un movimiento, a las 00:00 locales. Un movimiento
+// manual guarda "date" como medianoche UTC (fecha sin hora): se pasa a la
+// medianoche local del mismo día. Una venta de la tienda guarda el instante
+// real del pago: se lee en hora local.
+export function txDay(t) {
+  const raw = t.date || t.createdAt;
   if (!raw) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  if (t.date) {
-    return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(), time: d.getTime() };
+  if (isStoreSale(t) || !t.date) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : startOfDay(d);
   }
-  return { y: d.getFullYear(), m: d.getMonth(), day: d.getDate(), time: d.getTime() };
+  return fromDateOnly(t.date);
 }
 
-// Fecha de una transacción para compararla con un rango del selector (que
-// está en hora local). "date" es medianoche UTC (fecha sin hora): leída tal
-// cual, en El Salvador (UTC-6) cae el día anterior a las 18:00, así que se
-// pasa a la medianoche local del mismo día. "createdAt" (fallback) es un
-// instante real y se usa tal cual. null si no hay fecha válida.
+// «2026-10-12» del día de calendario (hora local), para agrupar y comparar.
+export function dayKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// Fecha de un movimiento para compararla con un rango del selector (que está
+// en hora local). null si no hay fecha válida.
 export function txRangeDate(t) {
-  if (t.date) return fromDateOnly(t.date);
-  const d = new Date(t.createdAt);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (isStoreSale(t) && t.date) {
+    const d = new Date(t.date);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return txDay(t);
 }
 
-// ¿La transacción cae dentro del rango? Sin rango («Todo») o sin fecha
-// válida, cuenta (mismo criterio que antes).
+// ¿El movimiento cae dentro del rango? Sin rango («Todo») o sin fecha válida,
+// cuenta.
 export function inRange(t, range) {
   if (!range?.from || !range?.to) return true;
   const d = txRangeDate(t);
   return !d || (d >= range.from && d <= range.to);
 }
 
-// Opciones únicas presentes (para los desplegables de filtro).
-export function transactionFilterOptions(list = []) {
-  const uniq = (key) => [...new Set(list.map((t) => t[key]).filter(Boolean))].sort();
-  return {
-    types: uniq("type"),
-    categories: uniq("category"),
-    statuses: uniq("status"),
-  };
+// Vencimiento de un movimiento pendiente (a las 00:00 locales), o null.
+export function dueDay(t) {
+  return t.dueDate ? fromDateOnly(t.dueDate) : null;
 }
 
-/*
-  Filtra por rango de fechas (opcional) + filtros de texto/campos.
-*/
-export function filterTransactions(list = [], filters = defaultTransactionFilters, range = null) {
-  return list.filter((t) => {
-    if (!inRange(t, range)) return false;
-
-    if (filters.q) {
-      const q = filters.q.toLowerCase();
-      const haystack = [t.concept, t.reference, t.category]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-
-    if (filters.type && t.type !== filters.type) return false;
-    if (filters.category && t.category !== filters.category) return false;
-    if (filters.status && t.status !== filters.status) return false;
-
-    if (filters.minAmount !== "" && (t.amount || 0) < Number(filters.minAmount)) return false;
-    if (filters.maxAmount !== "" && (t.amount || 0) > Number(filters.maxAmount)) return false;
-
-    return true;
-  });
+// Estado que se ve en pantalla (en la base siguen siendo Pendiente y Completado):
+//   Completado -> «Pagado» · Pendiente -> «Por pagar» (gasto) o «Por cobrar»
+//   (ingreso) · Pendiente con el vencimiento ya pasado -> «Vencido».
+export function statusLabel(t, now = new Date()) {
+  if (t.status !== "Pendiente") return "Pagado";
+  const due = dueDay(t);
+  if (due && due < startOfDay(now)) return "Vencido";
+  return t.type === "Ingreso" ? "Por cobrar" : "Por pagar";
 }

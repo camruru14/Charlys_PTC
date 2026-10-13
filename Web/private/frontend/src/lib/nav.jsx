@@ -92,11 +92,6 @@ export const EXTRA_META = [
     title: "Historial de Lotes",
     subtitle: "Todos los lotes con búsqueda, filtros y rango de fechas",
   },
-  {
-    to: "/historial-transacciones",
-    title: "Historial de Transacciones",
-    subtitle: "Todas las transacciones con búsqueda, filtros y rango de fechas",
-  },
 ];
 
 // Devuelve el encabezado (title/subtitle) que corresponde a una ruta. Cada

@@ -6,9 +6,11 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useUrlState } from "../hooks/useUrlState";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import { useProductionLines } from "../hooks/useProductionLines";
+import { budgetChanges, monthKey, useExpenseCategories } from "../lib/expenseCategories";
 import { useAuth } from "../hooks/useAuth";
 import LineasProduccion from "./configuracion/LineasProduccion";
 import Vehiculos from "./configuracion/Vehiculos";
+import CategoriasGasto from "./configuracion/CategoriasGasto";
 import PersonalPermisos from "./configuracion/PersonalPermisos";
 import MiCuenta from "./configuracion/MiCuenta";
 import ConfirmPasswordModal from "./configuracion/ConfirmPasswordModal";
@@ -70,7 +72,7 @@ function clearLegacyCompany() {
 
 // ?tab= de cada sección del menú. «usuarios» (el nombre anterior de Personal
 // y permisos) cae en Empresa.
-const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "personal", "cuenta"];
+const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "categorias", "personal", "cuenta"];
 
 // Mi cuenta: teléfono y DUI, más el cambio de correo o contraseña (que pide la actual).
 const emptyAccountForm = { phone: "", dui: "", newEmail: "", newPassword: "" };
@@ -124,13 +126,14 @@ function fmtSince(value, now) {
   estado al pie: empresa, versión del panel y la última vez que se guardó la
   ficha de la empresa.
 */
-function SectionMenu({ value, onChange, counts, companyName, updatedAt }) {
+function SectionMenu({ value, onChange, counts, pending = {}, companyName, updatedAt }) {
   const now = useNow();
   const items = [
     { key: "empresa", label: "Empresa", icon: IconBuilding },
     { key: "bodegas", label: "Bodegas", icon: IconBox, count: counts.bodegas },
     { key: "vehiculos", label: "Vehículos", icon: IconTruck, count: counts.vehiculos },
     { key: "lineas", label: "Líneas de producción", icon: IconFactory, count: counts.lineas },
+    { key: "categorias", label: "Categorías de gasto", icon: IconTag, count: counts.categorias },
     { key: "personal", label: "Personal y permisos", icon: IconUsers, count: counts.personal },
     { key: "cuenta", label: "Mi cuenta", icon: IconUser },
   ];
@@ -150,7 +153,10 @@ function SectionMenu({ value, onChange, counts, companyName, updatedAt }) {
                 active ? "bg-primary-soft font-semibold text-primary-soft-text" : "font-medium text-ink-2 hover:bg-surface-2"
               }`}
             >
-              <Icon width={16} height={16} className="shrink-0" />
+              <span className="relative shrink-0">
+                <Icon width={16} height={16} />
+                {pending[key] ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-tone-amber-dot ring-2 ring-surface" title="Cambios sin guardar" aria-label="Cambios sin guardar" /> : null}
+              </span>
               <span className="min-w-0 flex-1 truncate">{label}</span>
               {count != null ? <span className="text-[12px] tabular-nums text-muted">{fmtNumber(count)}</span> : null}
             </button>
@@ -227,6 +233,8 @@ function Configuracion() {
   const { data: availability, refetch: refetchAvailability } = useFetch("/routes/availability");
   const { schedule, loading: scheduleLoading, refetch: refetchSchedule } = useWorkSchedule();
   const { lines, loading: linesLoading, error: linesError, refetch: refetchLines } = useProductionLines();
+  // Categorías de gasto con su uso del mes en curso (Finanzas las lee sin `usage`).
+  const { categories, loading: categoriesLoading, error: categoriesError, refetch: refetchCategories, mutate: mutateCategories } = useExpenseCategories({ usage: monthKey(new Date()) });
   const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useFetch("/employees");
   const { data: account, loading: accountLoading, error: accountError, mutate: mutateAccount } = useFetch("/auth/me");
   // Contraseña propia desencriptada, para el ojo de Mi cuenta: { password, legacy }.
@@ -246,6 +254,9 @@ function Configuracion() {
   // Modal que pide la contraseña actual al guardar un cambio de correo o contraseña: { value, error } | null.
   const [passwordPrompt, setPasswordPrompt] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Presupuestos de categorías editados y sin guardar ({ [id]: texto }); se guardan
+  // desde la barra de la propia sección y sobreviven al cambiar de sección.
+  const [budgetDraft, setBudgetDraft] = useState({});
   const [uploadingLogo, setUploadingLogo] = useState(false);
   // Modal «Nueva bodega».
   const [warehouseModal, setWarehouseModal] = useState(false);
@@ -540,7 +551,14 @@ function Configuracion() {
         <SectionMenu
           value={section}
           onChange={setSection}
-          counts={{ bodegas: warehouses.length, vehiculos: vehicles.length, lineas: lines.length, personal: employees.length }}
+          counts={{
+            bodegas: warehouses.length,
+            vehiculos: vehicles.length,
+            lineas: lines.length,
+            categorias: categories.filter((c) => !c.archived).length,
+            personal: employees.length,
+          }}
+          pending={{ categorias: budgetChanges(categories, budgetDraft).length > 0 }}
           companyName={savedCompany.name || DEFAULT_COMPANY.name}
           updatedAt={savedCompany.updatedAt}
         />
@@ -634,6 +652,16 @@ function Configuracion() {
             />
           ) : section === "lineas" ? (
             <LineasProduccion lines={lines} loading={linesLoading} error={linesError} refetch={refetchLines} />
+          ) : section === "categorias" ? (
+            <CategoriasGasto
+              categories={categories}
+              loading={categoriesLoading}
+              error={categoriesError}
+              refetch={refetchCategories}
+              mutate={mutateCategories}
+              draft={budgetDraft}
+              setDraft={setBudgetDraft}
+            />
           ) : section === "personal" ? (
             <PersonalPermisos employees={employees} loading={employeesLoading} error={employeesError} refetch={refetchEmployees} />
           ) : (

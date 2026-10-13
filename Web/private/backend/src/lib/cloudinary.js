@@ -102,4 +102,43 @@ export function uploadProductImageBuffer(buffer) {
   });
 }
 
+// Factura de un movimiento de Finanzas: una imagen o un PDF de hasta 10 MB
+// (campo "file").
+export const TRANSACTION_FILE_MAX_MB = 10;
+
+export const uploadTransactionFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: TRANSACTION_FILE_MAX_MB * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype?.startsWith("image/") || file.mimetype === "application/pdf") return cb(null, true);
+    const error = new Error("La factura debe ser una imagen o un PDF");
+    error.status = 400;
+    cb(error);
+  },
+});
+
+// ¿El buffer es un PDF? Por su firma "%PDF" o, si no, por la extensión.
+const isPdf = (buffer, originalName) => buffer.subarray(0, 4).toString("latin1") === "%PDF" || /\.pdf$/i.test(originalName || "");
+
+// Sube el buffer a "industrias-charly/finanzas". Con resource_type "image"
+// también el PDF queda con una URL que el navegador puede abrir. Las imágenes
+// se limitan a 1600×1600 y se re-codifican a JPEG (HEIC de iPhone incluido),
+// como las de los productos; el PDF se sube tal cual, sin transformación.
+// Devuelve el resultado de Cloudinary: guardar `secure_url`, `public_id` y
+// `resource_type` (hace falta para borrarlo después).
+export function uploadTransactionFileBuffer(buffer, originalName) {
+  const options = isPdf(buffer, originalName)
+    ? { folder: "industrias-charly/finanzas", resource_type: "image" }
+    : {
+        folder: "industrias-charly/finanzas",
+        resource_type: "image",
+        format: "jpg",
+        transformation: [{ width: 1600, height: 1600, crop: "limit" }],
+      };
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => (error ? reject(error) : resolve(result)));
+    stream.end(buffer);
+  });
+}
+
 export default cloudinary;
