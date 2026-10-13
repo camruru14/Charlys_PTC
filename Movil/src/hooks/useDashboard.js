@@ -1,15 +1,15 @@
 import { useApi } from "./useApi";
 
-// GET /dashboard (private/backend): resumen de KPIs, alertas, mezcla de
+// GET /dashboard/mobile (private/backend): resumen de KPIs, alertas, mezcla de
 // producción y lotes recientes para DashboardScreen. `range` (Fase 11)
-// agrega los mismos query params from/to que ya usa
-// Web/private/frontend/src/pages/Dashboard.jsx — el filtrado real lo hace
-// el backend; "Todo" (sin range) sigue pegándole a /dashboard tal cual.
+// agrega los query params from/to — el filtrado real lo hace el backend;
+// "Todo" (sin range) sigue pegándole a /dashboard/mobile tal cual.
+// (/dashboard, sin «mobile», es ahora el resumen ejecutivo del Dashboard web.)
 export function useDashboard(range) {
   const path =
     range?.from && range?.to
-      ? `/dashboard?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
-      : "/dashboard";
+      ? `/dashboard/mobile?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
+      : "/dashboard/mobile";
   const { data, loading, refreshing, error, refresh } = useApi(path);
 
   return {

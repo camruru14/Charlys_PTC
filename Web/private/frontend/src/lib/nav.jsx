@@ -17,7 +17,7 @@ export const NAV_ITEMS = [
     label: "Dashboard",
     icon: IconDashboard,
     title: "Dashboard",
-    subtitle: "Resumen global de producción, ventas y operaciones",
+    subtitle: "Cómo va la empresa este mes",
   },
   {
     to: "/fabricacion",

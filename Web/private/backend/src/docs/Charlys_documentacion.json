@@ -1818,6 +1818,267 @@
       "DashboardSummary": {
         "type": "object",
         "properties": {
+          "range": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "example": "2026-10-01T06:00:00.000Z",
+                "description": "Inicio del rango (medianoche local de El Salvador)."
+              },
+              "to": {
+                "type": "string",
+                "example": "2026-11-01T05:59:59.999Z",
+                "description": "Fin del rango."
+              },
+              "previousFrom": {
+                "type": "string",
+                "nullable": true,
+                "example": "2026-09-01T06:00:00.000Z"
+              },
+              "previousTo": {
+                "type": "string",
+                "nullable": true,
+                "example": "2026-09-14T05:59:59.999Z"
+              },
+              "all": {
+                "type": "boolean",
+                "description": "true si no se pidió rango («Todo»): se usan los últimos 12 meses calendario."
+              },
+              "granularity": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week"
+                ],
+                "description": "Casilleros de `sparks`: por día, o por semana si el rango pasa de 62 días."
+              }
+            },
+            "description": "Rango resuelto y período anterior. El anterior es el de la misma duración justo antes; si el rango es un mes calendario completo, se compara contra el mes anterior (el mismo número de días si el mes está en curso). Sin rango, el anterior es null."
+          },
+          "kpis": {
+            "type": "object",
+            "properties": {
+              "sales": {
+                "type": "number",
+                "example": 8420.5,
+                "description": "Ingresos de ventas de la tienda (transacciones Ingreso Completado con pedido)."
+              },
+              "salesPrevious": {
+                "type": "number",
+                "nullable": true,
+                "example": 7800,
+                "description": "Ventas del período anterior (null sin rango)."
+              },
+              "net": {
+                "type": "number",
+                "example": 2780.25,
+                "description": "Ingresos completados − gastos completados del rango."
+              },
+              "netPrevious": {
+                "type": "number",
+                "nullable": true,
+                "example": 2100
+              },
+              "margin": {
+                "type": "number",
+                "nullable": true,
+                "example": 0.33,
+                "description": "net / ingresos (null si no hubo ingresos)."
+              },
+              "unitsProduced": {
+                "type": "number",
+                "example": 45500,
+                "description": "Suma de producedQuantity de los lotes del rango (fecha efectiva startDate || createdAt)."
+              },
+              "unitsTarget": {
+                "type": "number",
+                "example": 52000,
+                "description": "Suma de targetQuantity de esos lotes."
+              },
+              "delivered": {
+                "type": "number",
+                "example": 31,
+                "description": "Pedidos entregados en el rango (delivery.deliveredAt)."
+              },
+              "deliveredOnTime": {
+                "type": "number",
+                "example": 28,
+                "description": "Entregados a tiempo: su dispatchStatus no fue «Demorado» y su ruta no quedó `delayed`."
+              },
+              "avgDeliveryDays": {
+                "type": "number",
+                "example": 2.4,
+                "description": "Promedio de días entre createdAt y la entrega."
+              }
+            }
+          },
+          "sparks": {
+            "type": "object",
+            "properties": {
+              "sales": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "description": "Ventas por día (o semana) del rango, hasta hoy."
+              },
+              "net": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "units": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "onTime": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "description": "% de entregas a tiempo por casillero; null si no hubo entregas."
+              }
+            },
+            "description": "Series para las mini gráficas."
+          },
+          "monthly": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "type": "string",
+                  "example": "2026-10",
+                  "description": "AAAA-MM"
+                },
+                "income": {
+                  "type": "number",
+                  "example": 9100,
+                  "description": "Ingresos completados del mes (ventas y otros ingresos)."
+                },
+                "expense": {
+                  "type": "number",
+                  "example": 6300,
+                  "description": "Gastos completados del mes."
+                },
+                "partial": {
+                  "type": "boolean",
+                  "description": "true si el mes no ha terminado."
+                }
+              }
+            },
+            "description": "12 meses calendario que terminan en el mes de `to`."
+          },
+          "salesByProduct": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product": {
+                  "type": "string",
+                  "example": "Pajilla jumbo"
+                },
+                "amount": {
+                  "type": "number",
+                  "example": 3200
+                },
+                "orders": {
+                  "type": "integer",
+                  "example": 14
+                }
+              }
+            },
+            "description": "Líneas de los pedidos del rango (createdAt) por producto: los 5 mayores y «Otros»."
+          },
+          "salesOrders": {
+            "type": "integer",
+            "example": 31,
+            "description": "Pedidos distintos con líneas en el rango (el total que acompaña a `salesByProduct`)."
+          },
+          "dailyProduction": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "example": "2026-10-12",
+                  "description": "AAAA-MM-DD"
+                },
+                "produced": {
+                  "type": "number",
+                  "example": 21000
+                },
+                "target": {
+                  "type": "number",
+                  "example": 21000
+                }
+              }
+            },
+            "description": "Un elemento por día con lotes en el rango; target = suma de targetQuantity de ese día."
+          },
+          "activeOrders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "Empacado"
+                },
+                "count": {
+                  "type": "integer",
+                  "example": 4
+                }
+              }
+            },
+            "description": "Pedidos NO entregados ahora mismo (sin importar el rango), en el orden del sistema."
+          },
+          "expensesByCategory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "example": "Combustible"
+                },
+                "amount": {
+                  "type": "number",
+                  "example": 840
+                },
+                "icon": {
+                  "type": "string",
+                  "example": "truck"
+                },
+                "color": {
+                  "type": "string",
+                  "example": "amber"
+                }
+              }
+            },
+            "description": "Gastos completados del rango por categoría: las 5 mayores y «Otras»."
+          }
+        },
+        "required": [
+          "range",
+          "kpis",
+          "sparks",
+          "monthly",
+          "salesByProduct",
+          "dailyProduction",
+          "activeOrders",
+          "expensesByCategory"
+        ]
+      },
+      "DashboardMobileSummary": {
+        "type": "object",
+        "properties": {
           "kpis": {
             "type": "object",
             "properties": {
@@ -7298,9 +7559,76 @@
     },
     "/api/dashboard": {
       "get": {
-        "tags": ["Dashboard"],
-        "summary": "Obtener resumen y métricas consolidadas del dashboard",
-        "description": "Calcula y retorna indicadores clave de producción, finanzas, pedidos en progreso/listos, mezcla de productos fabricados, alertas de stock mínimo o lotes detenidos y conteos generales.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "Obtener el resumen ejecutivo del dashboard",
+        "description": "Devuelve en una sola respuesta cómo va la empresa en el rango: KPIs (ventas, utilidad neta, unidades producidas, entregas a tiempo) con su período anterior y mini series, ventas y gastos de 12 meses, ventas por producto, producción diaria, pedidos activos por etapa y gastos por categoría. Todo sale de pedidos, lotes de fabricación, transacciones y rutas.\n\nLos días se cuentan en el calendario de El Salvador (UTC−6). Sin `from`/`to` («Todo») se usan los últimos 12 meses calendario.\n\n**Roles permitidos:** `admin`, `gerente`.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Inicio del rango (ISO). Va junto con `to`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2026-01-01T00:00:00.000Z"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Fin del rango (ISO). Va junto con `from`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2026-12-31T23:59:59.999Z"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resumen de métricas del dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "El rango de fechas no es válido (falta uno de los dos, no son fechas o `from` es posterior a `to`)."
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/dashboard/mobile": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "Resumen anterior del dashboard (app móvil)",
+        "description": "El resumen que devolvía `/api/dashboard` antes del rediseño del Dashboard web: indicadores simples de producción, ingresos y pedidos, mezcla de productos fabricados, alertas de stock mínimo o lotes detenidos y conteos generales. Lo sigue leyendo la app móvil.\n\n**Roles permitidos:** `admin`, `gerente`.",
         "security": [
           {
             "cookieAuth": []
@@ -7336,7 +7664,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardSummary"
+                  "$ref": "#/components/schemas/DashboardMobileSummary"
                 }
               }
             }

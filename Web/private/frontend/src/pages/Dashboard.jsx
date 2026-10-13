@@ -1,202 +1,332 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
+import { useFillHeight } from "../hooks/useFillHeight";
+import { useWideLayout } from "../hooks/useWideLayout";
+import { useElementSize } from "../hooks/useElementSize";
 import { useDateRange } from "../context/dateRange";
-import KpiCard from "../components/ui/KpiCard";
-import DonutChart from "../components/ui/DonutChart";
-import DataTable from "../components/ui/DataTable";
-import SearchInput from "../components/ui/SearchInput";
-import StatusPill from "../components/ui/StatusPill";
-import ColorSwatch from "../components/ui/ColorSwatch";
-import { FilterSelect } from "../components/ui/Field";
-import { SectionCard, AsyncState } from "../components/ui/SectionCard";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangePicker from "../components/ui/DateRangePicker";
-import { filterBatches, defaultBatchFilters, batchFilterOptions } from "../lib/batchFilters";
-import { batchState, batchStart } from "../lib/batchFlow";
-import { dashboardAlerts } from "../lib/dashboardAlerts";
-import { IconFactory, IconDollar, IconOrders } from "../lib/icons";
-import { CHART_COLORS } from "../lib/tones";
-import { fmtNumber, fmtMoney, fmtDateYear, fmtPercent, formatBatchNumber } from "../lib/format";
+import ChartCard from "../components/charts/ChartCard";
+import ColumnChart from "../components/charts/ColumnChart";
+import Donut from "../components/charts/Donut";
+import HBarList from "../components/charts/HBarList";
+import LineChart from "../components/charts/LineChart";
+import Sparkline from "../components/charts/Sparkline";
+import { TooltipRow } from "../components/charts/ChartTooltip";
+import { SERIES_COLORS } from "../lib/chartColors";
+import { productColors } from "../lib/productColors";
+import { change, dayDate, monthDate, monthOfRange, money, ORDER_STAGES, previousLabel, rangeWhen } from "../lib/dashboard";
+import { fmtCompactMoney, fmtMoney, fmtNumber, fmtWeekdayDate } from "../lib/format";
 import { getPageMeta } from "../lib/nav";
 
-const filterSelectClass =
-  "h-9 min-w-[132px] rounded-[10px] border border-line bg-surface px-3 text-[12.5px] font-semibold text-ink-2 hover:bg-surface-2";
+// Alto mínimo del bloque con las tarjetas: más bajo que el predeterminado para que una ventana de
+// 1366×768 siga sin scroll (las gráficas se miden y se ajustan a lo que quede).
+const MIN_HEIGHT = 440;
+
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MONTHS_LONG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const linkClass = "text-[12.5px] font-semibold text-primary hover:text-primary-hover";
+const TONE_CLASS = { up: "text-tone-green-text", down: "text-tone-rose-text", flat: "text-muted" };
 
-const batchColumns = [
-  { key: "batchNumber", label: "Lote", render: (b) => <span className="t-row-name tabular-nums">{formatBatchNumber(b.batchNumber)}</span> },
-  {
-    key: "date",
-    label: "Fecha",
-    render: (b) => <span className="whitespace-nowrap tabular-nums">{fmtDateYear(batchStart(b)?.date || b.createdAt)}</span>,
-  },
-  { key: "product", label: "Producto", render: (b) => b.product || "—" },
-  {
-    key: "color",
-    label: "Color",
-    render: (b) => (
-      <span className="flex items-center gap-2">
-        <ColorSwatch color={b.color} />
-        {b.color || "—"}
-      </span>
-    ),
-  },
-  { key: "line", label: "Línea", render: (b) => <span className="whitespace-nowrap">{b.productionLine || "—"}</span> },
-  { key: "produced", label: "Producido", align: "right", render: (b) => fmtNumber(b.producedQuantity) },
-  { key: "status", label: "Estado", render: (b) => <StatusPill status={batchState(b)} domain="lote" /> },
-];
-
-// Variación de ingresos contra el rango anterior; solo si se puede calcular.
-function IncomeChange({ income, previous }) {
-  if (previous == null || !(previous > 0)) return null;
-  const ratio = (income - previous) / previous;
-  const tone = ratio > 0 ? "text-tone-green-text" : ratio < 0 ? "text-tone-rose-text" : "text-muted";
-  return <span className={`font-semibold ${tone}`}>{fmtPercent(ratio)}</span>;
-}
-
-function AlertRow({ alert }) {
+// Tarjeta KPI: etiqueta, valor grande con la mini gráfica a la derecha y, abajo, la línea de comparación.
+function Kpi({ label, value, valueClass = "text-ink", note, spark, color, sparkLabel }) {
   return (
-    <li>
-      <Link to={alert.to} className="flex gap-3 rounded-[10px] px-2.5 py-2 transition hover:bg-surface-2">
-        <span className={`mt-[5px] h-2 w-2 shrink-0 rounded-full ${alert.tone === "amber" ? "bg-tone-amber-dot" : "bg-tone-rose-dot"}`} />
-        <span className="min-w-0">
-          <span className="block text-[13px] font-semibold text-ink">{alert.title}</span>
-          {alert.detail ? <span className="block text-[11.5px] text-muted">{alert.detail}</span> : null}
-        </span>
-      </Link>
-    </li>
+    <div className="min-w-0 rounded-[14px] border border-line bg-surface px-5 py-3">
+      <p className="t-label truncate">{label}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`truncate text-[24px] font-bold leading-none tabular-nums ${valueClass}`}>{value}</p>
+        <Sparkline data={spark} color={color} height={34} ariaLabel={sparkLabel} />
+      </div>
+      <p className="truncate text-[12px] text-muted">{note}</p>
+    </div>
   );
 }
 
-/*
-  Dashboard: KPIs del rango (GET /dashboard), historial de lotes con filtros,
-  producción por producto y alertas que enlazan a la pantalla donde se
-  resuelven (ver lib/dashboardAlerts.js).
-*/
+// «+8%» en verde o rosa seguido del texto de comparación.
+function ChangeNote({ value, previous, label }) {
+  const c = change(value, previous);
+  if (!c) return <span>{label || "sin período anterior"}</span>;
+  return (
+    <>
+      <span className={`font-semibold ${TONE_CLASS[c.tone]}`}>{c.text}</span> {label}
+    </>
+  );
+}
+
+// Dona de ventas por producto + lista. Con alto de sobra, la lista va debajo de la dona; si el alto
+// es corto (1366×768), la dona va a la izquierda y la lista a la derecha para que nada se corte.
+const LIST_ROW = 22;
+const STACK_MIN_HEIGHT = 120 + 8 + LIST_ROW * 6;
+
+function ProductsDonut({ products, total, orders, colorOf }) {
+  const [activeProduct, setActiveProduct] = useState(null);
+  const [ref, { width, height }] = useElementSize();
+  const stacked = height >= STACK_MIN_HEIGHT || !height;
+  const listHeight = products.length * LIST_ROW;
+  const size = stacked ? Math.max(80, Math.min(width, height - listHeight - 8, 150)) : Math.max(80, Math.min(height, Math.floor(width * 0.42), 128));
+  const thickness = size < 100 ? 13 : size < 130 ? 16 : 20;
+  const donutData = products.map((p) => ({ key: p.product, label: p.product, value: p.amount, color: colorOf(p.product) }));
+
+  const donut = (
+    <Donut
+      data={donutData}
+      size={size}
+      thickness={thickness}
+      centerLabel={money(total)}
+      centerCaption={`${fmtNumber(orders)} ${orders === 1 ? "pedido" : "pedidos"}`}
+      activeKey={activeProduct}
+      onActiveChange={setActiveProduct}
+      ariaLabel={`Ventas por producto: ${products.map((p) => `${p.product} ${money(p.amount)}`).join(", ")}`}
+      renderTooltip={(seg) => <TooltipRow color={seg.color} label={seg.label} value={`${money(seg.value)} · ${Math.round((seg.value / total) * 100)}%`} />}
+    />
+  );
+  const list = (
+    <ul className={`text-[12px] ${stacked ? "w-full shrink-0" : "min-w-0 flex-1"}`}>
+      {products.map((p) => (
+        <li
+          key={p.product}
+          onPointerEnter={() => setActiveProduct(p.product)}
+          onPointerLeave={() => setActiveProduct(null)}
+          className={`flex items-center gap-2 rounded-[6px] px-1 ${activeProduct === p.product ? "bg-surface-2" : ""}`}
+          style={{ height: LIST_ROW }}
+        >
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorOf(p.product) }} />
+          <span className="min-w-0 flex-1 truncate text-ink-2" title={p.product}>
+            {p.product}
+          </span>
+          <span className="font-semibold tabular-nums text-ink">{money(p.amount)}</span>
+          <span className="w-9 shrink-0 text-right tabular-nums text-muted">{Math.round((p.amount / total) * 100)}%</span>
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <div ref={ref} className={`flex min-h-[260px] min-w-0 flex-1 xl:min-h-0 ${stacked ? "flex-col items-center gap-2" : "items-center gap-4"}`}>
+      {width > 0 ? (
+        stacked ? (
+          <>
+            <div className="flex min-h-0 flex-1 items-center">{donut}</div>
+            {list}
+          </>
+        ) : (
+          <>
+            {donut}
+            {list}
+          </>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function Dashboard() {
   const range = useDateRange();
+  const wide = useWideLayout();
+  const gridRef = useRef(null);
+  const gridHeight = useFillHeight(gridRef, wide, MIN_HEIGHT);
 
-  const dashPath =
-    range.from && range.to
-      ? `/dashboard?from=${range.from.toISOString()}&to=${range.to.toISOString()}`
-      : "/dashboard";
-  const { data, loading, error } = useFetch(dashPath);
-  const { data: batchesData, loading: batchesLoading, error: batchesError } = useFetch("/productionBatches");
-  const { data: inventoryData } = useFetch("/inventory");
-  const { data: ordersData } = useFetch("/orders");
-
-  const [query, setQuery] = useState("");
-  const [product, setProduct] = useState("");
-  const [line, setLine] = useState("");
+  const path = range.from && range.to ? `/dashboard?from=${range.from.toISOString()}&to=${range.to.toISOString()}` : "/dashboard";
+  const { data, loading, error } = useFetch(path);
+  const initial = loading && !data;
 
   const kpis = data?.kpis || {};
-  const productionMix = (data?.productionMix || []).map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length] }));
-  const producedInMix = productionMix.reduce((s, d) => s + d.value, 0);
+  const sparks = data?.sparks || {};
+  const monthly = data?.monthly || [];
+  const products = data?.salesByProduct || [];
+  const production = data?.dailyProduction || [];
+  const stages = data?.activeOrders || [];
+  const expenses = data?.expensesByCategory || [];
+  const productKey = products.map((p) => p.product).join("");
+  const colorOf = useMemo(() => productColors(productKey ? productKey.split("") : []), [productKey]);
 
-  const allBatches = useMemo(() => (Array.isArray(batchesData) ? batchesData : []), [batchesData]);
-  const inRange = useMemo(() => filterBatches(allBatches, defaultBatchFilters, range), [allBatches, range]);
-  const options = useMemo(() => batchFilterOptions(inRange), [inRange]);
-  const visible = useMemo(
-    () => filterBatches(inRange, { ...defaultBatchFilters, q: query.trim(), product, line }),
-    [inRange, query, product, line],
-  );
+  const isMonth = Boolean(monthOfRange(range));
+  const when = rangeWhen(range);
+  const compareTo = previousLabel(data?.range);
 
-  const alerts = useMemo(
-    () =>
-      dashboardAlerts({
-        batches: allBatches,
-        inventory: Array.isArray(inventoryData) ? inventoryData : [],
-        orders: Array.isArray(ordersData) ? ordersData : [],
-      }),
-    [allBatches, inventoryData, ordersData],
-  );
+  // ---- KPIs ----
+  const netTone = kpis.net > 0 ? "text-tone-green-text" : kpis.net < 0 ? "text-tone-rose-text" : "text-ink";
+  const unitsPct = kpis.unitsTarget > 0 ? Math.round((kpis.unitsProduced / kpis.unitsTarget) * 100) : null;
+  const onTimePct = kpis.delivered > 0 ? Math.round((kpis.deliveredOnTime / kpis.delivered) * 100) : null;
+
+  // ---- Ventas y gastos por mes ----
+  const lastMonth = monthly[monthly.length - 1];
+  const monthLabels = monthly.map((m, i) => {
+    const d = monthDate(m.month);
+    return `${MONTHS[d.getMonth()]}${i === 0 || d.getMonth() === 0 ? ` ${String(d.getFullYear()).slice(2)}` : ""}`;
+  });
+  const monthlyEmpty = monthly.every((m) => m.income === 0 && m.expense === 0);
+  const partialName = lastMonth?.partial ? MONTHS_LONG[monthDate(lastMonth.month).getMonth()] : null;
+
+  // ---- Ventas por producto ----
+  const productTotal = products.reduce((s, p) => s + p.amount, 0);
+
+  // ---- Producción diaria ----
+  const productionData = production.map((p, i) => {
+    const d = dayDate(p.date);
+    const monthChanged = i === 0 || dayDate(production[i - 1].date).getMonth() !== d.getMonth();
+    return { key: p.date, label: monthChanged ? `${d.getDate()} ${MONTHS[d.getMonth()]}` : String(d.getDate()), value: p.produced, target: p.target };
+  });
+
+  // ---- Pedidos activos ----
+  const stageRows = stages.map((s) => ({
+    key: s.status,
+    label: ORDER_STAGES[s.status]?.label || s.status,
+    value: s.count,
+    display: fmtNumber(s.count),
+    to: `/pedidos?estado=${ORDER_STAGES[s.status]?.key || "todos"}`,
+  }));
+  const stagesTotal = stages.reduce((s, r) => s + r.count, 0);
 
   return (
     <div className="flex flex-col gap-3.5">
       <PageHeader {...getPageMeta("/")} actions={<DateRangePicker />} />
 
-      <AsyncState loading={loading} error={error}>
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-          <KpiCard label="Producción total" value={fmtNumber(kpis.producedTotal)} note="unidades" icon={IconFactory} iconTone="blue" />
-          <KpiCard
-            label="Ingresos"
-            value={fmtMoney(kpis.income, 0)}
-            note={kpis.incomePrevious > 0 ? "vs. rango anterior" : "en el rango"}
-            extra={<IncomeChange income={kpis.income || 0} previous={kpis.incomePrevious} />}
-            icon={IconDollar}
-            iconTone="green"
+      <div ref={gridRef} style={{ height: wide ? (gridHeight ?? undefined) : undefined }} className="flex min-h-0 flex-col gap-3.5">
+        {/* Fila 1 · KPIs */}
+        <div className="grid shrink-0 grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+          <Kpi
+            label={isMonth ? "Ventas del mes" : "Ventas"}
+            value={initial ? "—" : money(kpis.sales || 0)}
+            note={<ChangeNote value={kpis.sales || 0} previous={kpis.salesPrevious} label={compareTo} />}
+            spark={sparks.sales}
+            color={SERIES_COLORS.sales}
+            sparkLabel="Ventas por día del rango"
           />
-          <KpiCard
-            label="Pedidos en curso"
-            value={fmtNumber(kpis.ordersInProgress)}
-            note={`${fmtNumber(kpis.ordersReadyToShip)} listos`}
-            icon={IconOrders}
-            iconTone="teal"
+          <Kpi
+            label="Utilidad neta"
+            value={initial ? "—" : `${kpis.net > 0 ? "+" : ""}${money(kpis.net || 0)}`}
+            valueClass={netTone}
+            note={kpis.margin == null ? "sin ingresos en el rango" : `${Math.round(kpis.margin * 100)}% de las ventas`}
+            spark={sparks.net}
+            color={kpis.net < 0 ? SERIES_COLORS.negative : SERIES_COLORS.positive}
+            sparkLabel="Utilidad neta por día del rango"
+          />
+          <Kpi
+            label="Unidades producidas"
+            value={initial ? "—" : fmtNumber(kpis.unitsProduced)}
+            note={
+              unitsPct == null ? (
+                "sin meta en el rango"
+              ) : (
+                <span className={unitsPct < 100 ? "font-semibold text-tone-amber-text" : "font-semibold text-tone-green-text"}>{unitsPct}% de la meta</span>
+              )
+            }
+            spark={sparks.units}
+            color={SERIES_COLORS.sales}
+            sparkLabel="Unidades producidas por día del rango"
+          />
+          <Kpi
+            label="Entregas a tiempo"
+            value={initial ? "—" : onTimePct == null ? "—" : `${onTimePct}%`}
+            note={kpis.delivered > 0 ? `${fmtNumber(kpis.deliveredOnTime)} de ${fmtNumber(kpis.delivered)} entregas` : "sin entregas en el rango"}
+            spark={sparks.onTime}
+            color={SERIES_COLORS.positive}
+            sparkLabel="Porcentaje de entregas a tiempo por día del rango"
           />
         </div>
-      </AsyncState>
 
-      <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-3">
-        <SectionCard
-          title="Historial de lotes"
-          className="self-start xl:col-span-2"
-          action={<Link to="/historial-lotes" className={linkClass}>Ver todo</Link>}
-        >
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <SearchInput value={query} onChange={setQuery} placeholder="Buscar lote" className="w-full sm:w-[220px]" />
-            <FilterSelect
-              value={product}
-              onChange={(e) => setProduct(e.target.value)}
-              className={filterSelectClass}
-              options={[{ value: "", label: "Producto: todos" }, ...options.products.map((p) => ({ value: p, label: p }))]}
-            />
-            <FilterSelect
-              value={line}
-              onChange={(e) => setLine(e.target.value)}
-              className={filterSelectClass}
-              options={[{ value: "", label: "Línea: todas" }, ...options.lines.map((l) => ({ value: l, label: l }))]}
-            />
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 xl:grid-rows-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          {/* Fila 2 · ventas y gastos por mes + ventas por producto */}
+          <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <ChartCard
+              title="Ventas y gastos por mes"
+              subtitle={partialName ? `Últimos 12 meses · ${partialName} está en curso (tramo punteado)` : "Últimos 12 meses"}
+              loading={initial}
+              error={error}
+              empty={monthlyEmpty}
+            >
+              <LineChart
+                labels={monthLabels}
+                series={[
+                  { key: "income", label: "Ventas", color: SERIES_COLORS.sales, values: monthly.map((m) => m.income), fill: true },
+                  { key: "expense", label: "Gastos", color: SERIES_COLORS.expense, values: monthly.map((m) => m.expense) },
+                ]}
+                partialLast={Boolean(lastMonth?.partial)}
+                formatAxis={fmtCompactMoney}
+                ariaLabel={`Ventas y gastos de los últimos 12 meses. ${lastMonth ? `${MONTHS_LONG[monthDate(lastMonth.month).getMonth()]}: ventas ${money(lastMonth.income)}, gastos ${money(lastMonth.expense)}.` : ""}`}
+                renderTooltip={(i) => {
+                  const m = monthly[i];
+                  const d = monthDate(m.month);
+                  const net = m.income - m.expense;
+                  return (
+                    <>
+                      <p className="mb-1 font-semibold text-ink">
+                        {MONTHS_LONG[d.getMonth()][0].toUpperCase() + MONTHS_LONG[d.getMonth()].slice(1)} {d.getFullYear()}
+                        {m.partial ? <span className="font-normal text-muted"> · en curso</span> : null}
+                      </p>
+                      <TooltipRow color={SERIES_COLORS.sales} label="Ventas" value={fmtMoney(m.income, 0)} />
+                      <TooltipRow color={SERIES_COLORS.expense} label="Gastos" value={fmtMoney(m.expense, 0)} />
+                      <TooltipRow label="Neto" value={`${net > 0 ? "+" : ""}${fmtMoney(net, 0)}`} valueClass={net > 0 ? "text-tone-green-text" : net < 0 ? "text-tone-rose-text" : "text-ink"} />
+                    </>
+                  );
+                }}
+              />
+            </ChartCard>
+
+            <ChartCard title="Ventas por producto" subtitle={`Pedidos ${when === "en el rango" ? "del rango" : when === "este mes" ? "de este mes" : when.replace("en ", "de ")}`} loading={initial} error={error} empty={productTotal === 0}>
+              <ProductsDonut products={products} total={productTotal} orders={data?.salesOrders || 0} colorOf={colorOf} />
+            </ChartCard>
           </div>
-          <AsyncState loading={batchesLoading} error={batchesError}>
-            <div className="-mx-5 max-h-[396px] overflow-y-auto border-t border-line-soft">
-              <DataTable columns={batchColumns} rows={visible} empty="No hay lotes con esos criterios." />
-            </div>
-          </AsyncState>
-          <div className="-mx-5 -mb-5 mt-0 flex items-center justify-between gap-3 border-t border-line-soft px-5 py-3">
-            <span className="t-aux">
-              {fmtNumber(visible.length)} de {fmtNumber(inRange.length)} lotes en el rango
-            </span>
-            <Link to="/historial-lotes" className={linkClass}>Ver historial completo</Link>
+
+          {/* Fila 3 · producción diaria, pedidos activos y gastos por categoría */}
+          <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-cols-3">
+            <ChartCard
+              title="Producción diaria"
+              subtitle={kpis.unitsProduced > 0 ? `${fmtNumber(kpis.unitsProduced)} unidades${unitsPct == null ? "" : ` · ${unitsPct}% de la meta`}` : undefined}
+              loading={initial}
+              error={error}
+              empty={production.length === 0}
+            >
+              <ColumnChart
+                data={productionData}
+                color={SERIES_COLORS.sales}
+                ariaLabel={`Producción diaria: ${production.length} días con lotes, ${fmtNumber(kpis.unitsProduced)} unidades en total.`}
+                renderTooltip={(i) => {
+                  const p = production[i];
+                  return (
+                    <>
+                      <p className="mb-1 font-semibold text-ink first-letter:uppercase">{fmtWeekdayDate(dayDate(p.date))}</p>
+                      <TooltipRow color={SERIES_COLORS.sales} label="Producido" value={fmtNumber(p.produced)} />
+                      {p.target > 0 ? <TooltipRow label="Meta" value={`${fmtNumber(p.target)} · ${Math.round((p.produced / p.target) * 100)}%`} /> : null}
+                    </>
+                  );
+                }}
+              />
+            </ChartCard>
+
+            <ChartCard title="Pedidos activos por etapa" subtitle={stagesTotal ? `${fmtNumber(stagesTotal)} sin entregar` : undefined} loading={initial} error={error} empty={stagesTotal === 0} emptyText="No hay pedidos activos">
+              <HBarList
+                rows={stageRows}
+                color={SERIES_COLORS.sales}
+                ariaLabel={`Pedidos activos por etapa: ${stages.map((s) => `${ORDER_STAGES[s.status]?.label || s.status} ${s.count}`).join(", ")}`}
+              />
+              <p className="mt-2 shrink-0 border-t border-line-soft pt-2 text-[12px] text-muted">
+                Entregados {when}: <span className="font-semibold text-ink">{fmtNumber(kpis.delivered)}</span>
+                {kpis.delivered > 0 ? ` · ${fmtNumber(kpis.avgDeliveryDays, 1)} días en promedio` : ""}
+              </p>
+            </ChartCard>
+
+            <ChartCard
+              title="Gastos por categoría"
+              subtitle={expenses.length ? `${money(expenses.reduce((s, e) => s + e.amount, 0))} pagados` : undefined}
+              action={
+                <Link to="/finanzas" className={linkClass}>
+                  Finanzas ›
+                </Link>
+              }
+              loading={initial}
+              error={error}
+              empty={expenses.length === 0}
+            >
+              <HBarList
+                rows={expenses.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: money(e.amount) }))}
+                color={SERIES_COLORS.expense}
+                ariaLabel={`Gastos por categoría: ${expenses.map((e) => `${e.category} ${money(e.amount)}`).join(", ")}`}
+              />
+            </ChartCard>
           </div>
-        </SectionCard>
-
-        <div className="flex flex-col gap-3.5">
-          <SectionCard
-            title="Producción por producto"
-            action={producedInMix > 0 ? <span className="t-aux">{fmtNumber(producedInMix)} unidades en el rango</span> : null}
-          >
-            {productionMix.length === 0 || producedInMix === 0 ? (
-              <p className="py-6 text-center text-[13px] text-subtle">Sin producción en el rango.</p>
-            ) : (
-              <DonutChart data={productionMix} centerLabel={fmtNumber(producedInMix)} centerCaption="unidades" />
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Alertas"
-            action={alerts.length ? <span className="t-aux font-semibold">{fmtNumber(alerts.length)} activas</span> : null}
-          >
-            {alerts.length === 0 ? (
-              <p className="py-4 text-center text-[13px] text-subtle">Sin alertas activas.</p>
-            ) : (
-              <ul className="-mx-2.5 -my-1 flex max-h-[360px] flex-col gap-0.5 overflow-y-auto">
-                {alerts.map((a) => (
-                  <AlertRow key={a.key} alert={a} />
-                ))}
-              </ul>
-            )}
-          </SectionCard>
         </div>
       </div>
     </div>

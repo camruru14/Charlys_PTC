@@ -29,15 +29,6 @@ export const TONE_SOFT = {
   teal: "bg-tone-teal text-tone-teal-text",
 };
 
-// Paleta de gráficos en orden, como valores CSS utilizables en `style`.
-export const CHART_COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-];
-
 // Color del texto de la nota de tiempo de una fila (batchTimeNote,
 // mfgTimeNote): «rose» (detenido), «amber» (atrasado); sin tono, gris.
 export const NOTE_TEXT = { rose: "text-tone-rose-text", amber: "text-tone-amber-text" };

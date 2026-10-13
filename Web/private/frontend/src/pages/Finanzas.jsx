@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useConfirm } from "../hooks/useConfirm";
 import { useFillHeight } from "../hooks/useFillHeight";
+import { useWideLayout } from "../hooks/useWideLayout";
 import { useDateRange } from "../context/dateRange";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import PageHeader from "../components/ui/PageHeader";
@@ -16,19 +17,6 @@ import { categoryTone, useExpenseCategories } from "../lib/expenseCategories";
 import { buildLedger, filterLedger, ledgerSummary, OTHER_INCOME, SALES_CATEGORY, transactionsCsv } from "../lib/finance";
 import { dayKey, inRange, statusLabel } from "../lib/transactionFilters";
 import { getPageMeta } from "../lib/nav";
-
-// Desde este ancho (xl) el panel y el libro van lado a lado y llenan el alto de la
-// página; más angosto se apilan y la página hace scroll.
-function useWideLayout() {
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1280px)").matches);
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1280px)");
-    const update = () => setWide(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return wide;
-}
 
 // Alto mínimo del bloque de abajo: más bajo que el predeterminado para que una ventana de
 // 1366×768 siga sin scroll (el panel y el libro hacen scroll o paginan por dentro).

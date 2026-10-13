@@ -1,0 +1,65 @@
+/*
+  Textos y cálculos del Dashboard (sin React): comparación contra el período anterior, el rango como
+  «mes», etiquetas de las etapas de pedido y formato de dinero. Los datos vienen de GET /dashboard
+  (ver backend/src/controller/dashboardController.js).
+*/
+import { fmtMoney, fmtRange } from "./format";
+
+const MONTHS_DOT = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sept.", "oct.", "nov.", "dic."];
+
+const lastDayOf = (year, month) => new Date(year, month + 1, 0).getDate();
+
+// Si el rango del selector es UN mes calendario completo: { year, month }; si no, null.
+export function monthOfRange(range) {
+  const { from, to } = range || {};
+  if (!from || !to) return null;
+  if (from.getFullYear() !== to.getFullYear() || from.getMonth() !== to.getMonth()) return null;
+  return from.getDate() === 1 && to.getDate() === lastDayOf(to.getFullYear(), to.getMonth()) ? { year: from.getFullYear(), month: from.getMonth() } : null;
+}
+
+// «este mes» (mes en curso), «en septiembre» (otro mes) o «en el rango».
+export function rangeWhen(range, now = new Date()) {
+  const m = monthOfRange(range);
+  if (!m) return "en el rango";
+  if (m.year === now.getFullYear() && m.month === now.getMonth()) return "este mes";
+  return `en ${new Date(m.year, m.month, 1).toLocaleDateString("es-SV", { month: "long" })}`;
+}
+
+// «vs. sept. al día 12», «vs. sept.» (mes completo) o «vs. 6 – 12 oct 2026»; "" sin período anterior.
+export function previousLabel(range) {
+  if (!range?.previousFrom || !range?.previousTo) return "";
+  const a = new Date(range.previousFrom);
+  const b = new Date(range.previousTo);
+  const sameMonth = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  if (sameMonth && a.getDate() === 1) {
+    const name = MONTHS_DOT[a.getMonth()];
+    return b.getDate() === lastDayOf(b.getFullYear(), b.getMonth()) ? `vs. ${name}` : `vs. ${name} al día ${b.getDate()}`;
+  }
+  return `vs. ${fmtRange(a, b)}`;
+}
+
+// Variación contra el período anterior: { text: "+8%", tone: "up" | "down" | "flat" } o null si no se puede calcular.
+export function change(current, previous) {
+  if (previous == null) return null;
+  if (!(previous > 0)) return current > 0 ? { text: "nuevo", tone: "up" } : null;
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return { text: `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct)}%`, tone: pct > 0 ? "up" : pct < 0 ? "down" : "flat" };
+}
+
+// Dinero para barras y tarjetas: sin centavos si es entero o pasa de mil.
+export const money = (value) => fmtMoney(value, Number.isInteger(value) || Math.abs(value) >= 1000 ? 0 : 2);
+
+// Etapas de los pedidos activos y el valor de ?estado= que abre /pedidos en esa etapa.
+export const ORDER_STAGES = {
+  Pendiente: { label: "Pendiente", key: "pendiente" },
+  Procesando: { label: "Procesando", key: "procesando" },
+  "En Fabricación": { label: "En fabricación", key: "fabricacion" },
+  Empacado: { label: "Empacado", key: "empacado" },
+  "En Tránsito": { label: "En tránsito", key: "transito" },
+};
+
+// «2026-10-12» -> Date local de ese día.
+export const dayDate = (key) => new Date(`${key}T00:00:00`);
+
+// «2026-10» -> Date local del día 1 de ese mes.
+export const monthDate = (key) => new Date(`${key}-01T00:00:00`);
