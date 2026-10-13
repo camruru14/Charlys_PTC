@@ -97,7 +97,10 @@ function makeBuckets(fromKey, toKey, todayKey) {
     const offset = diffDays(fromKey, day);
     return weekly ? Math.floor(offset / 7) : offset;
   };
-  return { weekly, length, indexOf };
+  // Entregas a tiempo: siempre por semana (un día suelto casi nunca tiene entregas).
+  const weeks = Math.ceil(span / 7);
+  const weekIndexOf = (day) => (day < fromKey || day > endKey ? -1 : Math.floor(diffDays(fromKey, day) / 7));
+  return { weekly, length, indexOf, weeks, weekIndexOf };
 }
 
 const zeros = (n) => Array.from({ length: n }, () => 0);
@@ -237,8 +240,8 @@ dashboardController.getSummary = async (req, res) => {
     const routes = routeIds.length ? await Route.find({ _id: { $in: routeIds } }).select("delayed").lean() : [];
     const delayedRoutes = new Set(routes.filter((r) => r.delayed).map((r) => String(r._id)));
 
-    const deliveredCount = zeros(buckets.length);
-    const onTimeCount = zeros(buckets.length);
+    const deliveredCount = zeros(buckets.weeks);
+    const onTimeCount = zeros(buckets.weeks);
     let delivered = 0;
     let deliveredOnTime = 0;
     let daysTotal = 0;
@@ -250,13 +253,13 @@ dashboardController.getSummary = async (req, res) => {
       delivered += 1;
       if (onTime) deliveredOnTime += 1;
       daysTotal += Math.max(0, (new Date(at) - new Date(order.createdAt)) / 86400000);
-      const index = buckets.indexOf(dayKeyOf(new Date(at)));
+      const index = buckets.weekIndexOf(dayKeyOf(new Date(at)));
       if (index >= 0) {
         deliveredCount[index] += 1;
         if (onTime) onTimeCount[index] += 1;
       }
     }
-    // % de entregas a tiempo por casillero; null si ese día/semana no hubo entregas.
+    // % de entregas a tiempo por semana del rango; null si esa semana no hubo entregas.
     sparks.onTime = deliveredCount.map((n, i) => (n ? Math.round((onTimeCount[i] / n) * 100) : null));
 
     // ---- Ventas por producto: top 5 + «Otros» --------------------------------------------------

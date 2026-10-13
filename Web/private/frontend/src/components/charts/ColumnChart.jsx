@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useElementSize } from "../../hooks/useElementSize";
+import { TARGET_COLOR } from "../../lib/chartColors";
 import ChartTooltip from "./ChartTooltip";
 import { bandIndexAt, compactNumber, labelStep, niceScale } from "./chartUtils";
 
@@ -8,14 +9,16 @@ import { bandIndexAt, compactNumber, labelStep, niceScale } from "./chartUtils";
   como máximo 24 px y tienen las esquinas de arriba redondeadas a 4 px.
     data          [{ key, label, value, target? }]
     color         color de las columnas
-    targetLabel   texto de la meta («Meta»): si TODOS los días tienen la misma meta se dibuja una
-                  línea punteada con «Meta 21k»; si varía, una raya corta sobre cada columna
+    targetColor   color de la meta: una columna gris clara del mismo ancho DETRÁS de la producida (si
+                  un día se pasó de la meta, la de color sobresale)
     renderTooltip (index) => nodo del globo (el área de toque es todo el casillero)
     ariaLabel     resumen para lectores de pantalla
-  El último valor lleva su cifra encima.
+  Solo el último valor lleva su cifra encima; si choca con la parte de arriba de la meta, se sube.
+  La leyenda («Producido» / «Meta») la pone la página con ChartLegend.
 */
 const MARGIN = { left: 42, right: 12, top: 18, bottom: 22 };
 const MAX_BAR = 24;
+const LABEL_HEIGHT = 14;
 
 // Rectángulo con las dos esquinas de arriba redondeadas.
 function topRounded(x, y, w, h, r) {
@@ -23,7 +26,7 @@ function topRounded(x, y, w, h, r) {
   return `M${x},${y + h} V${y + radius} Q${x},${y} ${x + radius},${y} H${x + w - radius} Q${x + w},${y} ${x + w},${y + radius} V${y + h} Z`;
 }
 
-function ColumnChart({ data = [], color, targetLabel = "Meta", renderTooltip, ariaLabel, className = "" }) {
+function ColumnChart({ data = [], color, targetColor = TARGET_COLOR, renderTooltip, ariaLabel, className = "" }) {
   const [ref, { width, height }] = useElementSize();
   const [hover, setHover] = useState(-1);
   const count = data.length;
@@ -32,16 +35,25 @@ function ColumnChart({ data = [], color, targetLabel = "Meta", renderTooltip, ar
   const ready = width > 0 && height > 0 && count > 0 && plotW > 0 && plotH > 0;
 
   const targets = data.map((d) => Number(d.target) || 0);
-  const hasTargets = targets.some((t) => t > 0);
-  const sameTarget = hasTargets && targets.every((t) => t === targets[0]);
   const { max, ticks } = niceScale(Math.max(0, ...data.map((d) => d.value), ...targets));
 
   const band = plotW / (count || 1);
   const barW = Math.min(MAX_BAR, band * 0.7);
   const cx = (i) => MARGIN.left + (i + 0.5) * band;
   const y = (v) => MARGIN.top + plotH - (v / max) * plotH;
+  const baseY = MARGIN.top + plotH;
   const step = labelStep(count, plotW, 34);
   const lastIndex = count - 1;
+
+  // Cifra del último día: sobre su columna; si la meta asoma justo por encima (choca), sobre la meta.
+  const last = data[lastIndex];
+  let lastLabelY = 0;
+  if (last && last.value > 0) {
+    lastLabelY = y(last.value) - 5;
+    const targetTop = targets[lastIndex] > last.value ? y(targets[lastIndex]) : null;
+    if (targetTop != null && targetTop > lastLabelY - LABEL_HEIGHT) lastLabelY = targetTop - 5;
+    lastLabelY = Math.max(LABEL_HEIGHT - 3, lastLabelY);
+  }
 
   return (
     <div ref={ref} className={`relative min-h-0 flex-1 ${className}`}>
@@ -69,10 +81,8 @@ function ColumnChart({ data = [], color, targetLabel = "Meta", renderTooltip, ar
 
             {data.map((d, i) => (
               <g key={d.key}>
-                {d.value > 0 ? <path d={topRounded(cx(i) - barW / 2, y(d.value), barW, MARGIN.top + plotH - y(d.value), 4)} fill={color} /> : null}
-                {hasTargets && !sameTarget && targets[i] > 0 ? (
-                  <line x1={cx(i) - barW / 2 - 3} x2={cx(i) + barW / 2 + 3} y1={y(targets[i])} y2={y(targets[i])} stroke="var(--color-ink-2)" strokeWidth={2} strokeLinecap="round" />
-                ) : null}
+                {targets[i] > 0 ? <path d={topRounded(cx(i) - barW / 2, y(targets[i]), barW, baseY - y(targets[i]), 4)} fill={targetColor} /> : null}
+                {d.value > 0 ? <path d={topRounded(cx(i) - barW / 2, y(d.value), barW, baseY - y(d.value), 4)} fill={color} /> : null}
                 {i % step === 0 || i === lastIndex ? (
                   <text x={cx(i)} y={height - 6} textAnchor="middle" className="fill-subtle text-[11px]">
                     {d.label}
@@ -81,18 +91,9 @@ function ColumnChart({ data = [], color, targetLabel = "Meta", renderTooltip, ar
               </g>
             ))}
 
-            {sameTarget ? (
-              <g>
-                <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(targets[0])} y2={y(targets[0])} stroke="var(--color-ink-2)" strokeWidth={1.5} strokeDasharray="5 4" />
-                <text x={MARGIN.left + 4} y={y(targets[0]) - 5} className="fill-ink-2 text-[11px] font-semibold">
-                  {targetLabel} {compactNumber(targets[0])}
-                </text>
-              </g>
-            ) : null}
-
-            {data[lastIndex] && data[lastIndex].value > 0 ? (
-              <text x={cx(lastIndex)} y={y(data[lastIndex].value) - 5} textAnchor="middle" className="fill-ink text-[11px] font-semibold tabular-nums">
-                {compactNumber(data[lastIndex].value)}
+            {last && last.value > 0 ? (
+              <text x={cx(lastIndex)} y={lastLabelY} textAnchor="middle" className="fill-ink text-[11px] font-semibold tabular-nums">
+                {compactNumber(last.value)}
               </text>
             ) : null}
             <rect x={MARGIN.left} y={MARGIN.top} width={plotW} height={plotH} fill="transparent" />

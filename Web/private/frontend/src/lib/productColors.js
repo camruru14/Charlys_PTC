@@ -1,43 +1,29 @@
 import { CATEGORICAL_COLORS, OTHERS_COLOR } from "./chartColors";
+import { normalizeName } from "../hooks/useProductNames";
 
 /*
-  Color estable de cada producto en la dona del Dashboard: el color sigue al producto aunque cambie
-  el rango. Se asigna la primera vez que el producto aparece (el primer color categórico libre entre
-  los que se están mostrando) y se recuerda en localStorage. «Otros» siempre es gris.
-    const colorOf = productColors(["Pajilla jumbo", "Vaso", "Otros"]);  // -> (nombre) => color
+  Color fijo de cada producto en la dona de ventas: la posición del producto en el Catálogo (orden de
+  creación, que es el de su _id) decide el color, en el orden #2a78d6, #eb6834, #1baf7a, #eda100,
+  #e87ba4 (y vuelve a empezar si hay más de 5). Así el color sigue al producto aunque cambie el rango.
+  «Otros» es gris. Un producto que ya no está en el Catálogo toma un color según su nombre.
+    const colorOf = productColors(catalogProducts);  // -> (nombre) => color
 */
-const STORAGE_KEY = "dashboard.productColors";
 export const OTHERS_LABEL = "Otros";
 
-function readStored() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+const key = (name) => normalizeName(name).toLocaleLowerCase("es");
 
-function writeStored(map) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // Sin almacenamiento (modo privado, bloqueado): el color solo se recuerda mientras dure la pestaña.
-  }
-}
-
-const assigned = readStored();
-
-export function productColors(products) {
-  const shown = products.filter((name) => name !== OTHERS_LABEL);
-  let changed = false;
-  for (const name of shown) {
-    if (CATEGORICAL_COLORS.includes(assigned[name])) continue;
-    const taken = new Set(shown.map((n) => assigned[n]).filter(Boolean));
-    assigned[name] = CATEGORICAL_COLORS.find((c) => !taken.has(c)) || CATEGORICAL_COLORS[Object.keys(assigned).length % CATEGORICAL_COLORS.length];
-    changed = true;
-  }
-  if (changed) writeStored(assigned);
-  const snapshot = { ...assigned };
-  return (name) => (name === OTHERS_LABEL ? OTHERS_COLOR : snapshot[name] || OTHERS_COLOR);
+export function productColors(catalog = []) {
+  const byPosition = new Map(
+    [...catalog]
+      .sort((a, b) => (String(a._id) < String(b._id) ? -1 : 1))
+      .map((p, i) => [key(p.name), CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length]]),
+  );
+  return (name) => {
+    if (name === OTHERS_LABEL) return OTHERS_COLOR;
+    const found = byPosition.get(key(name));
+    if (found) return found;
+    let hash = 0;
+    for (const ch of key(name)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return CATEGORICAL_COLORS[hash % CATEGORICAL_COLORS.length];
+  };
 }

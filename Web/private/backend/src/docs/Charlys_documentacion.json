@@ -1941,7 +1941,7 @@
                   "type": "number",
                   "nullable": true
                 },
-                "description": "% de entregas a tiempo por casillero; null si no hubo entregas."
+                "description": "% de entregas a tiempo por semana del rango (casilleros de 7 días desde `from`); null si esa semana no hubo entregas."
               }
             },
             "description": "Series para las mini gráficas."

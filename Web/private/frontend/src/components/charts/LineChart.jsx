@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useElementSize } from "../../hooks/useElementSize";
+import ChartLegend from "./ChartLegend";
 import ChartTooltip from "./ChartTooltip";
 import { bandIndexAt, labelStep, niceScale } from "./chartUtils";
 
@@ -13,11 +14,13 @@ import { bandIndexAt, labelStep, niceScale } from "./chartUtils";
     formatAxis    formato de las marcas del eje y (p. ej. fmtCompactMoney)
     renderTooltip (index) => nodo del globo al pasar el mouse; la guía vertical y los puntos salen solos
     ariaLabel     resumen para lectores de pantalla
-  Con 2 series o más muestra la leyenda. El área de toque es todo el casillero de cada punto.
+  Cada línea termina en un punto (radio 4, con anillo blanco de 2 px). Con 2 series o más muestra la
+  leyenda encima de la gráfica, salvo `legend={false}` (la página la pone a la derecha del título con
+  ChartLegend). El área de toque es todo el casillero de cada punto.
 */
 const MARGIN = { left: 46, right: 12, top: 8, bottom: 22 };
 
-function LineChart({ labels = [], series = [], partialLast = false, formatAxis = String, renderTooltip, ariaLabel, className = "" }) {
+function LineChart({ labels = [], series = [], partialLast = false, formatAxis = String, renderTooltip, ariaLabel, legend = true, className = "" }) {
   const [ref, { width, height }] = useElementSize();
   const [hover, setHover] = useState(-1);
   const count = labels.length;
@@ -34,16 +37,7 @@ function LineChart({ labels = [], series = [], partialLast = false, formatAxis =
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-      {series.length >= 2 ? (
-        <ul className="mb-1.5 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-2">
-          {series.map((s) => (
-            <li key={s.key} className="flex items-center gap-1.5">
-              <span className="h-[3px] w-4 rounded-full" style={{ background: s.color }} />
-              {s.label}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {legend && series.length >= 2 ? <ChartLegend items={series} className="mb-1.5 justify-start" /> : null}
 
       <div ref={ref} className="relative min-h-0 flex-1">
         {ready ? (
@@ -85,7 +79,7 @@ function LineChart({ labels = [], series = [], partialLast = false, formatAxis =
                     {partialLast && count > 1 ? (
                       <polyline points={pointsOf(s, count - 2, count - 1).join(" ")} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeDasharray="4 4" />
                     ) : null}
-                    {count === 1 ? <circle cx={x(0)} cy={y(s.values[0])} r={3} fill={s.color} /> : null}
+                    <circle cx={x(count - 1)} cy={y(s.values[count - 1])} r={4} fill={s.color} stroke="var(--color-surface)" strokeWidth={2} />
                   </g>
                 );
               })}

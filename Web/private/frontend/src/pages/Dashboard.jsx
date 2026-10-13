@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
+import { useProductNames } from "../hooks/useProductNames";
 import { useFillHeight } from "../hooks/useFillHeight";
 import { useWideLayout } from "../hooks/useWideLayout";
 import { useElementSize } from "../hooks/useElementSize";
@@ -8,13 +9,14 @@ import { useDateRange } from "../context/dateRange";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangePicker from "../components/ui/DateRangePicker";
 import ChartCard from "../components/charts/ChartCard";
+import ChartLegend from "../components/charts/ChartLegend";
 import ColumnChart from "../components/charts/ColumnChart";
 import Donut from "../components/charts/Donut";
 import HBarList from "../components/charts/HBarList";
 import LineChart from "../components/charts/LineChart";
 import Sparkline from "../components/charts/Sparkline";
 import { TooltipRow } from "../components/charts/ChartTooltip";
-import { SERIES_COLORS } from "../lib/chartColors";
+import { SERIES_COLORS, TARGET_COLOR } from "../lib/chartColors";
 import { productColors } from "../lib/productColors";
 import { change, dayDate, monthDate, monthOfRange, money, ORDER_STAGES, previousLabel, rangeWhen } from "../lib/dashboard";
 import { fmtCompactMoney, fmtMoney, fmtNumber, fmtWeekdayDate } from "../lib/format";
@@ -23,6 +25,12 @@ import { getPageMeta } from "../lib/nav";
 // Alto mínimo del bloque con las tarjetas: más bajo que el predeterminado para que una ventana de
 // 1366×768 siga sin scroll (las gráficas se miden y se ajustan a lo que quede).
 const MIN_HEIGHT = 440;
+
+// Serie acumulada: cada punto es la suma hasta ese casillero (la línea sube suave).
+function cumulative(values = []) {
+  let total = 0;
+  return values.map((v) => (total += Number(v) || 0));
+}
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const MONTHS_LONG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -36,7 +44,7 @@ function Kpi({ label, value, valueClass = "text-ink", note, spark, color, sparkL
       <p className="t-label truncate">{label}</p>
       <div className="flex items-center justify-between gap-3">
         <p className={`truncate text-[24px] font-bold leading-none tabular-nums ${valueClass}`}>{value}</p>
-        <Sparkline data={spark} color={color} height={34} ariaLabel={sparkLabel} />
+        <Sparkline data={spark} color={color} ariaLabel={sparkLabel} />
       </div>
       <p className="truncate text-[12px] text-muted">{note}</p>
     </div>
@@ -138,8 +146,8 @@ function Dashboard() {
   const production = data?.dailyProduction || [];
   const stages = data?.activeOrders || [];
   const expenses = data?.expensesByCategory || [];
-  const productKey = products.map((p) => p.product).join("");
-  const colorOf = useMemo(() => productColors(productKey ? productKey.split("") : []), [productKey]);
+  const { products: catalog } = useProductNames();
+  const colorOf = useMemo(() => productColors(catalog), [catalog]);
 
   const isMonth = Boolean(monthOfRange(range));
   const when = rangeWhen(range);
@@ -152,12 +160,14 @@ function Dashboard() {
 
   // ---- Ventas y gastos por mes ----
   const lastMonth = monthly[monthly.length - 1];
+  // «Oct», «Nov»…; el primero lleva el año («Oct 25») si es de otro año que el último mes.
+  const lastYear = lastMonth ? monthDate(lastMonth.month).getFullYear() : null;
   const monthLabels = monthly.map((m, i) => {
     const d = monthDate(m.month);
-    return `${MONTHS[d.getMonth()]}${i === 0 || d.getMonth() === 0 ? ` ${String(d.getFullYear()).slice(2)}` : ""}`;
+    const name = MONTHS[d.getMonth()][0].toUpperCase() + MONTHS[d.getMonth()].slice(1);
+    return i === 0 && d.getFullYear() !== lastYear ? `${name} ${String(d.getFullYear()).slice(2)}` : name;
   });
   const monthlyEmpty = monthly.every((m) => m.income === 0 && m.expense === 0);
-  const partialName = lastMonth?.partial ? MONTHS_LONG[monthDate(lastMonth.month).getMonth()] : null;
 
   // ---- Ventas por producto ----
   const productTotal = products.reduce((s, p) => s + p.amount, 0);
@@ -190,18 +200,18 @@ function Dashboard() {
             label={isMonth ? "Ventas del mes" : "Ventas"}
             value={initial ? "—" : money(kpis.sales || 0)}
             note={<ChangeNote value={kpis.sales || 0} previous={kpis.salesPrevious} label={compareTo} />}
-            spark={sparks.sales}
+            spark={cumulative(sparks.sales)}
             color={SERIES_COLORS.sales}
-            sparkLabel="Ventas por día del rango"
+            sparkLabel="Ventas acumuladas en el rango"
           />
           <Kpi
             label="Utilidad neta"
             value={initial ? "—" : `${kpis.net > 0 ? "+" : ""}${money(kpis.net || 0)}`}
             valueClass={netTone}
             note={kpis.margin == null ? "sin ingresos en el rango" : `${Math.round(kpis.margin * 100)}% de las ventas`}
-            spark={sparks.net}
-            color={kpis.net < 0 ? SERIES_COLORS.negative : SERIES_COLORS.positive}
-            sparkLabel="Utilidad neta por día del rango"
+            spark={cumulative(sparks.net)}
+            color={SERIES_COLORS.positive}
+            sparkLabel="Utilidad neta acumulada en el rango"
           />
           <Kpi
             label="Unidades producidas"
@@ -223,7 +233,7 @@ function Dashboard() {
             note={kpis.delivered > 0 ? `${fmtNumber(kpis.deliveredOnTime)} de ${fmtNumber(kpis.delivered)} entregas` : "sin entregas en el rango"}
             spark={sparks.onTime}
             color={SERIES_COLORS.positive}
-            sparkLabel="Porcentaje de entregas a tiempo por día del rango"
+            sparkLabel="Porcentaje de entregas a tiempo por semana del rango"
           />
         </div>
 
@@ -232,13 +242,22 @@ function Dashboard() {
           <div className="grid min-h-0 grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <ChartCard
               title="Ventas y gastos por mes"
-              subtitle={partialName ? `Últimos 12 meses · ${partialName} está en curso (tramo punteado)` : "Últimos 12 meses"}
+              subtitle={lastMonth?.partial ? "Últimos 12 meses · el mes actual va incompleto" : "Últimos 12 meses"}
+              action={
+                <ChartLegend
+                  items={[
+                    { key: "income", label: "Ventas", color: SERIES_COLORS.sales },
+                    { key: "expense", label: "Gastos", color: SERIES_COLORS.expense },
+                  ]}
+                />
+              }
               loading={initial}
               error={error}
               empty={monthlyEmpty}
             >
               <LineChart
                 labels={monthLabels}
+                legend={false}
                 series={[
                   { key: "income", label: "Ventas", color: SERIES_COLORS.sales, values: monthly.map((m) => m.income), fill: true },
                   { key: "expense", label: "Gastos", color: SERIES_COLORS.expense, values: monthly.map((m) => m.expense) },
@@ -275,6 +294,14 @@ function Dashboard() {
             <ChartCard
               title="Producción diaria"
               subtitle={kpis.unitsProduced > 0 ? `${fmtNumber(kpis.unitsProduced)} unidades${unitsPct == null ? "" : ` · ${unitsPct}% de la meta`}` : undefined}
+              action={
+                <ChartLegend
+                  items={[
+                    { key: "produced", label: "Producido", color: SERIES_COLORS.sales, shape: "square" },
+                    { key: "target", label: "Meta", color: TARGET_COLOR, shape: "square" },
+                  ]}
+                />
+              }
               loading={initial}
               error={error}
               empty={production.length === 0}
@@ -289,7 +316,12 @@ function Dashboard() {
                     <>
                       <p className="mb-1 font-semibold text-ink first-letter:uppercase">{fmtWeekdayDate(dayDate(p.date))}</p>
                       <TooltipRow color={SERIES_COLORS.sales} label="Producido" value={fmtNumber(p.produced)} />
-                      {p.target > 0 ? <TooltipRow label="Meta" value={`${fmtNumber(p.target)} · ${Math.round((p.produced / p.target) * 100)}%`} /> : null}
+                      {p.target > 0 ? (
+                        <>
+                          <TooltipRow color={TARGET_COLOR} label="Meta" value={fmtNumber(p.target)} />
+                          <TooltipRow label="De la meta" value={`${Math.round((p.produced / p.target) * 100)}%`} />
+                        </>
+                      ) : null}
                     </>
                   );
                 }}
@@ -310,7 +342,7 @@ function Dashboard() {
 
             <ChartCard
               title="Gastos por categoría"
-              subtitle={expenses.length ? `${money(expenses.reduce((s, e) => s + e.amount, 0))} pagados` : undefined}
+              subtitle={expenses.length ? `${fmtMoney(expenses.reduce((s, e) => s + e.amount, 0), 0)} pagados` : undefined}
               action={
                 <Link to="/finanzas" className={linkClass}>
                   Finanzas ›
@@ -321,9 +353,9 @@ function Dashboard() {
               empty={expenses.length === 0}
             >
               <HBarList
-                rows={expenses.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: money(e.amount) }))}
+                rows={expenses.map((e) => ({ key: e.category, label: e.category, value: e.amount, display: fmtMoney(e.amount, 0) }))}
                 color={SERIES_COLORS.expense}
-                ariaLabel={`Gastos por categoría: ${expenses.map((e) => `${e.category} ${money(e.amount)}`).join(", ")}`}
+                ariaLabel={`Gastos por categoría: ${expenses.map((e) => `${e.category} ${fmtMoney(e.amount, 0)}`).join(", ")}`}
               />
             </ChartCard>
           </div>
