@@ -28,6 +28,7 @@ import { statusTone } from "../lib/statusDomains";
 import { TONE_DOT, NOTE_TEXT } from "../lib/tones";
 import { filterSelectClass } from "../lib/filterStyles";
 import { PEDIDO_GROUPS, groupOrders, matchesOrderSearch, orderTimeNote } from "../lib/orderList";
+import { useMarkSeen } from "../hooks/useActivity";
 
 // Valores de ?estado=: «todos» o la clave de un grupo de PEDIDO_GROUPS.
 const STATE_KEYS = ["todos", ...PEDIDO_GROUPS.map((g) => g.key)];
@@ -193,6 +194,8 @@ function OrderDetail({ order, canDelete, onDelete }) {
 }
 
 function Pedidos() {
+  // Novedades: abrir el módulo marca su burbuja como vista (y lo que llegue mientras sigue abierto).
+  useMarkSeen("pedidos");
   const { confirm, confirmProps } = useConfirm();
   const { user } = useAuth();
   const { data, loading, error, refetch } = useFetch("/orders");

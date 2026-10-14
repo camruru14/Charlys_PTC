@@ -6,6 +6,7 @@ import routeModel from "../models/Route.js";
 import customerOrderModel from "../models/CustomerOrder.js";
 import { setOrderStatus, computeOrderStatus } from "../lib/orderStatus.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
+import { recordFor } from "../lib/activity.js";
 import {
   verifyLine,
   unverifyLine,
@@ -29,9 +30,13 @@ const ROUTE_FIELDS = "code number zone status date";
 // `fn` sobre la línea, recalcula el status y guarda. Todo o nada: si `fn`
 // lanza (estado inválido, stock insuficiente, lote ya en proceso), no se
 // aplica ningún movimiento de stock ni de lotes.
-function lineAction(fn, okMessage) {
+// `track({ order, statusBefore })` (opcional) devuelve { keys, action } con las
+// pestañas que ven la novedad (burbujas, lib/activity.js), o null si no hay.
+// Se registra cuando la transacción ya se confirmó.
+function lineAction(fn, okMessage, track) {
   return async (req, res) => {
     try {
+      let saved;
       await withTransaction(async (session) => {
         const order = await orderModel.findById(req.params.id).session(session);
         if (!order) throw new HttpError(404, "Pedido no encontrado");
@@ -39,12 +44,16 @@ function lineAction(fn, okMessage) {
         const item = Number.isInteger(index) ? order.items[index] : undefined;
         if (!item) throw new HttpError(404, "Producto del pedido no encontrado");
 
+        const statusBefore = order.status;
         await fn({ order, item, index, body: req.body || {}, session });
 
         order.markModified("items");
         setOrderStatus(order, computeOrderStatus(order));
         await order.save({ session });
+        saved = { order, statusBefore };
       });
+      const activity = track?.(saved);
+      if (activity) await recordFor(req, { entityType: "order", entityId: saved.order._id, ...activity });
       // `order`: el pedido actualizado (poblado como en GET /orders).
       res.json({ message: okMessage, order: await populateOrder(orderModel.findById(req.params.id)) });
     } catch (error) {
@@ -52,6 +61,10 @@ function lineAction(fn, okMessage) {
     }
   };
 }
+
+// El pedido acaba de quedar Empacado completo: Logística ya puede despacharlo.
+const packedComplete = ({ order, statusBefore }) =>
+  order.status === "Empacado" && statusBefore !== "Empacado" ? { keys: ["logistica.despacho", "pedidos"], action: "packed" } : null;
 
 // Pedido con las mismas referencias pobladas que GET /orders, para que el
 // panel pueda reemplazarlo en su lista sin volver a pedirla completa.
@@ -160,6 +173,7 @@ function orderSnapshot(order) {
 ordersController.verifyOrderItem = lineAction(
   ({ item, body, session }) => verifyLine(item, body.warehouse, session),
   "Order item verified",
+  () => ({ keys: ["pedidos"], action: "verified" }),
 );
 
 // Deshacer verificar: devuelve el stock a su bodega (solo si no está empacado).
@@ -193,6 +207,7 @@ ordersController.verifyBulk = async (req, res) => {
       }
       return touched;
     });
+    for (const id of ids) await recordFor(req, { keys: ["pedidos"], entityType: "order", entityId: id, action: "verified-bulk" });
 
     const orders = await populateOrder(orderModel.find({ _id: { $in: ids } }));
     res.json({ message: "Order items verified", orders });
@@ -205,10 +220,14 @@ ordersController.verifyBulk = async (req, res) => {
 // línea dividida). Si el pedido no tiene motorista, se limpia cualquier resto
 // de una asignación vieja; si ya lo tiene, no se toca (Logística puede
 // asignar apenas el primer producto queda empacado).
-ordersController.packOrderItem = lineAction(({ order, item }) => {
-  packLine(item);
-  if (!order.delivery?.driver && !order.delivery?.route) order.delivery = undefined;
-}, "Order item packed");
+ordersController.packOrderItem = lineAction(
+  ({ order, item }) => {
+    packLine(item);
+    if (!order.delivery?.driver && !order.delivery?.route) order.delivery = undefined;
+  },
+  "Order item packed",
+  packedComplete,
+);
 
 // Deshacer empacar (solo si el motorista no recogió en Almacén).
 ordersController.unpackOrderItem = lineAction(({ order, item }) => unpackLine(item, order), "Order item unpacked");
@@ -219,14 +238,22 @@ ordersController.unpackOrderItem = lineAction(({ order, item }) => unpackLine(it
 ordersController.sendItemToManufacturing = lineAction(
   ({ item, session }) => sendLineToManufacturing(item, session),
   "Order item sent to manufacturing",
+  () => ({ keys: ["fabricacion.pedidos"], action: "sent-to-manufacturing" }),
 );
-ordersController.manufactureOrderItem = ordersController.sendItemToManufacturing;
+// Alias que también crea el lote de una línea enviada antes sin lote: lo que
+// cambia es la lista de Lotes de fabricación.
+ordersController.manufactureOrderItem = lineAction(
+  ({ item, session }) => sendLineToManufacturing(item, session),
+  "Order item sent to manufacturing",
+  () => ({ keys: ["fabricacion.lotes"], action: "manufacture" }),
+);
 
 // Deshacer enviar a fabricación: si el lote sigue Programado lo elimina y la
 // línea vuelve a sin procesar; si ya empezó, rechaza.
 ordersController.cancelManufacturingRequest = lineAction(
   ({ item, session }) => cancelLineManufacturing(item, session),
   "Manufacturing request cancelled",
+  () => ({ keys: ["fabricacion.pedidos"], action: "manufacturing-cancelled" }),
 );
 
 // Existencia parcial: toma `quantity` de `warehouse` y manda el resto a
@@ -234,6 +261,7 @@ ordersController.cancelManufacturingRequest = lineAction(
 ordersController.splitPartialItem = lineAction(
   ({ item, body, session }) => splitLine(item, body.warehouse, body.quantity, session),
   "Order item split",
+  () => ({ keys: ["pedidos"], action: "split-partial" }),
 );
 
 // Deshacer la división: devuelve lo tomado y borra el lote si sigue Programado.
@@ -247,6 +275,7 @@ ordersController.unsplitPartialItem = lineAction(
 ordersController.packManufacturedItem = lineAction(
   ({ item, session }) => packManufacturedLine(item, session),
   "Order item packed from manufacturing",
+  packedComplete,
 );
 
 // Deshacer empacar en Fabricación (solo si el motorista no recogió ahí).

@@ -17,6 +17,8 @@ import { buttonClass } from "../lib/buttonStyles";
 import { attendanceDays, attendanceMonths, defaultMonth } from "../lib/attendance";
 import Personal from "./empleados/Personal";
 import Asistencia from "./empleados/Asistencia";
+import { useActivity, useMarkSeen } from "../hooks/useActivity";
+import { tabKey } from "../lib/activityKeys";
 
 const TABS = [
   { key: "personal", label: "Personal" },
@@ -36,6 +38,10 @@ function Empleados() {
   const { data, loading, error, refetch } = useFetch("/employees");
   const { schedule } = useWorkSchedule();
   const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
+  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  const { counts } = useActivity();
+  useMarkSeen(tabKey("empleados", activeTab));
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`empleados.${t.key}`] }));
   const [selectedId, setSelectedId] = useUrlState("id");
 
   const list = useMemo(() => (Array.isArray(data) ? data : []), [data]);
@@ -99,7 +105,7 @@ function Empleados() {
         subtitle="Asistencia, horas extra y planillas"
         actions={
           <>
-            <Tabs tabs={TABS} value={activeTab} onChange={setActiveTab} />
+            <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
             {activeTab === "personal" ? (
               <Link to="/configuracion?tab=personal" className={buttonClass("secondary", "header")}>
                 Gestionar personal

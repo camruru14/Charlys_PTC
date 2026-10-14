@@ -4,6 +4,7 @@ import dailyBatchModel from "../models/DailyBatch.js";
 import batchModel from "../models/ProductionBatch.js";
 import { generateBatchNumber } from "./productionBatchesController.js";
 import { assertProductName } from "../lib/productName.js";
+import { recordFor } from "../lib/activity.js";
 
 // Genera el siguiente número de lote diario correlativo (LTE-DIARIO-0001, LTE-DIARIO-0002, ...)
 async function generateDailyBatchNumber() {
@@ -65,6 +66,7 @@ dailyBatchesController.insertBatch = async (req, res) => {
   });
 
   await newBatch.save();
+  await recordFor(req, { keys: ["fabricacion.diaria"], entityType: "dailyBatch", entityId: newBatch._id, action: "created" });
 
   res.json({ message: "Daily batch saved", dailyBatchNumber });
 };
@@ -89,6 +91,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
   batch.set({ date, product: productName, color, targetQuantity: target.value });
 
   await batch.save();
+  await recordFor(req, { keys: ["fabricacion.diaria"], entityType: "dailyBatch", entityId: batch._id, action: "updated" });
 
   res.json({ message: "Daily batch updated" });
 };
@@ -126,6 +129,7 @@ dailyBatchesController.scheduleBatch = async (req, res) => {
 
   await newBatch.save();
   await dailyBatchModel.findByIdAndDelete(req.params.id);
+  await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: newBatch._id, action: "scheduled" });
 
   res.json({ message: "Daily batch scheduled", batchNumber });
 };

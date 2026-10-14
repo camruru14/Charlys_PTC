@@ -224,3 +224,21 @@ button:not(:disabled),
     animation: none;
   }
 }
+
+/* Burbuja de novedades (CountBubble): pequeño «pop» al aparecer o cambiar de número. */
+@keyframes count-bubble-pop {
+  from {
+    transform: scale(0.8);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.count-bubble {
+  animation: count-bubble-pop 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .count-bubble {
+    animation: none;
+  }
+}

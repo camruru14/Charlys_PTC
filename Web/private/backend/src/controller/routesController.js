@@ -2,6 +2,7 @@ const routesController = {};
 
 import routeModel from "../models/Route.js";
 import { sendError, withTransaction } from "../lib/stock.js";
+import { recordFor } from "../lib/activity.js";
 import {
   routesFilter,
   createRoute,
@@ -24,12 +25,21 @@ async function sendRoute(res, id) {
   res.json(await populateRoute(routeModel.findById(id)));
 }
 
+// Registra las novedades de una acción de ruta (burbujas, lib/activity.js):
+// `keys` son las pestañas de la ruta; `orderIds`, los pedidos cuyo estado cambió
+// (pestaña Pedidos).
+async function trackRoute(req, route, action, { keys, orderIds = [] }) {
+  await recordFor(req, { keys, entityType: "route", entityId: route._id, action });
+  for (const orderId of orderIds) await recordFor(req, { keys: ["pedidos"], entityType: "order", entityId: orderId, action });
+}
+
 // Ejecuta una acción de lib/routes.js en una transacción y responde la ruta
-// actualizada (poblada).
-function routeAction(fn) {
+// actualizada (poblada). `track(req, route)` (opcional) devuelve { keys, orderIds? }.
+function routeAction(fn, action, track) {
   return async (req, res) => {
     try {
       const route = await withTransaction((session) => fn(req, session));
+      if (track) await trackRoute(req, route, action, track(req, route));
       await sendRoute(res, route._id);
     } catch (error) {
       sendError(res, error);
@@ -81,6 +91,7 @@ routesController.createRoute = async (req, res) => {
         if (error?.code !== 11000 || attempt === 4) throw error;
       }
     }
+    await trackRoute(req, route, "created", { keys: ["logistica.despacho"] });
     await sendRoute(res.status(201), route._id);
   } catch (error) {
     sendError(res, error);
@@ -98,11 +109,17 @@ routesController.deleteRoute = async (req, res) => {
   }
 };
 
-routesController.addOrder = routeAction((req, session) => addOrder(req.params.id, req.body?.orderId, session));
-routesController.removeOrder = routeAction((req, session) => removeOrder(req.params.id, req.params.orderId, session));
-routesController.confirmPickup = routeAction((req, session) => confirmPickup(req.params.id, req.body?.location, session));
-routesController.depart = routeAction((req, session) => depart(req.params.id, session));
-routesController.deliverOrder = routeAction((req, session) => deliverOrder(req.params.id, req.params.orderId, session));
-routesController.undeliverOrder = routeAction((req, session) => undeliverOrder(req.params.id, req.params.orderId, session));
+const despacho = () => ({ keys: ["logistica.despacho"] });
+routesController.addOrder = routeAction((req, session) => addOrder(req.params.id, req.body?.orderId, session), "order-added", despacho);
+routesController.removeOrder = routeAction((req, session) => removeOrder(req.params.id, req.params.orderId, session), "order-removed", despacho);
+routesController.confirmPickup = routeAction((req, session) => confirmPickup(req.params.id, req.body?.location, session), "pickup", despacho);
+// Al salir, todos los pedidos de la ruta pasan a «En Tránsito».
+routesController.depart = routeAction((req, session) => depart(req.params.id, session), "departed", (_req, route) => ({
+  keys: ["logistica.transito"],
+  orderIds: route.orders,
+}));
+const delivery = (req) => ({ keys: ["logistica.transito"], orderIds: [req.params.orderId] });
+routesController.deliverOrder = routeAction((req, session) => deliverOrder(req.params.id, req.params.orderId, session), "delivered", delivery);
+routesController.undeliverOrder = routeAction((req, session) => undeliverOrder(req.params.id, req.params.orderId, session), "undelivered", delivery);
 
 export default routesController;

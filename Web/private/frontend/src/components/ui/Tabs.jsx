@@ -1,6 +1,9 @@
+import CountBubble from "./CountBubble";
+
 /*
-  Pestañas de módulo. tabs = [{ key, label }]. La pestaña activa debe vivir en
-  la URL (?tab=): úsalo junto con useUrlState("tab", ...).
+  Pestañas de módulo. tabs = [{ key, label, badge? }]. La pestaña activa debe vivir en
+  la URL (?tab=): úsalo junto con useUrlState("tab", ...). `badge` es la burbuja de
+  novedades (CountBubble) a la derecha del texto; no se muestra si es 0.
 */
 function Tabs({ tabs, value, onChange }) {
   return (
@@ -14,11 +17,12 @@ function Tabs({ tabs, value, onChange }) {
             role="tab"
             aria-selected={active}
             onClick={() => onChange(tab.key)}
-            className={`h-8 shrink-0 whitespace-nowrap rounded-[8px] px-[13px] text-[12.5px] font-semibold transition ${
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[8px] px-[13px] text-[12.5px] font-semibold transition ${
               active ? "bg-primary-soft text-primary-soft-text" : "text-muted hover:text-ink"
             }`}
           >
             {tab.label}
+            <CountBubble count={tab.badge} />
           </button>
         );
       })}

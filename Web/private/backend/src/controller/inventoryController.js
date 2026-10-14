@@ -3,6 +3,7 @@ const inventoryController = {};
 import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
 import { addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
+import { recordFor } from "../lib/activity.js";
 import { assertProductName } from "../lib/productName.js";
 
 // SELECT
@@ -50,6 +51,8 @@ inventoryController.insertItem = async (req, res) => {
     });
 
     await newItem.save();
+    const key = category === "Producto Terminado" ? "inventario.terminado" : "inventario.materia";
+    await recordFor(req, { keys: [key], entityType: "inventory", entityId: newItem._id, action: "created" });
     res.json({ message: "Inventory item saved" });
   } catch (error) {
     sendError(res, error);
@@ -152,6 +155,7 @@ inventoryController.sendToWarehouse = async (req, res) => {
     if (!found) {
       return res.status(404).json({ message: "Inventory item not found" });
     }
+    await recordFor(req, { keys: ["inventario.terminado"], entityType: "inventory", entityId: req.params.id, action: "sent-to-warehouse" });
     res.json({ message: "Inventory item sent to warehouse" });
   } catch (error) {
     sendError(res, error);

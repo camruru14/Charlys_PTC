@@ -3,6 +3,7 @@ const employeesController = {};
 import employeeModel from "../models/Employee.js";
 import { FieldError, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
 import cloudinary from "../lib/cloudinary.js";
+import { recordFor } from "../lib/activity.js";
 import { decryptPassword, encryptPassword, isEncryptedPassword, readablePassword } from "../lib/passwordCrypto.js";
 
 // SELECT - todos los empleados (sin exponer la contraseña)
@@ -80,6 +81,7 @@ employeesController.insertEmployee = async (req, res) => {
       hireDate,
     });
     await newEmployee.save();
+    await recordFor(req, { keys: ["empleados.personal"], entityType: "employee", entityId: newEmployee._id, action: "created" });
 
     res.json({ message: "Employee saved" });
   } catch (error) {

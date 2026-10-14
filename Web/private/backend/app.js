@@ -22,6 +22,7 @@ import routesRoutes from "./src/routes/routes.js";
 import settingsRoutes from "./src/routes/settings.js";
 import productionLinesRoutes from "./src/routes/productionLines.js";
 import productsRoutes from "./src/routes/products.js";
+import activityRoutes from "./src/routes/activity.js";
 import { PRODUCT_IMAGE_MAX_MB, TRANSACTION_FILE_MAX_MB } from "./src/lib/cloudinary.js";
 
 // Cargar especificación OpenAPI 3.1.0
@@ -118,6 +119,9 @@ app.use("/api/productionLines", validateAuthCookie(), productionLinesRoutes);
 // Catálogo de la tienda pública: administración (crear/editar/eliminar e
 // imágenes). Misma colección "products" que lee public/backend.
 app.use("/api/products", validateAuthCookie(), productsRoutes);
+
+// Burbujas de novedades por módulo y pestaña (visto por empleado)
+app.use("/api/activity", validateAuthCookie(), activityRoutes);
 
 // Configuración compartida entre usuarios (horario laboral)
 app.use("/api/settings", validateAuthCookie(), settingsRoutes);

@@ -259,6 +259,24 @@
           "isAdmin": { "type": "boolean" }
         }
       },
+      "ActivityCounts": {
+        "type": "object",
+        "description": "Novedades del empleado con la sesión abierta (burbujas del menú lateral y de las pestañas)",
+        "properties": {
+          "counts": {
+            "type": "object",
+            "description": "Por pestaña a la que tiene acceso: cuántos elementos distintos (pedido, lote, ruta…) tuvieron actividad después de la última vez que la abrió",
+            "additionalProperties": { "type": "integer", "minimum": 0 },
+            "example": { "fabricacion.pedidos": 1, "fabricacion.lotes": 0, "inventario.pedidos": 2, "pedidos": 3 }
+          },
+          "modules": {
+            "type": "object",
+            "description": "Suma de las pestañas de cada módulo (clave = módulo de la URL)",
+            "additionalProperties": { "type": "integer", "minimum": 0 },
+            "example": { "fabricacion": 1, "inventario": 2, "pedidos": 3 }
+          }
+        }
+      },
       "AttendanceRecord": {
         "type": "object",
         "properties": {
@@ -2473,6 +2491,102 @@
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/activity/counts": {
+      "get": {
+        "tags": ["Autenticación"],
+        "summary": "Burbujas de novedades: conteos por pestaña y por módulo",
+        "description": "Para cada pestaña a la que el empleado tiene acceso (misma tabla de permisos que Personal y permisos), cuenta los elementos DISTINTOS con actividad posterior a su «visto» de esa pestaña (también las acciones propias). Si nunca la abrió, cuenta desde la fecha de alta del empleado. Claves: `pedidos`, `inventario.terminado|materia|pedidos`, `fabricacion.lotes|diaria|pedidos`, `logistica.transito|despacho`, `finanzas`, `empleados.personal`. La actividad se borra sola a los 45 días.",
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Conteos de novedades del empleado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityCounts"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/activity/seen": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Marcar una pestaña como vista (solo para el empleado de la sesión)",
+        "description": "Hace upsert de `seenAt = ahora` para el empleado y la clave, y responde los conteos ya actualizados (el de esa pestaña queda en 0).",
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": { "type": "string", "example": "fabricacion.pedidos" }
+                },
+                "required": ["key"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conteos de novedades del empleado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityCounts"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "400": {
+            "description": "Clave de pestaña inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "No se encontró la cuenta",

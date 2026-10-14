@@ -7,6 +7,7 @@ import customerOrderModel from "../models/CustomerOrder.js";
 import paymentTransactionModel from "../models/PaymentTransaction.js";
 import wompiClient from "../utils/wompiClient.js";
 import { recordSaleTransaction } from "../utils/salesTransaction.js";
+import { recordStoreOrderActivity } from "../utils/activity.js";
 
 // Cantidad máxima por línea (la tienda aplica el mismo tope en src/lib/quantity.js).
 const MAX_QUANTITY = 9_999_999;
@@ -196,6 +197,10 @@ ordersController.checkout = async (req, res) => {
     } catch (error) {
       console.log(`error al registrar la venta de ${order.orderNumber} en Finanzas: ${error}`);
     }
+
+    // 5) La novedad para las burbujas del panel (Pedidos, Inventario > Pedidos y
+    // Finanzas). Tampoco tumba el pedido si falla.
+    await recordStoreOrderActivity(order);
 
     res.status(201).json({ order });
   } catch (error) {

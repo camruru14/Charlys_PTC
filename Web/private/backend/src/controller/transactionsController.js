@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import transactionModel, { isStoreSale } from "../models/Transaction.js";
 import expenseCategoryModel, { NAME_COLLATION, normalizeName } from "../models/ExpenseCategory.js";
 import cloudinary, { uploadTransactionFileBuffer } from "../lib/cloudinary.js";
+import { recordFor } from "../lib/activity.js";
 
 // Categoría de todo ingreso manual (las «Ventas» solo las crea la tienda).
 export const OTHER_INCOME = "Otros ingresos";
@@ -118,6 +119,7 @@ transactionsController.insertTransaction = async (req, res) => {
 
   const reference = await generateReference();
   const created = await transactionModel.create({ reference, ...data });
+  await recordFor(req, { keys: ["finanzas"], entityType: "transaction", entityId: created._id, action: "created" });
   res.json({ message: "Transaction saved", reference, _id: created._id });
 };
 

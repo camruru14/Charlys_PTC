@@ -4,6 +4,8 @@ import { NAV_ITEMS, BOTTOM_ITEMS } from "../lib/nav";
 import { IconClose, IconLogout } from "../lib/icons";
 import { useAuth } from "../hooks/useAuth";
 import Avatar from "./ui/Avatar";
+import CountBubble from "./ui/CountBubble";
+import { useActivity } from "../hooks/useActivity";
 
 /*
   Navegación del panel.
@@ -32,7 +34,11 @@ function useUserInfo() {
   return { user, name, role, logout };
 }
 
+// «/fabricacion» → «fabricacion»: el módulo con el que el backend agrupa las novedades.
+const moduleOfPath = (to) => to.slice(1);
+
 function RailLink({ to, label, icon: Icon }) {
+  const { modules } = useActivity();
   return (
     <NavLink
       to={to}
@@ -56,6 +62,7 @@ function RailLink({ to, label, icon: Icon }) {
             className={`shrink-0 ${isActive ? "text-primary-soft-text" : "text-faint group-hover:text-ink-2"}`}
           />
           <span className="min-w-0 truncate whitespace-nowrap">{label}</span>
+          <CountBubble count={modules[moduleOfPath(to)]} className="ml-auto" />
         </>
       )}
     </NavLink>
@@ -143,6 +150,7 @@ export function Rail() {
 
 export function Drawer({ open, onClose }) {
   const { user, name, role, logout } = useUserInfo();
+  const { modules } = useActivity();
 
   const linkClass = ({ isActive }) =>
     `flex h-10 items-center gap-3 rounded-[10px] px-3 text-[13.5px] font-semibold transition ${
@@ -175,6 +183,7 @@ export function Drawer({ open, onClose }) {
             <NavLink key={to} to={to} end={to === "/"} className={linkClass} onClick={onClose}>
               <Icon width={19} height={19} />
               {label}
+              <CountBubble count={modules[moduleOfPath(to)]} className="ml-auto" />
             </NavLink>
           ))}
         </nav>

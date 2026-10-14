@@ -13,6 +13,11 @@ const SESSION_STORAGE_KEY = "charly:auth-session";
 // localStorage).
 let authToken = null;
 
+// Aviso de que un POST/PUT/PATCH/DELETE terminó bien: las burbujas de novedades
+// (context/ActivityContext.jsx) vuelven a pedir sus conteos. Las propias
+// llamadas a /activity no lo emiten (no se pide a sí mismas).
+export const MUTATION_EVENT = "charly:api-mutation";
+
 export function setAuthToken(token) {
   authToken = token || null;
 }
@@ -56,6 +61,8 @@ async function request(path, { method = "GET", body } = {}) {
   if (!response.ok) {
     throw new Error(payload?.message || `Error ${response.status}`);
   }
+
+  if (method !== "GET" && !path.startsWith("/activity")) window.dispatchEvent(new Event(MUTATION_EVENT));
 
   return payload;
 }

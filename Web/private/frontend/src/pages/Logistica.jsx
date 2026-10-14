@@ -18,6 +18,8 @@ import { dayKey, dispatchOrders, routeRef } from "../lib/logistics";
 import EnTransito from "./logistica/EnTransito";
 import ParaDespacho from "./logistica/ParaDespacho";
 import ModalNuevaRuta from "./logistica/ModalNuevaRuta";
+import { useActivity, useMarkSeen } from "../hooks/useActivity";
+import { tabKey } from "../lib/activityKeys";
 
 const TABS = [
   { key: "transito", label: "En tránsito" },
@@ -59,6 +61,10 @@ function Logistica() {
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   const [, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useUrlState("tab", "transito", { allowed: TABS.map((t) => t.key) });
+  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  const { counts } = useActivity();
+  useMarkSeen(tabKey("logistica", activeTab));
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`logistica.${t.key}`] }));
   const [routeId, setRouteId] = useUrlState("ruta");
   const [filter, setFilter] = useUrlState("filtro", "todos", { allowed: FILTERS });
   const [routeFilter, setRouteFilter] = useUrlState("estado", "todas", { allowed: ROUTE_FILTERS });
@@ -185,7 +191,7 @@ function Logistica() {
         actions={
           <>
             {activeTab === "transito" ? <DateRangePicker /> : null}
-            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
+            <Tabs tabs={tabs} value={activeTab} onChange={changeTab} />
             <Button icon={IconPlus} onClick={() => setNewRouteOpen(true)}>
               Armar ruta
             </Button>

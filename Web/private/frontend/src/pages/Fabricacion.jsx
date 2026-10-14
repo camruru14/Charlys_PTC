@@ -19,6 +19,8 @@ import DailyBatchFormModal from "../components/batches/DailyBatchFormModal";
 import LotesFabricacion from "./fabricacion/LotesFabricacion";
 import ProduccionDiaria from "./fabricacion/ProduccionDiaria";
 import PedidosFabricacion from "./fabricacion/PedidosFabricacion";
+import { useActivity, useMarkSeen } from "../hooks/useActivity";
+import { tabKey } from "../lib/activityKeys";
 
 const TABS = [
   { key: "lotes", label: "Lotes de fabricación" },
@@ -32,6 +34,10 @@ function Fabricacion() {
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders, mutate: mutateOrders } = useFetch("/orders");
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab] = useUrlState("tab", "lotes", { allowed: TABS.map((t) => t.key) });
+  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  const { counts } = useActivity();
+  useMarkSeen(tabKey("fabricacion", activeTab));
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`fabricacion.${t.key}`] }));
   const [schedulingId, setSchedulingId] = useState(null);
 
   // Cambiar de pestaña quita ?id= (en Lotes es un lote; en Pedidos, un pedido).
@@ -146,7 +152,7 @@ function Fabricacion() {
                 Nuevo lote
               </Button>
             )}
-            <Tabs tabs={TABS} value={activeTab} onChange={changeTab} />
+            <Tabs tabs={tabs} value={activeTab} onChange={changeTab} />
           </>
         }
       />

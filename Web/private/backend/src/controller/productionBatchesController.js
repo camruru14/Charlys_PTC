@@ -14,6 +14,7 @@ import {
   stampStatusChange,
 } from "../lib/batchFlow.js";
 import { packCompletedBatches } from "../lib/orderLines.js";
+import { recordFor } from "../lib/activity.js";
 
 // Genera el siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...)
 export async function generateBatchNumber() {
@@ -85,6 +86,7 @@ productionBatchesController.insertBatch = async (req, res) => {
     stampStatusChange(newBatch, "Programado");
 
     await newBatch.save();
+    await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: newBatch._id, action: "created" });
 
     res.json({ message: "Batch saved", batchNumber });
   } catch (error) {
@@ -140,13 +142,14 @@ productionBatchesController.updateBatch = async (req, res) => {
 
 // Cambia el estado de un lote con una de las transiciones de lib/batchFlow y
 // responde el lote actualizado (con el operario poblado).
-function transition(apply) {
+function transition(apply, action) {
   return async (req, res) => {
     try {
       const batch = await batchModel.findById(req.params.id);
       if (!batch) throw new HttpError(404, "Lote no encontrado");
       await apply(batch, req.body || {});
       await batch.save();
+      await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: batch._id, action });
       res.json(await populateOperator(batchModel.findById(batch._id)));
     } catch (error) {
       sendError(res, error);
@@ -155,15 +158,15 @@ function transition(apply) {
 }
 
 // Programado → En Proceso { productionLine?, operator? }
-productionBatchesController.startBatch = transition((batch, body) => startBatch(batch, body));
+productionBatchesController.startBatch = transition((batch, body) => startBatch(batch, body), "started");
 // En Proceso → Detenido { reason? }
-productionBatchesController.stopBatch = transition((batch, body) => stopBatch(batch, body.reason));
+productionBatchesController.stopBatch = transition((batch, body) => stopBatch(batch, body.reason), "stopped");
 // Detenido → En Proceso
-productionBatchesController.resumeBatch = transition((batch) => resumeBatch(batch));
+productionBatchesController.resumeBatch = transition((batch) => resumeBatch(batch), "resumed");
 // En Proceso → Completado { producedQuantity }
-productionBatchesController.completeBatch = transition((batch, body) => completeBatch(batch, body.producedQuantity));
+productionBatchesController.completeBatch = transition((batch, body) => completeBatch(batch, body.producedQuantity), "completed");
 // Completado → En Proceso (Deshacer «Completar»)
-productionBatchesController.reopenBatch = transition((batch) => reopenBatch(batch));
+productionBatchesController.reopenBatch = transition((batch) => reopenBatch(batch), "reopened");
 
 // Enviar a bodega { warehouse }: las unidades entran a Producto terminado.
 productionBatchesController.sendToWarehouse = async (req, res) => {
@@ -171,6 +174,8 @@ productionBatchesController.sendToWarehouse = async (req, res) => {
     const { quantity } = await withTransaction((session) =>
       sendBatchToWarehouse(req.params.id, req.body?.warehouse, session),
     );
+    // Los lotes de un pedido no se envían a bodega (sendBatchToWarehouse lo rechaza): solo Producto terminado.
+    await recordFor(req, { keys: ["inventario.terminado"], entityType: "batch", entityId: req.params.id, action: "sent-to-warehouse" });
     const batch = await populateOperator(batchModel.findById(req.params.id));
     res.json({ message: "Batch sent to warehouse", quantity, batch });
   } catch (error) {
@@ -194,6 +199,10 @@ productionBatchesController.undoSend = async (req, res) => {
 productionBatchesController.packCompleted = async (req, res) => {
   try {
     const orders = await withTransaction((session) => packCompletedBatches(req.body?.batchIds, session));
+    // Empacar lo fabricado no mete nada a Inventario: si el pedido queda Empacado completo, Logística lo despacha.
+    for (const order of orders) {
+      if (order.status === "Empacado") await recordFor(req, { keys: ["logistica.despacho", "pedidos"], entityType: "order", entityId: order._id, action: "packed" });
+    }
     res.json({ message: "Batches packed", packed: [...new Set((req.body.batchIds || []).map(String))].length, orders: orders.map((o) => o._id) });
   } catch (error) {
     sendError(res, error);
