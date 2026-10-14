@@ -129,7 +129,7 @@ export default function LogisticaScreen({ navigation }) {
   );
 
   // Rango elegido, en texto («28 sep – 1 oct»); «Todo» no tiene fechas.
-  const rangeText = range.from ? `${formatShortDate(range.from)} – ${formatShortDate(range.preset || !range.to ? new Date() : range.to)}` : "Todo";
+  const rangeText = range.from ? `${formatShortDate(range.from)} – ${formatShortDate(range.to || new Date())}` : "Todo";
 
   useLayoutEffect(() => {
     navigation.setOptions({

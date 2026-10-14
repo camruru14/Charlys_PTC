@@ -47,6 +47,31 @@ const toDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+// Día «AAAA-MM-DD» del calendario de la empresa (El Salvador, UTC−6) de un instante.
+const SV_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador", year: "numeric", month: "2-digit", day: "2-digit" });
+
+// Fecha de un movimiento manual: un DÍA, guardado como medianoche UTC («AAAA-MM-DDT00:00:00.000Z»),
+// igual que lo que mandan el panel y la app y lo que leen Finanzas, el Dashboard y los presupuestos.
+//   · sin fecha            -> hoy en El Salvador (no el instante: a las 19:00 del día 31 el UTC ya es el 1.º);
+//   · «AAAA-MM-DD»         -> ese día;
+//   · medianoche UTC (lo que ya hay guardado, al editar) -> su mismo día;
+//   · otro instante        -> su día en El Salvador.
+// Devuelve null si no es una fecha válida.
+function manualDate(value) {
+  if (isBlank(value)) return new Date(`${SV_DAY.format(new Date())}T00:00:00.000Z`);
+  let key;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    key = value.trim();
+  } else {
+    const instant = toDate(value);
+    if (!instant) return null;
+    key = instant.getTime() % 86400000 === 0 ? instant.toISOString().slice(0, 10) : SV_DAY.format(instant);
+  }
+  const date = new Date(`${key}T00:00:00.000Z`);
+  // Rechaza días que no existen («2026-02-31»).
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== key ? null : date;
+}
+
 // Valida y normaliza los datos de un movimiento manual. `body` trae lo que
 // envía el cliente y `current` (solo al editar) lo que ya tiene guardado: lo
 // que no venga en el body se conserva. Devuelve { error: { status, message } }
@@ -67,7 +92,7 @@ async function parseManual(body = {}, current = null) {
   const status = isBlank(pick("status")) ? "Completado" : pick("status");
   if (status !== "Pendiente" && status !== "Completado") return fail("El estado debe ser Pendiente o Completado");
 
-  const date = isBlank(pick("date")) ? new Date() : toDate(pick("date"));
+  const date = manualDate(pick("date"));
   if (!date) return fail("La fecha no es válida");
 
   const paymentMethod = isBlank(pick("paymentMethod")) ? undefined : pick("paymentMethod");

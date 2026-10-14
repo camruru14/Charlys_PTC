@@ -50,11 +50,10 @@ const SUBTITLES = {
 */
 function Logistica() {
   const range = useDateRange();
-  // Rango de las completadas. «Todo» (sin rango) parte de 1970; con un rango
-  // relativo («Esta semana», «Últimos 7 días»…) el final es siempre hoy, aunque
-  // pase la medianoche con la pantalla abierta. El refresco automático usa esta
-  // misma ruta, así que respeta el rango elegido y no lo reinicia.
-  const routesPath = `/routes?from=${range.from ? dayKey(range.from) : "1970-01-01"}&to=${range.preset || !range.to ? dayKey(new Date()) : dayKey(range.to)}`;
+  // Rango de las completadas. «Todo» (sin rango) parte de 1970 y llega a hoy; con un
+  // rango relativo el contexto ya recalcula `to` (hoy) al pasar la medianoche. El
+  // refresco automático usa esta misma ruta, así que respeta el rango elegido.
+  const routesPath = `/routes?from=${range.from ? dayKey(range.from) : "1970-01-01"}&to=${dayKey(range.to || new Date())}`;
   const { data: routesData, loading: routesLoading, error: routesError, refetch: refetchRoutes, mutate: mutateRoutes } = useFetch(routesPath);
   const { data: availability, refetch: refetchAvailability } = useFetch("/routes/availability");
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
@@ -106,6 +105,13 @@ function Logistica() {
     if (!previous || driverOf(previous) !== driverOf(updated) || previous.vehicle !== updated.vehicle || previous.status !== updated.status) {
       refetchAvailability();
     }
+  }
+
+  // Una ruta eliminada sale de la lista al instante (sin esperar al refresco de 15 s) y la
+  // disponibilidad se vuelve a leer: su motorista y su vehículo quedan libres.
+  function routeDeleted(id) {
+    mutateRoutes((list) => (Array.isArray(list) ? list.filter((r) => r._id !== id) : list));
+    refetchAvailability();
   }
 
   // Acción directa; si hay `undo`, el toast ofrece «Deshacer». `key` identifica
@@ -227,6 +233,7 @@ function Logistica() {
           isBusy={isBusy}
           act={act}
           onRemove={removeFromRoute}
+          onRouteDeleted={routeDeleted}
           onNewRoute={() => setNewRouteOpen(true)}
         />
       )}

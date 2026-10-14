@@ -196,15 +196,15 @@ export function routeNote(order) {
 // Grupos de la lista, en su orden fijo. `key` identifica el estado elegido en
 // el filtro; `status` es el estado macro (dominio pedido-inventario) que
 // reúne cada grupo; `sort`: «arrival» = el que llegó antes a Inventario
-// primero, «asc»/«desc» = por lastStatusAt. `ranged`: solo esos grupos se
-// filtran por el rango de fechas.
+// primero, «picked» = el que se recogió antes primero, «asc»/«desc» = por
+// lastStatusAt. `ranged`: solo esos grupos se filtran por el rango de fechas.
 export const ORDER_GROUPS = [
   { key: "listo", status: "Listo para empacar", label: "Listos para empacar", note: "solo falta empacar", sort: "arrival" },
   { key: "verificando", status: "Verificando", label: "Verificando", sort: "arrival" },
   { key: "sin-verificar", status: "Sin verificar", label: "Sin verificar", sort: "arrival" },
   { key: "esperando", status: "Esperando lote", label: "Esperando lote", note: "depende de Fabricación", sort: "arrival" },
   { key: "empacado", status: "Empacado", label: "Empacados", note: "esperan a Logística", sort: "arrival" },
-  { key: "recogido", status: "Recogido", label: "Recogidos", note: "la ruta aún no sale", sort: "asc", ranged: true },
+  { key: "recogido", status: "Recogido", label: "Recogidos", note: "la ruta aún no sale", sort: "picked" },
   { key: "transito", status: "En Tránsito", label: "En tránsito", sort: "asc", ranged: true },
   { key: "entregado", status: "Entregado", label: "Entregados", note: "más recientes primero", sort: "desc", ranged: true },
 ];
@@ -213,6 +213,14 @@ const time = (value) => {
   const t = new Date(value).getTime();
   return Number.isNaN(t) ? 0 : t;
 };
+
+// Cuándo se recogió el pedido: la recogida más reciente de sus líneas (recoger no
+// cambia el status, así que lastStatusAt sería cuando se empacó). Sin recogida
+// guardada, lastStatusAt.
+export function pickedUpAt(order) {
+  const picked = Math.max(0, ...(order.items || []).map((i) => time(i.pickedUpAt)));
+  return picked || time(lastStatusAt(order));
+}
 
 // Cuándo llegó el pedido a Inventario.
 export const arrivedAt = (order) => order.sentToInventoryAt || order.createdAt;
@@ -224,8 +232,9 @@ export function matchesOrderQuery(order, query) {
   return `${order.orderNumber || ""} ${order.customer?.name || ""}`.toLowerCase().includes(q);
 }
 
-// ¿El pedido se ve con el rango de fechas? Solo Recogido, En Tránsito y
-// Entregado se filtran (por lastStatusAt); lo que sigue en bodega se ve siempre.
+// ¿El pedido se ve con el rango de fechas? Solo En Tránsito y Entregado se
+// filtran (por lastStatusAt); lo que sigue en bodega o en la ruta sin salir
+// (Recogido) se ve siempre.
 export function inDateRange(order, group, range) {
   if (!group.ranged || !range?.from || !range?.to) return true;
   const at = time(lastStatusAt(order));
@@ -239,7 +248,7 @@ export function groupInventoryOrders(orders, range) {
   for (const order of orders) byStatus.get(inventoryMacroStatus(order))?.push(order);
   return ORDER_GROUPS.map((group) => {
     const items = byStatus.get(group.status).filter((o) => inDateRange(o, group, range));
-    const key = group.sort === "arrival" ? (o) => time(arrivedAt(o)) : (o) => time(lastStatusAt(o));
+    const key = group.sort === "arrival" ? (o) => time(arrivedAt(o)) : group.sort === "picked" ? pickedUpAt : (o) => time(lastStatusAt(o));
     items.sort((a, b) => (group.sort === "desc" ? key(b) - key(a) : key(a) - key(b)));
     return { ...group, items };
   });

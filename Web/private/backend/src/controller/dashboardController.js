@@ -74,9 +74,14 @@ function resolvePeriods(fromQuery, toQuery, now = new Date()) {
   if (fromKey === monthStart(fromKey) && toKey === monthEnd(fromKey)) {
     const prevFrom = addMonths(fromKey, -1);
     const inProgress = fromKey <= todayKey && todayKey < toKey;
-    const days = inProgress ? diffDays(fromKey, todayKey) + 1 : diffDays(fromKey, toKey) + 1;
-    const prevTo = addDays(prevFrom, days - 1);
-    previous = { fromKey: prevFrom, toKey: prevTo < monthEnd(prevFrom) ? prevTo : monthEnd(prevFrom) };
+    if (inProgress) {
+      // Mes en curso: los mismos días transcurridos del mes anterior (sin pasarse de su último día).
+      const prevTo = addDays(prevFrom, diffDays(fromKey, todayKey));
+      previous = { fromKey: prevFrom, toKey: prevTo < monthEnd(prevFrom) ? prevTo : monthEnd(prevFrom) };
+    } else {
+      // Mes terminado: el mes anterior completo (septiembre contra los 31 días de agosto).
+      previous = { fromKey: prevFrom, toKey: monthEnd(prevFrom) };
+    }
   } else {
     const span = diffDays(fromKey, toKey) + 1;
     const prevTo = addDays(fromKey, -1);
@@ -230,7 +235,9 @@ dashboardController.getSummary = async (req, res) => {
     let unitsTarget = 0;
     for (const row of batchRows) {
       unitsProduced += row.produced;
-      unitsTarget += row.target;
+      // La meta solo cuenta lo que ya tocaba producir: los lotes programados para días que aún no
+      // llegan no bajan el «% de la meta» a mitad de semana.
+      if (row._id <= todayKey) unitsTarget += row.target;
       const index = buckets.indexOf(row._id);
       if (index >= 0) sparks.units[index] += row.produced;
     }

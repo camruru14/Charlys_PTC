@@ -14,11 +14,11 @@ import { dayKey } from "../lib/logistics";
 // pedidos cambian con cada acción: la pantalla recarga useOrders aparte.
 export function useRoutes() {
   // Rango de las completadas (el selector de la cabecera de Logística). «Todo»
-  // (sin rango) parte de 1970; con un rango relativo («Esta semana», «Últimos 7
-  // días»…) el final es siempre hoy, aunque pase la medianoche con la app
-  // abierta. El refresco automático usa esta misma ruta: respeta el rango.
+  // (sin rango) parte de 1970 y llega a hoy; con un rango relativo («Esta semana»,
+  // «Últimos 7 días»…) el contexto ya recalcula `to` (hoy) al pasar la medianoche.
+  // El refresco automático usa esta misma ruta: respeta el rango.
   const range = useDateRange();
-  const routesPath = `/routes?from=${range.from ? dayKey(range.from) : "1970-01-01"}&to=${range.preset || !range.to ? dayKey(new Date()) : dayKey(range.to)}`;
+  const routesPath = `/routes?from=${range.from ? dayKey(range.from) : "1970-01-01"}&to=${dayKey(range.to || new Date())}`;
   const { data, loading, refreshing, error, refresh: refreshList, refreshQuiet: refreshListQuiet } = useApi(routesPath);
   const { data: availability, refresh: refreshAvailability, refreshQuiet: refreshAvailabilityQuiet } = useApi("/routes/availability");
 

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { useMyAttendance } from "../hooks/useMyAttendance";
@@ -61,6 +62,14 @@ export default function AsistenciaScreen() {
   const { user } = useAuth();
   const { attendance, loading, refreshing, error, refresh } = useMyAttendance();
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
+
+  // Al volver a la pantalla se recarga el historial (una marcación hecha en otro dispositivo o
+  // corregida por RRHH aparece sin tener que jalar para actualizar).
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
   const now = useNow();
   const [checkIn, setCheckIn] = useState(null);
   const [restoring, setRestoring] = useState(true);

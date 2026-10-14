@@ -325,7 +325,7 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
     try {
       await api.del(routeUrl);
       toast.success(`${routeLabel(route)} eliminada`);
-      onDeleted();
+      onDeleted(route._id);
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
     }
@@ -476,7 +476,7 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
   Logística > Para despacho: pedidos con algo empacado que todavía no salen
   (maestro) y la ruta abierta que se está armando (panel derecho).
 */
-function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, isBusy, act, onRemove, onNewRoute }) {
+function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, isBusy, act, onRemove, onRouteDeleted, onNewRoute }) {
   const ordersById = useMemo(() => new Map(orders.map((o) => [String(o._id), o])), [orders]);
   const pendingRoutes = routes.filter((r) => !r.departedAt);
   const openRoute = routes.find((r) => r._id === openRouteId) || null;
@@ -612,7 +612,10 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
               isBusy={isBusy}
               act={act}
               onRemove={onRemove}
-              onDeleted={() => onOpenRoute(null)}
+              onDeleted={(id) => {
+                onOpenRoute(null);
+                onRouteDeleted(id);
+              }}
             />
           ) : (
             <DetailPanel>

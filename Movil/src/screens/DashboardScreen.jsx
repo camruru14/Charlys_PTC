@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDashboard } from "../hooks/useDashboard";
 import { useProductNames } from "../hooks/useProductNames";
@@ -84,6 +85,14 @@ export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { dashboard, kpis, sparks, monthly, salesByProduct, dailyProduction, activeOrders, expensesByCategory, loading, refreshing, error, refresh } =
     useDashboard(range);
+
+  // Al volver a la pantalla se recarga (como Finanzas y Pedidos): los números no se quedan con lo
+  // de la última vez que se abrió.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   // Globo de las gráficas: una sola activa a la vez ({ chart, index }). Tocar fuera de ella (o
   // desplazar la pantalla) lo quita: cada gráfica marca `touchedChart` al recibir el toque y el

@@ -148,7 +148,7 @@ export default function InventarioScreen({ navigation }) {
               <IconButton icon="plus" variant="primary" onPress={() => setNewOpen(true)} accessibilityLabel="Nuevo artículo" />
             )
           : tab === "pedidos"
-            ? // El rango de fechas solo filtra Recogido, En Tránsito y Entregado.
+            ? // El rango de fechas solo filtra En Tránsito y Entregado.
               () => <DateRangeButton />
             : undefined,
     });

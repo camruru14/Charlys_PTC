@@ -116,8 +116,12 @@ function RouteDetail({ route, availability, isBusy, act, onRemove }) {
     busy: v.busy && String(v.route?._id) !== String(route._id),
   }));
 
+  // Mientras corre el PATCH de «Reasignar» no se acepta otro cambio: dos PATCH cruzados dejarían
+  // dos «Deshacer» que se pisan.
+  const crewBusy = isBusy(`crew:${route._id}`);
+
   function change(field, value, previous, label) {
-    if (value === previous) return;
+    if (value === previous || crewBusy) return;
     act(
       () => api.patch(routeUrl, { [field]: value }),
       `${label} de ${routeRef(route)} actualizado`,
@@ -144,7 +148,10 @@ function RouteDetail({ route, availability, isBusy, act, onRemove }) {
             ) : null}
           </div>
           {reassign && !departed ? (
-            <div className="flex flex-col gap-2.5 rounded-[12px] border border-line-soft bg-surface px-3.5 py-3">
+            <div
+              className={`flex flex-col gap-2.5 rounded-[12px] border border-line-soft bg-surface px-3.5 py-3 ${crewBusy ? "pointer-events-none opacity-60" : ""}`}
+              aria-busy={crewBusy}
+            >
               <div className="flex items-start gap-3">
                 <span className="t-label w-[72px] shrink-0 pt-1.5">Motorista</span>
                 <PillSelector options={driverOptions} value={String(driverId)} onChange={(v) => change("driver", v, String(driverId), "Motorista")} />
