@@ -161,10 +161,16 @@ export function timelineBar(record, schedule) {
   const end = start + (checkOut - checkIn) / 60000;
   const workdayEnd = Math.min(end, start + schedule.workdayHours * 60);
 
+  const workday = pct(workdayEnd) - pct(start);
+  const extra = pct(end) - pct(workdayEnd);
   return {
     left: pct(start),
-    workday: pct(workdayEnd) - pct(start),
-    extra: pct(end) - pct(workdayEnd),
+    workday,
+    extra,
+    // Toda la marcación cae fuera de la franja 06:00–18:00: la barra mediría 0 (y el reparto
+    // jornada/extra dividiría entre 0). La pantalla muestra «Fuera de horario · N h».
+    outside: workday + extra <= 0,
+    hours: (checkOut - checkIn) / 3600000,
     checkIn: formatClock(checkIn),
     checkOut: formatClock(checkOut),
   };

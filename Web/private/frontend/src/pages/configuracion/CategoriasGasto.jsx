@@ -12,7 +12,7 @@ import { Field } from "../../components/ui/Field";
 import { buttonClass } from "../../lib/buttonStyles";
 import { IconAlert, IconCheck, IconLock, IconOrders, IconPlus } from "../../lib/icons";
 import { budgetChanges, categoryIcon, categoryTone, COLOR_KEYS, ICON_KEYS, monthKey, parseBudget } from "../../lib/expenseCategories";
-import { daysInMonth, money, plural } from "../../lib/finance";
+import { cents, daysInMonth, money, plural } from "../../lib/finance";
 import { fmtMonth } from "../../lib/format";
 
 /*
@@ -278,10 +278,11 @@ function CategoriasGasto({ categories, loading, error, refetch, mutate, draft, s
       return next;
     });
 
-  const sum = (list, pick) => list.reduce((s, c) => s + (Number(pick(c)) || 0), 0);
+  // Sumas en centavos (sin errores de punto flotante en presupuestos y gastos).
+  const sum = (list, pick) => list.reduce((s, c) => s + cents(pick(c)), 0) / 100;
   const budgetSaved = sum(active, (c) => c.usage?.budget);
   const budgetNow = sum(active, (c) => effectiveBudget(c));
-  const delta = budgetNow - budgetSaved;
+  const delta = (cents(budgetNow) - cents(budgetSaved)) / 100;
   const paid = sum(categories, (c) => c.usage?.paid);
   const pending = sum(categories, (c) => c.usage?.pending);
   const usedPct = budgetNow > 0 ? Math.round((paid / budgetNow) * 100) : null;

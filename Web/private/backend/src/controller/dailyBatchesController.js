@@ -6,6 +6,7 @@ import { generateBatchNumber } from "./productionBatchesController.js";
 import { assertProductName } from "../lib/productName.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import { recordFor, resolveActivity } from "../lib/activity.js";
+import { assertId } from "../lib/ids.js";
 
 // Genera el siguiente número de lote diario correlativo (LTE-DIARIO-0001, LTE-DIARIO-0002, ...)
 async function generateDailyBatchNumber() {
@@ -42,15 +43,17 @@ dailyBatchesController.getBatches = async (req, res) => {
 
 // SELECT - un lote diario por id
 dailyBatchesController.getBatch = async (req, res) => {
+  assertId(req.params.id);
   const batch = await dailyBatchModel.findById(req.params.id);
+  if (!batch) throw new HttpError(404, "Lote diario no encontrado");
   res.json(batch);
 };
 
 // INSERT
 dailyBatchesController.insertBatch = async (req, res) => {
-  const { date, product, color } = req.body;
+  const { date, product, color } = req.body ?? {};
 
-  const target = parseTarget(req.body.targetQuantity);
+  const target = parseTarget(req.body?.targetQuantity);
   if (target.error) return res.status(400).json({ message: target.error });
 
   // El producto es el nombre de un producto del Catálogo.
@@ -74,7 +77,8 @@ dailyBatchesController.insertBatch = async (req, res) => {
 
 // ACTUALIZAR
 dailyBatchesController.updateBatch = async (req, res) => {
-  const { date, product, color } = req.body;
+  assertId(req.params.id);
+  const { date, product, color } = req.body ?? {};
 
   const batch = await dailyBatchModel.findById(req.params.id);
 
@@ -83,7 +87,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
   }
 
   // Al editar la meta también es obligatoria (los lotes anteriores sin meta se completan aquí).
-  const target = parseTarget(req.body.targetQuantity);
+  const target = parseTarget(req.body?.targetQuantity);
   if (target.error) return res.status(400).json({ message: target.error });
 
   // Conserva el producto que ya tenía aunque se haya renombrado o eliminado después.
@@ -101,6 +105,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
 
 // Eliminar
 dailyBatchesController.deleteBatch = async (req, res) => {
+  assertId(req.params.id);
   await dailyBatchModel.findByIdAndDelete(req.params.id);
   await resolveActivity({ keys: ["fabricacion.diaria"], entityId: req.params.id });
   res.json({ message: "Daily batch deleted" });
@@ -113,6 +118,7 @@ dailyBatchesController.deleteBatch = async (req, res) => {
 // programan el mismo lote a la vez, solo uno lo encuentra para borrarlo y el otro recibe 409.
 dailyBatchesController.scheduleBatch = async (req, res) => {
   try {
+    assertId(req.params.id);
     const daily = await dailyBatchModel.findById(req.params.id);
 
     if (!daily) {

@@ -3,6 +3,7 @@ const routesController = {};
 import routeModel from "../models/Route.js";
 import { sendError, withTransaction } from "../lib/stock.js";
 import { recordFor, resolveActivity } from "../lib/activity.js";
+import { assertId } from "../lib/ids.js";
 import {
   routesFilter,
   createRoute,
@@ -78,6 +79,7 @@ routesController.getAvailability = async (req, res) => {
 // GET /routes/:id
 routesController.getRoute = async (req, res) => {
   try {
+    assertId(req.params.id);
     const route = await populateRoute(routeModel.findById(req.params.id));
     if (!route) return res.status(404).json({ message: "Ruta no encontrada" });
     res.json(route);

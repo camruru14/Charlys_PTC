@@ -61,7 +61,10 @@ function ProductFormModal({ open, onClose, editingId, form, productNames = [], h
       toast.error("Elige la categoría");
       return;
     }
-    onSubmit(pendingFiles).then(() => setPendingFiles([]));
+    // Las imágenes pendientes solo se sueltan si todo se guardó: si la subida falló, quedan para reintentar.
+    onSubmit(pendingFiles).then((done) => {
+      if (done) setPendingFiles([]);
+    });
   }
 
   return (

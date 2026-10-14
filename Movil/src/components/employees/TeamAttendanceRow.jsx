@@ -29,7 +29,11 @@ export default function TeamAttendanceRow({ employee, record, schedule }) {
           )}
         </View>
         {record ? (
-          bar ? (
+          bar?.outside ? (
+            <Text style={styles.time}>
+              Fuera de horario · {fmtHours(bar.hours)} h ({bar.checkIn} – {bar.checkOut})
+            </Text>
+          ) : bar ? (
             <>
               <View style={styles.track}>
                 <View style={[styles.segment, { left: `${bar.left}%`, width: `${bar.workday + bar.extra}%` }]}>

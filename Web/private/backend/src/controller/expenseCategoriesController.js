@@ -25,6 +25,9 @@ function monthRange(month) {
   return { start: new Date(Date.UTC(year, number - 1, 1)), end: new Date(Date.UTC(year, number, 1)) };
 }
 
+// $sum de la base suma en punto flotante (117.99 + 570.32 = 688.3100000000001): se redondea a centavos.
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
 // Todas las categorías (activas y archivadas) por `order` y luego por nombre.
 // Con `month`, cada una trae usage: { paid, pending, count, budget } de los
 // gastos de ese mes.
@@ -49,7 +52,7 @@ async function listCategories(month) {
     const row = byName.get(category.name);
     return {
       ...category.toObject(),
-      usage: { paid: row?.paid ?? 0, pending: row?.pending ?? 0, count: row?.count ?? 0, budget: budgetFor(category, month) },
+      usage: { paid: round2(row?.paid), pending: round2(row?.pending), count: row?.count ?? 0, budget: budgetFor(category, month) },
     };
   });
 }

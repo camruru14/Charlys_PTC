@@ -14,7 +14,7 @@ import CategoryPanel from "../components/finance/CategoryPanel";
 import Ledger from "../components/finance/Ledger";
 import TransactionModal from "../components/finance/TransactionModal";
 import { categoryTone, useExpenseCategories } from "../lib/expenseCategories";
-import { buildLedger, filterLedger, ledgerSummary, OTHER_INCOME, SALES_CATEGORY, transactionsCsv } from "../lib/finance";
+import { buildLedger, filterLedger, ledgerSummary, OTHER_INCOME, SALES_CATEGORY, transactionsCsv, UNCATEGORIZED, UNCATEGORIZED_LABEL } from "../lib/finance";
 import { dayKey, inRange, statusLabel } from "../lib/transactionFilters";
 import { getPageMeta } from "../lib/nav";
 
@@ -68,6 +68,7 @@ function Finanzas() {
       if (c.archived && !used.has(c.name)) continue;
       options.push({ value: c.name, label: c.archived ? `${c.name} (archivada)` : c.name, dot: categoryTone(c.color).dot });
     }
+    if (raw.some((t) => t.type === "Gasto" && !t.category)) options.push({ value: UNCATEGORIZED, label: UNCATEGORIZED_LABEL, dot: categoryTone("gray").dot });
     options.push({ value: OTHER_INCOME, label: OTHER_INCOME, dot: categoryTone("green").dot });
     if (used.has(SALES_CATEGORY)) options.push({ value: SALES_CATEGORY, label: SALES_CATEGORY, dot: categoryTone("green").dot });
     return options;

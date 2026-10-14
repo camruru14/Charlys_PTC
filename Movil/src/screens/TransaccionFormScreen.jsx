@@ -104,6 +104,15 @@ export default function TransaccionFormScreen({ navigation, route }) {
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
+  // ¿Se puede elegir esa categoría en un Gasto? Las activas y, al editar, la que ya tenía el gasto.
+  const validCategory = (name) =>
+    categories.some((c) => c.name === name && (!c.archived || c.name === transaction?.category)) ||
+    (transaction?.type === "Gasto" && name === transaction.category);
+
+  // Al cambiar el tipo, una categoría que no es elegible para Gasto (la de un Ingreso) se limpia.
+  const changeType = (type) =>
+    setForm((f) => ({ ...f, type, category: type === "Gasto" && validCategory(f.category) ? f.category : "" }));
+
   const addPhoto = async () => {
     const file = (await pickPhotoSource(1))?.[0];
     if (!file) return;
@@ -123,7 +132,9 @@ export default function TransaccionFormScreen({ navigation, route }) {
         ? "Escribe el concepto"
         : isExpense && !form.category
           ? "Elige la categoría del gasto"
-          : null;
+          : isExpense && !validCategory(form.category)
+            ? "Elige una categoría válida para el gasto"
+            : null;
     if (problem) {
       Alert.alert("Falta información", problem);
       return;
@@ -182,7 +193,7 @@ export default function TransaccionFormScreen({ navigation, route }) {
   return (
     <View style={styles.screen}>
       <KeyboardScreen style={styles.flex} contentContainerStyle={styles.content}>
-        <Segmented options={TYPE_OPTIONS} value={form.type} onChange={(v) => set("type", v)} style={styles.type} />
+        <Segmented options={TYPE_OPTIONS} value={form.type} onChange={changeType} style={styles.type} />
 
         <View style={styles.amountBox}>
           <Text style={styles.currency}>$</Text>

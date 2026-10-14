@@ -5,6 +5,7 @@ import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
 import { HttpError, addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
 import { recordFor, resolveActivity } from "../lib/activity.js";
+import { assertId } from "../lib/ids.js";
 import { assertProductName } from "../lib/productName.js";
 
 // SELECT
@@ -21,11 +22,12 @@ inventoryController.getItems = async (req, res) => {
 // SELECT por id
 inventoryController.getItem = async (req, res) => {
   try {
+    assertId(req.params.id);
     const item = await inventoryModel.findById(req.params.id);
+    if (!item) throw new HttpError(404, "Artículo no encontrado");
     res.json(item);
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 

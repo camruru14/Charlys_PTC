@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import Svg, { Defs, Pattern, Rect } from "react-native-svg";
 import { colors, tones } from "../../lib/theme";
 import { categoryTone } from "../../lib/expenseCategories";
+import { cents } from "../../lib/finance";
 
 // Barra de presupuesto de una categoría (Resumen de Finanzas y Configuración ›
 // Categorías de gasto), como BudgetBar de la web:
@@ -10,7 +11,7 @@ import { categoryTone } from "../../lib/expenseCategories";
 //   · una marca vertical fina en el día del mes (dayPct, 0–100; solo el mes en curso).
 // La barra completa es el presupuesto: lo que lo pasa la llena y queda en rosa.
 export default function BudgetBar({ paid = 0, pending = 0, budget, color = "gray", dayPct = null, style }) {
-  const over = paid > budget;
+  const over = cents(paid) > cents(budget);
   const solid = over ? tones.rose.dot : categoryTone(color).dot;
   const paidPct = Math.min(100, (paid / budget) * 100);
   const allPct = Math.min(100, ((paid + pending) / budget) * 100);

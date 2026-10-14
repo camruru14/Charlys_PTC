@@ -9,6 +9,7 @@ import { fonts } from "../../lib/typography";
 //   thickness       grosor del anillo
 //   centerLabel / centerCaption   texto grande y texto chico del centro
 const GAP_PX = 2;
+const MIN_ARC_PX = 2; // arco mínimo visible de un segmento
 
 function polar(c, r, angle) {
   return [c + r * Math.cos(angle), c + r * Math.sin(angle)];
@@ -31,7 +32,12 @@ export default function Donut({ data = [], size = 112, thickness = 16, centerLab
     const before = segments.slice(0, i).reduce((s, x) => s + x.value, 0);
     const start = -Math.PI / 2 + (before / total) * Math.PI * 2;
     const sweep = (d.value / total) * Math.PI * 2;
-    return { ...d, a0: start + gap / 2, a1: start + sweep - gap / 2 };
+    // El hueco entre segmentos solo se aplica si el segmento es más grande que el hueco: con un valor
+    // diminuto (≈0.5 % del total) restarlo dejaba a1 < a0 y el arco se dibujaba fuera del anillo.
+    // Además, todo segmento mide al menos MIN_ARC_PX de arco para que se vea.
+    const inset = sweep > gap * 2 ? gap / 2 : 0;
+    const span = Math.max(sweep - inset * 2, MIN_ARC_PX / r);
+    return { ...d, a0: start + inset, a1: start + inset + span };
   });
 
   return (

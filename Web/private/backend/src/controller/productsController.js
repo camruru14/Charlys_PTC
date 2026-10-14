@@ -36,6 +36,15 @@ function sendError(res, error) {
 const CATEGORIES = ["Pelotas", "Pajillas"];
 const MAX_NAME_LENGTH = 60;
 
+// «Precio antes» (descuento): vacío o null = sin precio antes; si viene, tiene que ser un número
+// mayor que el precio actual. Devuelve el mensaje de error o null.
+function compareAtError(value, price) {
+  if (value === undefined || value === null || value === "") return null;
+  const compareAt = Number(value);
+  if (!Number.isFinite(compareAt) || compareAt <= Number(price)) return "El «precio antes» debe ser un número mayor que el precio actual.";
+  return null;
+}
+
 const duplicateMessage = (name) => `Ya existe un producto llamado «${name}»`;
 const IN_USE_SUFFIX = "ya se usa en pedidos, lotes o inventario";
 
@@ -106,14 +115,16 @@ productsController.createProduct = async (req, res) => {
       stock,
       featured,
       active,
-    } = req.body;
-    const name = normalizeProductName(req.body.name);
+    } = req.body ?? {};
+    const name = normalizeProductName(req.body?.name);
 
     if (!name || !category || price === undefined) {
       return res.status(400).json({ message: "name, category y price son obligatorios." });
     }
     const invalid = nameAndCategoryError(name, category);
     if (invalid) return res.status(400).json({ message: invalid });
+    const compareError = compareAtError(compareAtPrice, price);
+    if (compareError) return res.status(400).json({ message: compareError });
     if (await nameTaken(name)) return res.status(409).json({ message: duplicateMessage(name) });
 
     let slug = slugify(name);
@@ -129,7 +140,7 @@ productsController.createProduct = async (req, res) => {
       category,
       description,
       price,
-      compareAtPrice,
+      compareAtPrice: compareAtPrice === null || compareAtPrice === "" ? undefined : compareAtPrice,
       colors: colors || [],
       sizes: sizes || [],
       minOrderQuantity,
@@ -156,8 +167,9 @@ productsController.updateProduct = async (req, res) => {
       return res.status(404).json({ message: "Producto no encontrado." });
     }
 
-    const requested = req.body.name === undefined ? existing.name : normalizeProductName(req.body.name);
-    const category = req.body.category ?? existing.category;
+    const body = req.body ?? {};
+    const requested = body.name === undefined ? existing.name : normalizeProductName(body.name);
+    const category = body.category ?? existing.category;
     // Renombrar = pedir otro nombre; si solo cambian los espacios sobrantes del
     // nombre guardado, no cuenta y el nombre guardado se conserva tal cual.
     const renames = requested !== normalizeProductName(existing.name);
@@ -178,10 +190,19 @@ productsController.updateProduct = async (req, res) => {
     }
 
     // El slug no cambia y `subcategory` ya no existe: se ignoran los del cuerpo.
-    const { name: _name, category: _category, slug: _slug, subcategory: _subcategory, ...fields } = req.body;
+    const { name: _name, category: _category, slug: _slug, subcategory: _subcategory, ...fields } = body;
+
+    // «Precio antes»: null (o vacío) lo quita de la base ($unset); si viene un número, debe ser
+    // mayor que el precio (el nuevo, si también cambia). Si no viene, no se toca.
+    const removeCompareAt = fields.compareAtPrice === null || fields.compareAtPrice === "";
+    if (removeCompareAt) delete fields.compareAtPrice;
+    else {
+      const compareError = compareAtError(fields.compareAtPrice, fields.price ?? existing.price);
+      if (compareError) return res.status(400).json({ message: compareError });
+    }
     const updated = await productModel.findByIdAndUpdate(
       req.params.id,
-      { ...fields, name, category },
+      { $set: { ...fields, name, category }, ...(removeCompareAt ? { $unset: { compareAtPrice: 1 } } : {}) },
       { returnDocument: "after", runValidators: true },
     );
 

@@ -18,6 +18,7 @@ import {
 } from "../lib/batchFlow.js";
 import { packCompletedBatches } from "../lib/orderLines.js";
 import { recordFor, resolveActivity } from "../lib/activity.js";
+import { assertId } from "../lib/ids.js";
 import { currentYearSV, formatSequence, maxSequence, nextSequence } from "../lib/counters.js";
 
 // Siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...): contador
@@ -48,11 +49,12 @@ productionBatchesController.getBatches = async (req, res) => {
 // SELECT - un lote por id
 productionBatchesController.getBatch = async (req, res) => {
   try {
+    assertId(req.params.id);
     const batch = await populateOperator(batchModel.findById(req.params.id));
+    if (!batch) throw new HttpError(404, "Lote no encontrado");
     res.json(batch);
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 
@@ -68,7 +70,7 @@ productionBatchesController.insertBatch = async (req, res) => {
       status,
       operator,
       startDate,
-    } = req.body;
+    } = req.body ?? {};
 
     // El producto es el nombre de un producto del Catálogo.
     const productName = await assertProductName(product, { required: true });
@@ -241,7 +243,7 @@ productionBatchesController.packCompleted = async (req, res) => {
     for (const order of orders) {
       if (order.status === "Empacado") await recordFor(req, { keys: ["logistica.despacho", "pedidos"], entityType: "order", entityId: order._id, action: "packed" });
     }
-    res.json({ message: "Batches packed", packed: [...new Set((req.body.batchIds || []).map(String))].length, orders: orders.map((o) => o._id) });
+    res.json({ message: "Batches packed", packed: [...new Set((req.body?.batchIds || []).map(String))].length, orders: orders.map((o) => o._id) });
   } catch (error) {
     sendError(res, error);
   }

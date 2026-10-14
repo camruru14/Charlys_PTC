@@ -1,3 +1,5 @@
+import { pathOf, safeRedirect } from "./redirect";
+
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 const SESSION_STORAGE_KEY = "charly:auth-session";
 
@@ -47,7 +49,9 @@ async function request(path, { method = "GET", body } = {}) {
   if (response.status === 401 || (response.status === 403 && !payload?.code)) {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     if (!window.location.pathname.startsWith("/login")) {
-      window.location.assign("/login");
+      // Se guarda a dónde volver (ruta completa, con ?tab=… y demás) para que el login regrese ahí.
+      const back = safeRedirect(pathOf(window.location));
+      window.location.assign(back === "/" ? "/login" : `/login?from=${encodeURIComponent(back)}`);
     }
     throw new Error("Sesión expirada. Inicia sesión nuevamente.");
   }

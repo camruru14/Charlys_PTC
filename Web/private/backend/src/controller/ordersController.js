@@ -7,6 +7,7 @@ import customerOrderModel from "../models/CustomerOrder.js";
 import { setOrderStatus, computeOrderStatus } from "../lib/orderStatus.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import { recordFor, resolveActivity } from "../lib/activity.js";
+import { assertId } from "../lib/ids.js";
 import { ACTIVITY_KEYS } from "../lib/activityKeys.js";
 import {
   verifyLine,
@@ -100,7 +101,9 @@ ordersController.getOrders = async (req, res) => {
 // SELECT - un pedido por id
 ordersController.getOrder = async (req, res) => {
   try {
+    assertId(req.params.id);
     const order = await populateOrder(orderModel.findById(req.params.id));
+    if (!order) throw new HttpError(404, "Pedido no encontrado");
     res.json(order);
   } catch (error) {
     sendError(res, error);

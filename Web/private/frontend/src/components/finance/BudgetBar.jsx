@@ -1,4 +1,5 @@
 import { categoryTone } from "../../lib/expenseCategories";
+import { cents } from "../../lib/finance";
 
 /*
   Barra de presupuesto de una categoría (panel «Gastos por categoría» de
@@ -10,7 +11,7 @@ import { categoryTone } from "../../lib/expenseCategories";
 */
 function BudgetBar({ paid = 0, pending = 0, budget, color = "gray", dayPct = null, className = "" }) {
   const tone = categoryTone(color);
-  const over = paid > budget;
+  const over = cents(paid) > cents(budget);
   const solid = over ? "var(--color-tone-rose-dot)" : tone.cssVar;
   const paidPct = Math.min(100, (paid / budget) * 100);
   const allPct = Math.min(100, ((paid + pending) / budget) * 100);

@@ -8,10 +8,18 @@ import { calendarDaysAgo, fmtDate, fmtDayLong, fmtMoney } from "./format";
 import { dayKey, dueDay, inRange, isStoreSale, txDay, txRangeDate } from "./transactionFilters";
 
 export const OTHER_INCOME = "Otros ingresos";
+// Clave interna del filtro «Sin categoría» (los gastos sin categoría): la etiqueta visible es
+// «Sin categoría», pero filtrar por ese texto no encontraría nada porque `category` está vacía.
+export const UNCATEGORIZED = "__none__";
+export const UNCATEGORIZED_LABEL = "Sin categoría";
 export const SALES_CATEGORY = "Ventas";
 
+// Dinero en centavos enteros: sumar y comparar en punto flotante da errores como
+// 117.99 + 570.32 = 688.3100000000001 (y un falso «pasó el presupuesto» de $688.31).
+export const cents = (value) => Math.round((Number(value) || 0) * 100);
+const fromCents = (value) => value / 100;
 const num = (value) => Number(value) || 0;
-const sum = (list) => list.reduce((total, t) => total + num(t.amount), 0);
+const sum = (list) => fromCents(list.reduce((total, t) => total + cents(t.amount), 0));
 const isPaid = (t) => t.status === "Completado";
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -72,9 +80,9 @@ export function categoryRows({ transactions, categories, range, now = new Date()
   for (const t of transactions) {
     if (t.type !== "Gasto" || !inRange(t, range)) continue;
     const entry = spent.get(t.category) || { paid: 0, pending: 0, pendingItems: [] };
-    if (isPaid(t)) entry.paid += num(t.amount);
+    if (isPaid(t)) entry.paid += cents(t.amount);
     else {
-      entry.pending += num(t.amount);
+      entry.pending += cents(t.amount);
       entry.pendingItems.push(t);
     }
     spent.set(t.category, entry);
@@ -92,8 +100,9 @@ export function categoryRows({ transactions, categories, range, now = new Date()
       icon: category.icon,
       color: category.color,
       archived: Boolean(category.archived),
-      paid: entry?.paid ?? 0,
-      pending: entry?.pending ?? 0,
+      filterKey: category.name,
+      paid: fromCents(entry?.paid ?? 0),
+      pending: fromCents(entry?.pending ?? 0),
       pendingItems: entry?.pendingItems ?? [],
       budget,
     });
@@ -102,7 +111,18 @@ export function categoryRows({ transactions, categories, range, now = new Date()
   const known = new Set(categories.map((c) => c.name));
   for (const [name, entry] of spent) {
     if (known.has(name) || !(entry.paid || entry.pending)) continue;
-    rows.push({ key: `x:${name}`, name: name || "Sin categoría", icon: "tag", color: "gray", archived: false, budget: null, ...entry });
+    rows.push({
+      key: `x:${name}`,
+      name: name || UNCATEGORIZED_LABEL,
+      filterKey: name || UNCATEGORIZED,
+      icon: "tag",
+      color: "gray",
+      archived: false,
+      budget: null,
+      ...entry,
+      paid: fromCents(entry.paid),
+      pending: fromCents(entry.pending),
+    });
   }
   return rows;
 }
@@ -111,10 +131,13 @@ export function categoryRows({ transactions, categories, range, now = new Date()
 // lo pendiente · 1 va más rápido que el mes · 0 normal.
 export function budgetNote(row, { currentMonthOnly = false, dayPct = 0 } = {}) {
   if (!(row.budget > 0)) return null;
-  const pct = Math.round((row.paid / row.budget) * 100);
-  if (row.paid > row.budget) return { level: 3, tone: "rose", text: "Pasó el presupuesto" };
-  if (row.paid + row.pending > row.budget) return { level: 2, tone: "amber", text: `${pct}% · se pasa al pagar lo pendiente` };
-  if (currentMonthOnly && (row.paid / row.budget) * 100 - dayPct > 5) return { level: 1, tone: "amber", text: `${pct}% · va más rápido que el mes` };
+  // En centavos: 688.3100000000001 no es más que 688.31.
+  const paid = cents(row.paid);
+  const budget = cents(row.budget);
+  const pct = Math.round((paid / budget) * 100);
+  if (paid > budget) return { level: 3, tone: "rose", text: "Pasó el presupuesto" };
+  if (paid + cents(row.pending) > budget) return { level: 2, tone: "amber", text: `${pct}% · se pasa al pagar lo pendiente` };
+  if (currentMonthOnly && (paid / budget) * 100 - dayPct > 5) return { level: 1, tone: "amber", text: `${pct}% · va más rápido que el mes` };
   return { level: 0, tone: "gray", text: `${pct}% del presupuesto` };
 }
 
@@ -206,7 +229,8 @@ export const LEDGER_TABS = [
   { key: "todos", label: "Todos" },
   { key: "gastos", label: "Gastos" },
   { key: "ingresos", label: "Ingresos" },
-  { key: "porpagar", label: "Por pagar" },
+  // Lista TODOS los movimientos pendientes (gastos por pagar e ingresos por cobrar).
+  { key: "porpagar", label: "Pendientes" },
 ];
 
 // Movimientos del rango, en la pestaña, la categoría y la búsqueda elegidas.
@@ -217,7 +241,9 @@ export function filterLedger(transactions, { range, tab = "todos", category = ""
     if (tab === "gastos" && t.type !== "Gasto") return false;
     if (tab === "ingresos" && t.type !== "Ingreso") return false;
     if (tab === "porpagar" && t.status !== "Pendiente") return false;
-    if (category && t.category !== category) return false;
+    if (category === UNCATEGORIZED) {
+      if (t.type !== "Gasto" || t.category) return false;
+    } else if (category && t.category !== category) return false;
     if (q) {
       const haystack = [t.concept, t.reference, t.category, t.relatedOrder?.orderNumber, t.orderNumber].filter(Boolean).join(" ").toLowerCase();
       if (!haystack.includes(q)) return false;
@@ -233,8 +259,8 @@ export function ledgerSummary(transactions, range) {
   const otherIncome = list.filter((t) => !isStoreSale(t) && t.type === "Ingreso" && isPaid(t));
   const expenses = list.filter((t) => t.type === "Gasto" && isPaid(t));
   const pending = list.filter((t) => t.type === "Gasto" && t.status === "Pendiente");
-  const income = sum(sales) + sum(otherIncome);
-  const net = income - sum(expenses);
+  const income = fromCents(cents(sum(sales)) + cents(sum(otherIncome)));
+  const net = fromCents(cents(income) - cents(sum(expenses)));
   return {
     sales: sum(sales),
     salesCount: sales.length,
@@ -264,9 +290,10 @@ export function buildLedger(list) {
     const day = days.get(key) || { key, date, manual: [], sales: [], net: 0 };
     if (isStoreSale(t)) day.sales.push(t);
     else day.manual.push(t);
-    if (isPaid(t)) day.net += t.type === "Ingreso" ? num(t.amount) : -num(t.amount);
+    if (isPaid(t)) day.net += t.type === "Ingreso" ? cents(t.amount) : -cents(t.amount);
     days.set(key, day);
   }
+  for (const day of days.values()) day.net = fromCents(day.net);
   const ordered = [...days.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
   const rows = [];
   for (const day of ordered) {

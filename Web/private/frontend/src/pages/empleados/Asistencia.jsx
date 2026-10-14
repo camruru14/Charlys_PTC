@@ -31,6 +31,13 @@ function TickLines() {
 function TimelineBar({ record, schedule }) {
   const bar = timelineBar(record, schedule);
   if (!bar) return <span className="t-aux relative">Sin entrada o salida</span>;
+  if (bar.outside) {
+    return (
+      <span className="t-aux relative tabular-nums" title={`${bar.checkIn} – ${bar.checkOut}`}>
+        Fuera de horario · {fmtHours(bar.hours)} h ({bar.checkIn} – {bar.checkOut})
+      </span>
+    );
+  }
   // Horas rotuladas encima de la barra (en ink-2: blanco sobre ámbar no cumple AA).
   return (
     <span

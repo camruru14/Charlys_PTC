@@ -121,6 +121,8 @@ function Catalogo() {
     await api.post(`/products/${productId}/images`, formData);
   }
 
+  // Devuelve true si todo salió bien (el modal solo suelta las imágenes pendientes en ese caso:
+  // si la subida falla, siguen ahí para reintentar con «Guardar»).
   async function handleSubmit(pendingFiles) {
     setSaving(true);
     const { images, ...rest } = form;
@@ -128,34 +130,46 @@ function Catalogo() {
       ...rest,
       name: form.name.trim(),
       price: Number(form.price) || 0,
-      compareAtPrice: form.compareAtPrice === "" ? undefined : Number(form.compareAtPrice) || 0,
+      // Vacío = null: el backend quita el «precio antes» (con undefined JSON.stringify lo omitiría).
+      compareAtPrice: form.compareAtPrice === "" ? null : Number(form.compareAtPrice) || 0,
       minOrderQuantity: Number(form.minOrderQuantity) || 1,
       stock: Number(form.stock) || 0,
     };
 
+    let productId = editingId;
     try {
-      let productId = editingId;
       if (editingId) {
         await api.put(`/products/${editingId}`, payload);
         toast.success("Producto actualizado");
       } else {
         const created = await api.post("/products", payload);
         productId = created._id;
+        // Ya existe: el modal pasa a modo edición (si la subida de imágenes falla, «Guardar» actualiza
+        // este producto en vez de intentar crear otro con el mismo nombre).
+        setEditingId(created._id);
         toast.success("Producto creado");
       }
 
       if (pendingFiles.length) {
-        await uploadImages(productId, pendingFiles);
+        try {
+          await uploadImages(productId, pendingFiles);
+        } catch (err) {
+          toast.error(`El producto se guardó, pero no se pudieron subir las imágenes: ${err.message}. Vuelve a pulsar «Guardar» para reintentar.`, { duration: 8000 });
+          refetch();
+          refreshProductNames();
+          return false;
+        }
       }
 
       setModalOpen(false);
       refetch();
       refreshProductNames();
+      return true;
     } catch (err) {
       toast.error(err.message, { duration: 6000 });
-      // Si el producto se creó o editó y falló la subida de imágenes, la lista cambió igual.
       refetch();
       refreshProductNames();
+      return false;
     } finally {
       setSaving(false);
     }

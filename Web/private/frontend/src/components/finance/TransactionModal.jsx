@@ -53,12 +53,20 @@ function TransactionModal({ transaction: t, categories, onClose, onSaved }) {
     .map((c) => ({ value: c.name, label: c.archived ? `${c.name} (archivada)` : c.name }));
   if (t.category && t.type === "Gasto" && !categoryOptions.some((o) => o.value === t.category)) categoryOptions.push({ value: t.category, label: t.category });
 
+  // Al cambiar el tipo, la categoría de un Ingreso («Otros ingresos») no vale para un Gasto: se
+  // limpia (queda la que ya tenía si es una categoría elegible de Gasto) y hay que elegirla.
+  function changeType(e) {
+    const type = e.target.value;
+    setForm((f) => ({ ...f, type, category: type === "Gasto" && categoryOptions.some((o) => o.value === f.category) ? f.category : "" }));
+  }
+
   async function submit(e) {
     e.preventDefault();
     const amount = Number(form.amount);
     if (!form.concept.trim()) return toast.error("Escribe el concepto");
     if (!(amount >= 0) || form.amount === "") return toast.error("Escribe el monto");
     if (isExpense && !form.category) return toast.error("Elige la categoría del gasto");
+    if (isExpense && !categoryOptions.some((o) => o.value === form.category)) return toast.error("Elige una categoría válida para el gasto");
     setBusy(true);
     try {
       await api.put(`/transactions/${t._id}`, {
@@ -163,7 +171,7 @@ function TransactionModal({ transaction: t, categories, onClose, onSaved }) {
           label="Tipo"
           name="type"
           value={form.type}
-          onChange={change}
+          onChange={changeType}
           options={[
             { value: "Gasto", label: "Gasto" },
             { value: "Ingreso", label: "Otro ingreso" },

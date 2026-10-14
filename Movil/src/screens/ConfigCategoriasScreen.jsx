@@ -16,7 +16,7 @@ import { colors } from "../lib/theme";
 import { fonts } from "../lib/typography";
 import { formatMonth } from "../lib/format";
 import { monthKey } from "../lib/expenseCategories";
-import { money } from "../lib/finance";
+import { cents, money } from "../lib/finance";
 
 // Configuración > Categorías de gasto (CategoriasGasto.jsx de la web): las
 // categorías que aparecen al registrar un gasto en Finanzas, con su
@@ -41,7 +41,8 @@ export default function ConfigCategoriasScreen({ navigation }) {
 
   const active = categories.filter((c) => !c.archived);
   const archived = categories.filter((c) => c.archived);
-  const total = active.reduce((s, c) => s + (Number(c.usage?.budget) || 0), 0);
+  // En centavos: sumar presupuestos en punto flotante deja decimales de más.
+  const total = active.reduce((s, c) => s + cents(c.usage?.budget), 0) / 100;
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: "Categorías de gasto", headerSubtitle: `Presupuesto mensual: ${money(total)}` });

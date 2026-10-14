@@ -222,7 +222,8 @@ export default function ProductoFormScreen({ navigation, route }) {
       ...rest,
       name: form.name.trim(),
       price: Number(form.price) || 0,
-      compareAtPrice: form.compareAtPrice === "" ? undefined : Number(form.compareAtPrice) || 0,
+      // Vacío = null: el backend quita el «precio antes» (con undefined JSON.stringify lo omitiría).
+      compareAtPrice: form.compareAtPrice === "" ? null : Number(form.compareAtPrice) || 0,
       minOrderQuantity: Number(form.minOrderQuantity) || 1,
       stock: Number(form.stock) || 0,
     };

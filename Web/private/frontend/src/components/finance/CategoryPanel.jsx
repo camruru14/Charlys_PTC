@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import BudgetBar from "./BudgetBar";
 import { IconAlert, IconChevronRight } from "../../lib/icons";
 import { categoryIcon, categoryTone } from "../../lib/expenseCategories";
-import { budgetAlert, budgetNote, categoryRows, daysInMonth, expenseTotal, money, rangeInfo } from "../../lib/finance";
+import { budgetAlert, budgetNote, categoryRows, cents, daysInMonth, expenseTotal, money, rangeInfo } from "../../lib/finance";
 import { fmtMonth } from "../../lib/format";
 
 /*
@@ -54,7 +54,7 @@ function CategoryPanel({ transactions, categories, range, selected, onSelect, on
   const { total, pct, label } = expenseTotal(transactions, range, now);
   const dayPct = currentMonthOnly ? (now.getDate() / daysInMonth(now)) * 100 : null;
   const alert = months ? budgetAlert(rows, { currentMonthOnly, now }) : null;
-  const paidTotal = rows.reduce((s, r) => s + r.paid, 0);
+  const paidTotal = rows.reduce((s, r) => s + cents(r.paid), 0) / 100;
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface" aria-label="Gastos por categoría">
@@ -103,13 +103,13 @@ function CategoryPanel({ transactions, categories, range, selected, onSelect, on
                   const Icon = categoryIcon(row.icon);
                   const tone = categoryTone(row.color);
                   const note = months ? budgetNote(row, { currentMonthOnly, dayPct: dayPct ?? 0 }) : null;
-                  const active = selected === row.name;
+                  const active = selected === row.filterKey;
                   return (
                     <button
                       key={row.key}
                       type="button"
                       aria-pressed={active}
-                      onClick={() => onSelect(active ? "" : row.name)}
+                      onClick={() => onSelect(active ? "" : row.filterKey)}
                       title={active ? "Quitar el filtro" : `Ver solo ${row.name} en el libro`}
                       className={`w-full rounded-[10px] border px-2.5 py-2 text-left transition ${
                         active ? "border-select-bar bg-primary-soft/60" : "border-transparent hover:bg-surface-2"

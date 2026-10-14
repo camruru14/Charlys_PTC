@@ -1,5 +1,6 @@
 const productionLinesController = {};
 
+import mongoose from "mongoose";
 import productionLineModel from "../models/ProductionLine.js";
 import productionBatchModel from "../models/ProductionBatch.js";
 
@@ -49,7 +50,7 @@ productionLinesController.getLines = async (req, res) => {
 
 // INSERT { name }
 productionLinesController.insertLine = async (req, res) => {
-  const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   if (!name) return res.status(400).json({ message: "Escribe el nombre de la línea" });
 
   try {
@@ -66,8 +67,9 @@ productionLinesController.insertLine = async (req, res) => {
 // viejo como texto (ProductionBatch.productionLine) pasan al nuevo, para que
 // su historial y las estadísticas por línea sigan juntos.
 productionLinesController.updateLine = async (req, res) => {
-  const { active } = req.body;
-  const name = typeof req.body.name === "string" ? req.body.name.trim() : undefined;
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: "Identificador inválido" });
+  const { active } = req.body ?? {};
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : undefined;
   if (active !== undefined && typeof active !== "boolean") return res.status(400).json({ message: "Indica si la línea está activa" });
   if (name !== undefined && !name) return res.status(400).json({ message: "Escribe el nombre de la línea" });
   if (active === undefined && name === undefined) return res.status(400).json({ message: "No hay cambios que guardar" });
@@ -98,6 +100,7 @@ productionLinesController.updateLine = async (req, res) => {
 // Eliminar. No se permite si la línea tiene un lote en proceso ahora mismo,
 // ni si es la última línea activa.
 productionLinesController.deleteLine = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: "Identificador inválido" });
   try {
     const line = await productionLineModel.findById(req.params.id);
     if (!line) return res.status(404).json({ message: "Línea no encontrada" });

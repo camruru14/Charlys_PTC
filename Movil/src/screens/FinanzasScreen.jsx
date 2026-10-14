@@ -40,6 +40,8 @@ import {
   ledgerSummary,
   money,
   plural,
+  UNCATEGORIZED,
+  UNCATEGORIZED_LABEL,
 } from "../lib/finance";
 import { categoryIconName, categoryTone } from "../lib/expenseCategories";
 import MarkAllSeen from "../components/ui/MarkAllSeen";
@@ -114,7 +116,7 @@ export default function FinanzasScreen({ navigation }) {
     () => filterLedger(transactions, { range, tab: "porpagar" }).length,
     [transactions, range],
   );
-  const ledgerTabs = LEDGER_TABS.map((t) => (t.value === "porpagar" ? { ...t, label: `Por pagar (${pendingCount})` } : t));
+  const ledgerTabs = LEDGER_TABS.map((t) => (t.value === "porpagar" ? { ...t, label: `Pendientes (${pendingCount})` } : t));
 
   const openEdit = (t) => navigation.navigate("TransaccionForm", { id: t._id });
   const openNew = () => navigation.navigate("TransaccionForm");
@@ -225,7 +227,7 @@ export default function FinanzasScreen({ navigation }) {
                 return (
                   <Pressable
                     key={row.key}
-                    onPress={() => showCategory(row.name)}
+                    onPress={() => showCategory(row.filterKey)}
                     accessibilityRole="button"
                     accessibilityLabel={`${row.name}, ${money(row.paid)} pagado. Ver sus movimientos`}
                     style={({ pressed }) => [styles.categoryRow, pressed && styles.pressed]}
@@ -264,6 +266,7 @@ export default function FinanzasScreen({ navigation }) {
     );
   } else {
     const selected = category ? categoryByName.get(category) : null;
+    const categoryText = category === UNCATEGORIZED ? UNCATEGORIZED_LABEL : category;
     body = (
       <View style={styles.flex}>
         <View style={styles.controls}>
@@ -274,12 +277,12 @@ export default function FinanzasScreen({ navigation }) {
             <Pressable
               onPress={() => setCategory("")}
               accessibilityRole="button"
-              accessibilityLabel={`Quitar el filtro de ${category}`}
+              accessibilityLabel={`Quitar el filtro de ${categoryText}`}
               style={[styles.chip, { backgroundColor: categoryTone(selected?.color).bg }]}
             >
               <Icon name={categoryIconName(selected?.icon)} size={14} color={categoryTone(selected?.color).text} />
               <Text style={[styles.chipText, { color: categoryTone(selected?.color).text }]} numberOfLines={1}>
-                {category}
+                {categoryText}
               </Text>
               <Icon name="close" size={14} color={categoryTone(selected?.color).text} />
             </Pressable>

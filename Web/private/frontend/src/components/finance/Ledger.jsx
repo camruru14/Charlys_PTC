@@ -295,7 +295,7 @@ function Ledger({
   }, [viewKey, areaRef]);
 
   const net = summary.net;
-  const tabs = LEDGER_TABS.map((t) => (t.key === "porpagar" ? { ...t, label: `Por pagar (${pendingCount})` } : t));
+  const tabs = LEDGER_TABS.map((t) => (t.key === "porpagar" ? { ...t, label: `Pendientes (${pendingCount})` } : t));
 
   // Los encabezados de día se arman con las filas de la página.
   const body = [];
