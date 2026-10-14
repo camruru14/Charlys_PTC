@@ -15,6 +15,10 @@ export const config = {
   email: {
     user_email: process.env.USER_EMAIL,
     user_password: process.env.USER_PASSWORD,
+    // Brevo (API HTTP): con BREVO_API_KEY los correos salen por ahí; sin ella, por SMTP de Gmail (src/utils/mailer.js).
+    brevoApiKey: process.env.BREVO_API_KEY,
+    from: process.env.MAIL_FROM || process.env.USER_EMAIL,
+    fromName: process.env.MAIL_FROM_NAME || "Industrias Charly",
   },
   // Wompi El Salvador usa OAuth2 (Client Credentials) para autenticarse, y
   // tokenización directa para cobrar: la tarjeta se tokeniza y se cobra

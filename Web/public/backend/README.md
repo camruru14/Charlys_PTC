@@ -34,6 +34,19 @@ carga llamando a la propia API, como lo haría cualquier cliente.
    llamadas manuales a la API: el catálogo se administra desde esa pantalla,
    igual que cualquier otro dato del panel.
 
+## Correo (recuperación de contraseña)
+
+`src/utils/mailer.js` envía los correos. En producción (Render gratis bloquea los
+puertos SMTP) se usa la API HTTP de Brevo; en local, sin esa variable, se usa
+SMTP de Gmail con `USER_EMAIL` / `USER_PASSWORD`. Al arrancar el log dice
+«Correo: Brevo API» o «Correo: SMTP Gmail».
+
+| Variable | Para qué |
+| --- | --- |
+| `BREVO_API_KEY` | Llave de la API de Brevo. Si existe, se envía por Brevo. |
+| `MAIL_FROM` | Remitente (debe estar verificado en Brevo). Si falta, se usa `USER_EMAIL`. |
+| `MAIL_FROM_NAME` | Nombre del remitente. Por defecto «Industrias Charly». |
+
 ## Pagos con Wompi
 
 Tokenización directa (ver `src/utils/wompiClient.js`): la tarjeta se tokeniza

@@ -3,10 +3,8 @@ const recoveryPasswordController = {};
 import bcryptjs from "bcryptjs";
 import crypto from "crypto";
 import mongoose from "mongoose";
-import nodemailer from "nodemailer";
 import HTMLRecoveryEmail from "../utils/sendMailRecovery.js";
-
-import { config } from "../../config.js";
+import { sendMail } from "../utils/mailer.js";
 
 import customerModel from "../models/Customer.js";
 import passwordResetModel from "../models/PasswordReset.js";
@@ -41,22 +39,11 @@ function sendError(res, error) {
 // Envía el correo sin que la respuesta lo espere: así la petición tarda lo mismo
 // exista o no la cuenta. Si falla solo queda en el log.
 function sendRecoveryMail(to, code) {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: config.email.user_email,
-      pass: config.email.user_password,
-    },
-  });
-
-  transporter
-    .sendMail({
-      from: config.email.user_email,
-      to,
-      subject: "Recupera tu contraseña de Industrias Charly",
-      html: HTMLRecoveryEmail(code),
-    })
-    .catch((error) => console.error("error al enviar el código de recuperación: " + error));
+  sendMail({
+    to,
+    subject: "Recupera tu contraseña de Industrias Charly",
+    html: HTMLRecoveryEmail(code),
+  }).catch((error) => console.error("error al enviar el código de recuperación: " + (error?.message || error)));
 }
 
 // PASO 1: genera el código y lo manda por correo. Responde SIEMPRE lo mismo (200
