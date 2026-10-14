@@ -42,3 +42,16 @@ cambiarla, reinicia con `npx expo start -c`.
 Pon su URL en `Movil/.env` (`EXPO_PUBLIC_API_URL=https://mi-dominio.com/api`) y
 reinicia Expo con `npx expo start -c` (las variables `EXPO_PUBLIC_` se leen al
 iniciar).
+
+## Compilar el APK
+
+Con una cuenta de Expo (gratis), desde `Movil/`:
+
+```
+npx eas-cli login
+npx eas-cli build -p android --profile preview
+```
+
+Al terminar, EAS muestra el enlace de descarga del APK. La URL del backend del panel está en
+`eas.json` (`EXPO_PUBLIC_API_URL` de cada perfil, con el `/api` final): cámbiala ahí antes de
+compilar. El `.env` no se usa en los builds de EAS (está en `.gitignore` y no se sube).

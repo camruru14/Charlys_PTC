@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "industrias-charly-admin",
+    "name": "Industrias Charly",
     "slug": "industrias-charly-admin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.industriascharly.admin"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +17,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.anonymous.industriascharlyadmin"
+      "package": "com.industriascharly.admin",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
