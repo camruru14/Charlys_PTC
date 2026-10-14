@@ -18,6 +18,10 @@ import { TONE_DOT } from "../../lib/tones";
 import { filterSelectClass } from "../../lib/filterStyles";
 import { fmtNumber, fmtMoney, fmtDate, fmtTime, fmtElapsed } from "../../lib/format";
 import { IconTruck } from "../../lib/icons";
+import UnseenDot from "../../components/ui/UnseenDot";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 import {
   ROUTE_GROUPS,
   canRemoveFromRoute,
@@ -39,7 +43,7 @@ import {
 // 1440px (~734px). El scroll horizontal queda solo para pantallas angostas.
 const STOPS_GRID = "40px 116px minmax(0,1fr) minmax(0,1fr) 64px 112px 108px";
 
-function RouteListRow({ route, selected, moved, onSelect }) {
+function RouteListRow({ route, selected, moved, unseen, onSelect }) {
   const { delivered, total } = routeProgress(route);
   const pct = total ? (delivered / total) * 100 : 0;
   return (
@@ -47,8 +51,10 @@ function RouteListRow({ route, selected, moved, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-current={selected || undefined}
-      className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"} ${moved ? "row-moved" : ""}`}
+      data-unseen={unseen || undefined}
+      className={`relative grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : unseen ? `${UNSEEN_BG} hover:bg-surface-2` : "hover:bg-surface-2"} ${moved ? "row-moved" : ""}`}
     >
+      <UnseenDot show={unseen} className="left-[9px] top-[19px]" />
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col gap-2 px-3.5 py-3">
         <span className="flex items-center justify-between gap-3">
@@ -252,6 +258,8 @@ function RouteDetail({ route, availability, isBusy, act, onRemove }) {
   ruta abierta (detalle), parada por parada.
 */
 function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, filter, onFilter, availability, isBusy, act, onRemove }) {
+  // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("logistica.transito");
   const range = useDateRange();
   const [query, setQuery] = useState("");
   const selected = routes.find((r) => r._id === selectedId) || null;
@@ -285,8 +293,11 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-[15px] font-bold text-ink">Rutas</h2>
-                <span className="t-aux tabular-nums">
-                  {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
+                <span className="flex items-baseline gap-3">
+                  <MarkAllSeen activityKey="logistica.transito" />
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(routes.length)} {routes.length === 1 ? "ruta" : "rutas"}
+                  </span>
                 </span>
               </div>
               <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
@@ -328,7 +339,17 @@ function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCo
             <Fragment key={g.key}>
               <ListGroupHeader label={g.label} count={g.items.length} />
               {g.items.map((r) => (
-                <RouteListRow key={r._id} route={r} selected={r._id === selectedId} moved={moved.has(String(r._id))} onSelect={() => onSelect(r._id)} />
+                <RouteListRow
+                  key={r._id}
+                  route={r}
+                  selected={r._id === selectedId}
+                  moved={moved.has(String(r._id))}
+                  unseen={isUnseen(r._id)}
+                  onSelect={() => {
+                    onSelect(r._id);
+                    markSeen(r._id);
+                  }}
+                />
               ))}
             </Fragment>
           ))

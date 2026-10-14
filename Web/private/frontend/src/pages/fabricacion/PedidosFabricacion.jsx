@@ -28,6 +28,10 @@ import { blockNegativeKey } from "../../lib/numberInput";
 import { fmtNumber, fmtDate, fmtTime, fmtDateTime, formatBatchNumber } from "../../lib/format";
 import { IconAlert, IconBox, IconCheck, IconClock, IconOrders, IconPlay } from "../../lib/icons";
 import { batchStart, batchEnd } from "../../lib/batchFlow";
+import UnseenDot from "../../components/ui/UnseenDot";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 import {
   MFG_GROUPS,
   groupMfgOrders,
@@ -53,7 +57,7 @@ const plural = (n, one, many) => `${fmtNumber(n)} ${n === 1 ? one : many}`;
 // Ejecuta las llamadas en orden y devuelve todas sus respuestas.
 const runAll = (calls) => calls.reduce((p, fn) => p.then(async (results) => [...results, await fn()]), Promise.resolve([]));
 
-function OrderListRow({ group, selected, onSelect }) {
+function OrderListRow({ group, selected, unseen, onSelect }) {
   const { order } = group;
   const count = (order.items || []).length;
   const note = mfgTimeNote(group);
@@ -62,8 +66,10 @@ function OrderListRow({ group, selected, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-current={selected || undefined}
-      className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}
+      data-unseen={unseen || undefined}
+      className={`relative grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${selected ? "bg-select-bg" : unseen ? `${UNSEEN_BG} hover:bg-surface-2` : "hover:bg-surface-2"}`}
     >
+      <UnseenDot show={unseen} className="left-[9px] top-[15px]" />
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5">
         <span className="flex items-center justify-between gap-3">
@@ -493,6 +499,8 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   para recoger en «Fabricación» en Logística.
 */
 function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
+  // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("fabricacion.pedidos");
   const [selectedId, setSelectedId] = useUrlState("id");
   const [query, setQuery] = useState("");
   const range = useDateRange();
@@ -618,8 +626,11 @@ function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
-                <span className="t-aux tabular-nums">
-                  {fmtNumber(visible.length)} {visible.length === 1 ? "pedido" : "pedidos"}
+                <span className="flex items-baseline gap-3">
+                  <MarkAllSeen activityKey="fabricacion.pedidos" />
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(visible.length)} {visible.length === 1 ? "pedido" : "pedidos"}
+                  </span>
                 </span>
               </div>
               <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
@@ -657,7 +668,16 @@ function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll
             <Fragment key={s.key}>
               <ListGroupHeader label={s.label} note={s.note} count={s.items.length} />
               {s.items.map((g) => (
-                <OrderListRow key={g.order._id} group={g} selected={g.order._id === selectedId} onSelect={() => setSelectedId(g.order._id)} />
+                <OrderListRow
+                  key={g.order._id}
+                  group={g}
+                  selected={g.order._id === selectedId}
+                  unseen={isUnseen(g.order._id)}
+                  onSelect={() => {
+                    setSelectedId(g.order._id);
+                    markSeen(g.order._id);
+                  }}
+                />
               ))}
             </Fragment>
           ))

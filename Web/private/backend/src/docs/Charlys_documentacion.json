@@ -274,6 +274,12 @@
             "description": "Suma de las pestañas de cada módulo (clave = módulo de la URL)",
             "additionalProperties": { "type": "integer", "minimum": 0 },
             "example": { "fabricacion": 1, "inventario": 2, "pedidos": 3 }
+          },
+          "unseen": {
+            "type": "object",
+            "description": "Por pestaña, los ids de los registros sin ver (los que se marcan con un punto azul en las listas), hasta 200 por clave; el conteo de counts es completo",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } },
+            "example": { "fabricacion.pedidos": ["664b8a2f1b4e2c001f3a5b67"] }
           }
         }
       },
@@ -2512,7 +2518,7 @@
       "get": {
         "tags": ["Autenticación"],
         "summary": "Burbujas de novedades: conteos por pestaña y por módulo",
-        "description": "Para cada pestaña a la que el empleado tiene acceso (misma tabla de permisos que Personal y permisos), cuenta los elementos DISTINTOS con actividad posterior a su «visto» de esa pestaña (también las acciones propias). Si nunca la abrió, cuenta desde la fecha de alta del empleado. Claves: `pedidos`, `inventario.terminado|materia|pedidos`, `fabricacion.lotes|diaria|pedidos`, `logistica.transito|despacho`, `finanzas`, `empleados.personal`. La actividad se borra sola a los 45 días.",
+        "description": "Para cada pestaña a la que el empleado tiene acceso (misma tabla de permisos que Personal y permisos), cuenta los registros DISTINTOS (pedido, lote, ruta…) sin ver: con actividad posterior a su «visto» por registro y a su base de esa pestaña (también las acciones propias). Abrir la pestaña no limpia nada: solo marcar un registro (POST /api/activity/seen) o «marcar todo». Sin base, cuenta desde la fecha de alta del empleado. Claves: `pedidos`, `inventario.terminado|materia|pedidos`, `fabricacion.lotes|diaria|pedidos`, `logistica.transito|despacho`, `finanzas`, `empleados.personal`. La actividad se borra sola a los 45 días.",
         "security": [{ "cookieAuth": [] }],
         "responses": {
           "200": {
@@ -2547,8 +2553,8 @@
     "/api/activity/seen": {
       "post": {
         "tags": ["Autenticación"],
-        "summary": "Marcar una pestaña como vista (solo para el empleado de la sesión)",
-        "description": "Hace upsert de `seenAt = ahora` para el empleado y la clave, y responde los conteos ya actualizados (el de esa pestaña queda en 0).",
+        "summary": "Marcar un registro (o toda una pestaña) como visto, solo para el empleado de la sesión",
+        "description": "Con `{ key, entityId }` hace upsert de `seenAt = ahora` para ese registro en esa pestaña. Con `{ key, all: true }` mueve la base del empleado en esa pestaña a ahora (todo lo anterior queda visto). Responde los conteos ya actualizados.",
         "security": [{ "cookieAuth": [] }],
         "requestBody": {
           "required": true,
@@ -2557,7 +2563,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "key": { "type": "string", "example": "fabricacion.pedidos" }
+                  "key": { "type": "string", "example": "fabricacion.pedidos" },
+                  "entityId": { "type": "string", "description": "Registro abierto (ObjectId); omitir con all", "example": "664b8a2f1b4e2c001f3a5b67" },
+                  "all": { "type": "boolean", "description": "true: marcar toda la pestaña como vista" }
                 },
                 "required": ["key"]
               }

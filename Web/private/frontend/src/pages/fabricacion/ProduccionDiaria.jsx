@@ -11,6 +11,8 @@ import Pagination from "../../components/ui/Pagination";
 import { usePagedRows } from "../../hooks/usePagedRows";
 import { fmtNumber, fmtDateYear, fmtMonth, fromDateOnly } from "../../lib/format";
 import { IconEdit } from "../../lib/icons";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { useUnseen } from "../../hooks/useActivity";
 
 // La fecha de un lote diario se guarda sin hora (medianoche UTC).
 const dailyDate = (b) => fromDateOnly(b.date);
@@ -29,6 +31,8 @@ function currentMonthKey() {
 function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, onDelete }) {
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState(currentMonthKey);
+  // Novedades: los lotes diarios nuevos o editados se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("fabricacion.diaria");
 
   // Meses con lotes (más reciente primero), más el actual.
   const monthOptions = useMemo(() => {
@@ -113,7 +117,7 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
   let body;
   if (loading && !list.length) body = <EmptyState title="Cargando lotes diarios…" />;
   else if (error) body = <EmptyState title="No se pudieron cargar los lotes diarios" description={error} />;
-  else body = <DataTable columns={columns} rows={visible} empty={list.length ? "Ningún lote diario coincide con los filtros." : "No hay lotes diarios."} />;
+  else body = <DataTable columns={columns} rows={visible} isUnseen={(b) => isUnseen(b._id)} onRowSeen={(b) => markSeen(b._id)} empty={list.length ? "Ningún lote diario coincide con los filtros." : "No hay lotes diarios."} />;
 
   return (
     <section ref={cardRef} style={cardStyle} className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-line bg-surface">
@@ -125,6 +129,7 @@ function ProduccionDiaria({ list, loading, error, busyId, onSchedule, onEdit, on
           className="w-full sm:w-[260px]"
         />
         <FilterSelect value={month} onChange={(e) => setMonth(e.target.value)} options={monthOptions} className={filterSelectClass} />
+        <MarkAllSeen activityKey="fabricacion.diaria" className="ml-auto" />
       </div>
       {/* min-h: con la tarjeta de alto automático, «Cargando…» y los estados vacíos no la aplastan. */}
       <div ref={areaRef} className="min-h-[132px] flex-1 overflow-y-auto">

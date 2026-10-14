@@ -41,7 +41,7 @@ const columns = [
     width: "minmax(0,1fr)",
     render: (i) => (
       <>
-        <p className="truncate text-[13.5px] font-semibold text-ink">{i.name}</p>
+        <p className="unseen-title truncate text-[13.5px] font-semibold text-ink">{i.name}</p>
         {isRecentInbound(i) ? <InboundLine inbound={i.lastInbound} /> : null}
       </>
     ),
@@ -132,6 +132,7 @@ function ProductoTerminado({ items, kpiItems, loading, error, onEdit, onDelete }
       error={error}
       emptyText={items.length === 0 ? "No hay productos terminados en almacén." : "Ningún artículo coincide con los filtros."}
       rowClassName={rowClassName}
+      activityKey="inventario.terminado"
       onEdit={onEdit}
       onDelete={onDelete}
       summary={`${fmtNumber(table.filtered.length)} de ${fmtNumber(items.length)} artículos · ${fmtNumber(units)} unidades en total`}

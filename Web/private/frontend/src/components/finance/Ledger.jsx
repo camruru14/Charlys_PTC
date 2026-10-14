@@ -15,6 +15,10 @@ import { dayLabel, dueText, LEDGER_TABS, money, orderRangeText, plural } from ".
 import { fmtDate, fmtTime } from "../../lib/format";
 import { filterSelectClass } from "../../lib/filterStyles";
 import { statusLabel } from "../../lib/transactionFilters";
+import UnseenDot from "../ui/UnseenDot";
+import MarkAllSeen from "../ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 
 /*
   Libro de movimientos de Finanzas (columna derecha): pestañas, filtros, una
@@ -71,7 +75,7 @@ function StripGroup({ label, value, valueClass = "text-ink", sub }) {
   );
 }
 
-function ManualRow({ tx, categoryByName, now, highlighted, onEdit, onPay, onDelete }) {
+function ManualRow({ tx, categoryByName, now, highlighted, unseen, onSeen, onEdit, onPay, onDelete }) {
   const income = tx.type === "Ingreso";
   const category = categoryByName.get(tx.category);
   const Icon = income ? IconDollar : categoryIcon(category?.icon);
@@ -86,12 +90,15 @@ function ManualRow({ tx, categoryByName, now, highlighted, onEdit, onPay, onDele
   return (
     <div
       style={{ gridTemplateColumns: COLUMNS, height: ROW_HEIGHT }}
-      className={`grid items-center gap-3 border-b border-line-soft px-4 transition-colors duration-[1500ms] ${highlighted ? "bg-tone-green/70" : ""}`}
+      data-unseen={unseen || undefined}
+      onClick={onSeen}
+      className={`relative grid items-center gap-3 border-b border-line-soft px-4 transition-colors duration-[1500ms] ${highlighted ? "bg-tone-green/70" : unseen ? UNSEEN_BG : ""}`}
     >
+      <UnseenDot show={unseen} className="left-1.5 top-1/2 -translate-y-1/2" />
       <div className="flex min-w-0 items-center gap-3">
         <Avatar icon={Icon} className={tone} />
         <div className="min-w-0">
-          <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
+          <p className="unseen-title flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
             <span className="truncate">{tx.concept || "—"}</span>
             {tx.attachment?.url ? <IconPaperclip width={13} height={13} className="shrink-0 text-subtle" aria-label="Tiene factura" /> : null}
           </p>
@@ -153,7 +160,7 @@ function SubRow({ t, last, day }) {
   );
 }
 
-function SalesRow({ sales, day, dateText, open, showAll, onToggle, onShowAll }) {
+function SalesRow({ sales, day, dateText, open, showAll, unseen, onToggle, onShowAll }) {
   const panelRef = useRef(null);
   const total = sales.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const count = plural(sales.length, "pedido", "pedidos");
@@ -177,12 +184,14 @@ function SalesRow({ sales, day, dateText, open, showAll, onToggle, onShowAll }) 
         aria-label={`Ventas de la tienda del ${dateText}, ${count}, +${money(total)}. ${open ? "Ocultar" : "Mostrar"} pedidos`}
         onClick={onToggle}
         style={{ gridTemplateColumns: COLUMNS, height: ROW_HEIGHT }}
-        className={`grid w-full cursor-pointer items-center gap-3 border-b border-line-soft px-4 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] ${open ? "bg-surface-2/70" : "bg-surface-2/40"}`}
+        data-unseen={unseen || undefined}
+        className={`relative grid w-full cursor-pointer items-center gap-3 border-b border-line-soft px-4 text-left transition-colors hover:bg-surface-2 focus-visible:outline-offset-[-2px] ${unseen ? UNSEEN_BG : open ? "bg-surface-2/70" : "bg-surface-2/40"}`}
       >
+        <UnseenDot show={unseen} className="left-1.5 top-1/2 -translate-y-1/2" />
         <span className="flex min-w-0 items-center gap-2.5">
           <Avatar icon={IconOrders} className="bg-tone-green text-tone-green-text" />
           <span className="block min-w-0">
-            <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
+            <span className="unseen-title flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-ink">
               <span className="truncate" title={`Ventas de la tienda · ${count}`}>
                 Ventas de la tienda · {count}
               </span>
@@ -255,6 +264,8 @@ function Ledger({
   error,
   now = new Date(),
 }) {
+  // Novedades: los movimientos nuevos (y las ventas de la tienda) se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("finanzas");
   // Ventas abiertas ({ open, all }: días) y a qué página/filtros pertenecen: al cambiar de página,
   // rango, pestaña, categoría o búsqueda se cierran todas.
   const [expanded, setExpanded] = useState({ key: "", open: new Set(), all: new Set() });
@@ -311,7 +322,20 @@ function Ledger({
     body.push(
       row.kind === "sales" ? (
         <Fragment key={row.id}>
-          <SalesRow sales={row.sales} day={row.day} dateText={fmtDate(days.get(row.day).date)} open={current.open.has(row.day)} showAll={current.all.has(row.day)} onToggle={() => toggleDay(row.day)} onShowAll={() => showAllOf(row.day)} />
+          <SalesRow
+            sales={row.sales}
+            day={row.day}
+            dateText={fmtDate(days.get(row.day).date)}
+            open={current.open.has(row.day)}
+            showAll={current.all.has(row.day)}
+            unseen={row.sales.some((t) => isUnseen(t._id))}
+            onToggle={() => {
+              // Al abrir la fila agrupada, se marcan vistas todas las ventas de ese día.
+              if (!current.open.has(row.day)) row.sales.forEach((t) => markSeen(t._id));
+              toggleDay(row.day);
+            }}
+            onShowAll={() => showAllOf(row.day)}
+          />
         </Fragment>
       ) : (
         <ManualRow
@@ -320,6 +344,8 @@ function Ledger({
           categoryByName={categoryByName}
           now={now}
           highlighted={highlightId === row.id}
+          unseen={isUnseen(row.tx._id)}
+          onSeen={() => markSeen(row.tx._id)}
           onEdit={onEdit}
           onPay={onPay}
           onDelete={onDelete}
@@ -365,6 +391,7 @@ function Ledger({
         />
         <span className="h-4 w-px shrink-0 bg-line" />
         <StripGroup label="Por pagar" value={money(summary.pending)} valueClass="text-tone-amber-text" sub={plural(summary.pendingCount, "factura", "facturas")} />
+        <MarkAllSeen activityKey="finanzas" className="ml-auto" />
       </div>
 
       {/* En pantallas angostas la tabla conserva su ancho y se desplaza de lado. */}

@@ -22,7 +22,7 @@ const columns = [
     key: "name",
     label: "Artículo",
     width: "minmax(0,1fr)",
-    render: (i) => <p className="truncate text-[13.5px] font-semibold text-ink">{i.name}</p>,
+    render: (i) => <p className="unseen-title truncate text-[13.5px] font-semibold text-ink">{i.name}</p>,
   },
   { key: "type", label: "Tipo", width: "126px", render: (i) => <span className="t-row truncate">{i.materialType || "—"}</span> },
   {
@@ -89,6 +89,7 @@ function MateriaPrima({ items, kpiItems, loading, error, onEdit, onDelete }) {
       loading={loading}
       error={error}
       emptyText={items.length === 0 ? "No hay materia prima en almacén." : "Ningún artículo coincide con los filtros."}
+      activityKey="inventario.materia"
       rowClassName={rowClassName}
       onEdit={onEdit}
       onDelete={onDelete}

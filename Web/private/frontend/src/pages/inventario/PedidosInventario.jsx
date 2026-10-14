@@ -21,6 +21,10 @@ import { fmtNumber, fmtDate, formatBatchNumber } from "../../lib/format";
 import { IconOrders, IconClock } from "../../lib/icons";
 import { filterSelectClass } from "../../lib/filterStyles";
 import { statusTone, normalizeStatus } from "../../lib/statusDomains";
+import UnseenDot from "../../components/ui/UnseenDot";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 import {
   buildStockMap,
   stockOptionsFor,
@@ -128,11 +132,12 @@ function ordersFrom(result) {
 
 // Pedido en la lista. Mientras sigue en bodega muestra cuándo llegó y su
 // avance; ya despachado, la ruta y la hora (dispatchNote).
-function OrderListRow({ order, group, selected, onSelect }) {
+function OrderListRow({ order, group, selected, unseen, onSelect }) {
   const inWarehouse = group.sort === "arrival";
   const arrival = inWarehouse ? arrivalLabel(order) : null;
   return (
-    <div className={`grid grid-cols-[5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : "hover:bg-surface-2"}`}>
+    <div data-unseen={unseen || undefined} className={`relative grid grid-cols-[5px_1fr] border-b border-line-soft transition ${selected ? "bg-select-bg" : unseen ? `${UNSEEN_BG} hover:bg-surface-2` : "hover:bg-surface-2"}`}>
+      <UnseenDot show={unseen} className="left-[9px] top-[18px]" />
       <span className={selected ? "bg-select-bar" : ""} />
       <button type="button" onClick={onSelect} aria-current={selected || undefined} className="min-w-0 px-3.5 py-3 text-left">
         <div className="flex items-center justify-between gap-3">
@@ -474,6 +479,8 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 }
 
 function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, mutateOrders, finishedItems, refetchInventory }) {
+  // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("inventario.pedidos");
   const [selectedId, setSelectedId] = useUrlState("id");
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });
@@ -604,8 +611,11 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
-                <span className="t-aux tabular-nums">
-                  {fmtNumber(list.length)} {list.length === 1 ? "pedido" : "pedidos"}
+                <span className="flex items-baseline gap-3">
+                  <MarkAllSeen activityKey="inventario.pedidos" />
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(list.length)} {list.length === 1 ? "pedido" : "pedidos"}
+                  </span>
                 </span>
               </div>
               <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
@@ -648,8 +658,10 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
                   order={o}
                   group={g}
                   selected={o._id === selectedId}
+                  unseen={isUnseen(o._id)}
                   onSelect={() => {
                     setSelectedId(o._id);
+                    markSeen(o._id);
                     setOpenBox(null);
                   }}
                 />

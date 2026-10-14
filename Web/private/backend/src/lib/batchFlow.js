@@ -96,8 +96,9 @@ export async function sendBatchToWarehouse(batchId, warehouse, session) {
 
   const now = new Date();
   const quantity = Math.max(0, (batch.producedQuantity || 0) - (batch.sentQuantity || 0));
+  let stockItem = null;
   if (quantity > 0) {
-    await addFinishedStock(
+    stockItem = await addFinishedStock(
       {
         product: batch.product,
         color: batch.color,
@@ -116,7 +117,8 @@ export async function sendBatchToWarehouse(batchId, warehouse, session) {
   // Si Movil reportó este lote (artículo con batchNumber), queda marcado como
   // enviado para que Movil no vuelva a sumar esas unidades.
   await inventoryModel.updateMany({ batchNumber: batch.batchNumber }, { sentToWarehouse: true }, { session });
-  return { batch, quantity };
+  // stockItemId: el artículo de Producto terminado que recibió las unidades (la fila que se ve en Inventario).
+  return { batch, quantity, stockItemId: stockItem?._id };
 }
 
 // Deshacer el envío: resta de la bodega las unidades que sumó el envío, solo

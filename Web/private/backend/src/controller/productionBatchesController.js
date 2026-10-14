@@ -171,11 +171,12 @@ productionBatchesController.reopenBatch = transition((batch) => reopenBatch(batc
 // Enviar a bodega { warehouse }: las unidades entran a Producto terminado.
 productionBatchesController.sendToWarehouse = async (req, res) => {
   try {
-    const { quantity } = await withTransaction((session) =>
+    const { quantity, stockItemId } = await withTransaction((session) =>
       sendBatchToWarehouse(req.params.id, req.body?.warehouse, session),
     );
-    // Los lotes de un pedido no se envían a bodega (sendBatchToWarehouse lo rechaza): solo Producto terminado.
-    await recordFor(req, { keys: ["inventario.terminado"], entityType: "batch", entityId: req.params.id, action: "sent-to-warehouse" });
+    // Los lotes de un pedido no se envían a bodega (sendBatchToWarehouse lo rechaza): solo Producto
+    // terminado. La fila que cambia en Inventario es el artículo que recibió las unidades.
+    await recordFor(req, { keys: ["inventario.terminado"], entityType: "inventory", entityId: stockItemId, action: "sent-to-warehouse" });
     const batch = await populateOperator(batchModel.findById(req.params.id));
     res.json({ message: "Batch sent to warehouse", quantity, batch });
   } catch (error) {

@@ -28,7 +28,8 @@ import { statusTone } from "../lib/statusDomains";
 import { TONE_DOT, NOTE_TEXT } from "../lib/tones";
 import { filterSelectClass } from "../lib/filterStyles";
 import { PEDIDO_GROUPS, groupOrders, matchesOrderSearch, orderTimeNote } from "../lib/orderList";
-import { useMarkSeen } from "../hooks/useActivity";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useUnseen } from "../hooks/useActivity";
 
 // Valores de ?estado=: «todos» o la clave de un grupo de PEDIDO_GROUPS.
 const STATE_KEYS = ["todos", ...PEDIDO_GROUPS.map((g) => g.key)];
@@ -44,10 +45,10 @@ function deleteBlocker(order) {
   return null;
 }
 
-function OrderRow({ order, selected, onSelect }) {
+function OrderRow({ order, selected, unseen, onSelect }) {
   const note = orderTimeNote(order);
   return (
-    <ListRow selected={selected} onClick={onSelect}>
+    <ListRow selected={selected} unseen={unseen} onClick={onSelect}>
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="shrink-0 text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
@@ -194,8 +195,8 @@ function OrderDetail({ order, canDelete, onDelete }) {
 }
 
 function Pedidos() {
-  // Novedades: abrir el módulo marca su burbuja como vista (y lo que llegue mientras sigue abierto).
-  useMarkSeen("pedidos");
+  // Novedades: los pedidos nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("pedidos");
   const { confirm, confirmProps } = useConfirm();
   const { user } = useAuth();
   const { data, loading, error, refetch } = useFetch("/orders");
@@ -261,8 +262,11 @@ function Pedidos() {
               <div>
                 <div className="flex items-baseline justify-between gap-3">
                   <h2 className="text-[15px] font-bold text-ink">Pedidos</h2>
-                  <span className="t-aux tabular-nums">
-                    {fmtNumber(filteredList.length)} {filteredList.length === 1 ? "pedido" : "pedidos"}
+                  <span className="flex items-baseline gap-3">
+                    <MarkAllSeen activityKey="pedidos" />
+                    <span className="t-aux tabular-nums">
+                      {fmtNumber(filteredList.length)} {filteredList.length === 1 ? "pedido" : "pedidos"}
+                    </span>
                   </span>
                 </div>
                 <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
@@ -298,7 +302,16 @@ function Pedidos() {
               <Fragment key={g.key}>
                 <ListGroupHeader label={g.label} note={g.note} count={g.items.length} />
                 {g.items.map((o) => (
-                  <OrderRow key={o._id} order={o} selected={o._id === selectedId} onSelect={() => setSelectedId(o._id)} />
+                  <OrderRow
+                    key={o._id}
+                    order={o}
+                    selected={o._id === selectedId}
+                    unseen={isUnseen(o._id)}
+                    onSelect={() => {
+                      setSelectedId(o._id);
+                      markSeen(o._id);
+                    }}
+                  />
                 ))}
               </Fragment>
             ))

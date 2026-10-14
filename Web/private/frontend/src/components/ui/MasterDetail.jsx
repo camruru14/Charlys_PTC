@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { useFillHeight } from "../../hooks/useFillHeight";
+import { UNSEEN_BG } from "../../lib/unseen";
+import UnseenDot from "./UnseenDot";
 
 /*
   Maestro-detalle: lista de ancho fijo a la izquierda y detalle flexible.
@@ -65,16 +67,19 @@ export function DetailPanel({ header, footer, bodyClassName = "", plainHeader = 
 }
 
 // Fila de la lista maestro: grid 5px 1fr, con barra izquierda al seleccionarse.
-export function ListRow({ selected, onClick, children }) {
+// `unseen`: registro con novedades (punto azul y fondo suave hasta que se abre).
+export function ListRow({ selected, unseen = false, dotClassName = "top-[18px]", onClick, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={selected || undefined}
-      className={`grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${
-        selected ? "bg-select-bg" : "hover:bg-surface-2"
+      data-unseen={unseen || undefined}
+      className={`relative grid w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${
+        selected ? "bg-select-bg" : unseen ? `${UNSEEN_BG} hover:bg-surface-2` : "hover:bg-surface-2"
       }`}
     >
+      <UnseenDot show={unseen} className={`left-[9px] ${dotClassName}`} />
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="min-w-0 px-3.5 py-3">{children}</span>
     </button>

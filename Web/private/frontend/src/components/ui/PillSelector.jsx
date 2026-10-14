@@ -1,7 +1,7 @@
 /*
   Pastillas de selección (ej. motorista o vehículo).
-  options = [{ value, label, busy }]: las ocupadas llevan « · en ruta» y no
-  son clicables.
+  options = [{ value, label, busy, unseen }]: las ocupadas llevan « · en ruta» y no
+  son clicables. `unseen`: registro con novedades (punto azul hasta que se elige).
 */
 function PillSelector({ options, value, onChange }) {
   return (
@@ -29,6 +29,9 @@ function PillSelector({ options, value, onChange }) {
               selected ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2 hover:border-select-bar"
             }`}
           >
+            {o.unseen ? (
+              <span role="img" aria-label="Nuevo" className={`mr-1.5 h-2 w-2 shrink-0 rounded-full ${selected ? "bg-white" : "bg-primary"}`} />
+            ) : null}
             {o.label}
           </button>
         );

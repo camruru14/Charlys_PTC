@@ -5,68 +5,65 @@ import { useAuth } from "../hooks/useAuth";
 import { ActivityContext } from "./activityContextValue";
 
 /*
-  Burbujas de novedades del menú lateral y de las pestañas. Trae del backend
-  (GET /activity/counts) cuántos elementos nuevos o cambiados tiene el usuario
-  en cada pestaña desde la última vez que la abrió:
-    counts   { "fabricacion.pedidos": 1, … }
-    modules  { fabricacion: 1, … }  (suma de las pestañas de cada módulo)
-  Se vuelve a pedir al cargar, cada 30 s mientras la pestaña del navegador está
-  visible, al volver a ella y poco después de cualquier POST/PUT/PATCH/DELETE
-  exitoso (lib/api.js avisa con el evento MUTATION_EVENT).
+  Novedades del panel, por usuario. Trae del backend (GET /activity/counts) qué
+  registros son nuevos o cambiaron para el usuario en cada pestaña:
+    counts   { "fabricacion.pedidos": 1, … }      (registros distintos, no acciones)
+    modules  { fabricacion: 1, … }                (suma de las pestañas de cada módulo)
+    unseen   { "fabricacion.pedidos": Set(ids) }  (los registros que se marcan en las listas)
+  Se vuelve a pedir al cargar, cada 30 s con la pestaña del navegador visible, al
+  volver a ella y poco después de cualquier POST/PUT/PATCH/DELETE exitoso
+  (lib/api.js avisa con MUTATION_EVENT).
 
-  Pestañas abiertas (watch): al abrirse se marcan vistas (POST /activity/seen) y,
-  mientras siguen abiertas, lo que llegue se marca visto solo, sin parpadeo:
-  su conteo se ve siempre en 0.
+  Abrir una pestaña NO limpia nada: solo el clic en un registro (markSeen) o
+  «Marcar todo como visto» (markAllSeen). Ambos actualizan la vista al instante y
+  luego confirman con el servidor; mientras no confirma, lo marcado no reaparece
+  aunque llegue un conteo viejo.
 */
 const POLL_MS = 30000;
 const DEBOUNCE_MS = 400;
-const EMPTY = { counts: {}, modules: {} };
+const EMPTY = { counts: {}, modules: {}, unseen: {} };
 
-// { counts, modules }: modules suma las pestañas de cada módulo.
-function withModules(counts) {
+// { counts, modules, unseen }: modules suma las pestañas de cada módulo.
+function build(counts, unseen) {
   const modules = {};
   Object.entries(counts).forEach(([key, count]) => {
     modules[moduleOfKey(key)] = (modules[moduleOfKey(key)] || 0) + count;
   });
-  return { counts, modules };
+  return { counts, modules, unseen };
 }
 
 export function ActivityProvider({ children }) {
   const { isAuthenticated } = useAuth();
   const [data, setData] = useState(EMPTY);
-  // Pestañas abiertas (con cuántas pantallas la vigilan) y respuesta más reciente aceptada.
-  const watched = useRef(new Map());
-  const latest = useRef(0);
-  const applyRef = useRef(null);
-
-  // POST /activity/seen: el servidor responde los conteos ya actualizados.
-  const sendSeen = useCallback(async (key) => {
-    const seq = (latest.current += 1);
-    try {
-      const raw = await api.post("/activity/seen", { key });
-      if (seq === latest.current) applyRef.current?.(raw);
-    } catch {
-      // Sin conexión: la próxima actualización lo reintenta.
-    }
+  // Copia de `data` para leerla en los manejadores sin depender del render.
+  const dataRef = useRef(EMPTY);
+  const commit = useCallback((next) => {
+    dataRef.current = next;
+    setData(next);
   }, []);
+  // Última respuesta aceptada y lo marcado que el servidor aún no confirmó
+  // ({ key → Set(ids) } y { key → true } para «todo»).
+  const latest = useRef(0);
+  const pending = useRef({ ids: new Map(), all: new Set() });
 
-  // Muestra los conteos del servidor, salvo en las pestañas abiertas, que se marcan vistas.
-  const apply = useCallback(
-    (raw) => {
-      const counts = { ...(raw?.counts || {}) };
-      const open = [...watched.current.keys()].filter((key) => counts[key] > 0);
-      open.forEach((key) => {
+  // Muestra los conteos del servidor, salvo lo que el usuario ya marcó y aún no se confirma.
+  const apply = useCallback((raw) => {
+    const counts = { ...(raw?.counts || {}) };
+    const unseen = {};
+    Object.keys(counts).forEach((key) => {
+      let ids = new Set(raw?.unseen?.[key] || []);
+      if (pending.current.all.has(key)) {
         counts[key] = 0;
-      });
-      setData(withModules(counts));
-      open.forEach(sendSeen);
-    },
-    [sendSeen],
-  );
-
-  useEffect(() => {
-    applyRef.current = apply;
-  }, [apply]);
+        ids = new Set();
+      } else {
+        pending.current.ids.get(key)?.forEach((id) => {
+          if (ids.delete(id)) counts[key] = Math.max(0, counts[key] - 1);
+        });
+      }
+      unseen[key] = ids;
+    });
+    commit(build(counts, unseen));
+  }, [commit]);
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -75,7 +72,7 @@ export function ActivityProvider({ children }) {
       const raw = await api.get("/activity/counts");
       if (seq === latest.current) apply(raw);
     } catch {
-      // Las burbujas son un extra: si falla, se conserva lo que había.
+      // Las novedades son un extra: si falla, se conserva lo que había.
     }
   }, [apply, isAuthenticated]);
 
@@ -106,26 +103,66 @@ export function ActivityProvider({ children }) {
     };
   }, [isAuthenticated, refresh]);
 
-  // Marca una pestaña como vista (solo para este usuario).
-  const markSeen = useCallback((key) => sendSeen(key), [sendSeen]);
-
-  // Empieza a vigilar una pestaña abierta; devuelve cómo dejar de hacerlo.
-  const watch = useCallback(
-    (key) => {
-      watched.current.set(key, (watched.current.get(key) || 0) + 1);
-      // Se ve en 0 de inmediato, sin esperar la respuesta.
-      setData((d) => (d.counts[key] > 0 ? withModules({ ...d.counts, [key]: 0 }) : d));
-      sendSeen(key);
-      return () => {
-        const left = (watched.current.get(key) || 1) - 1;
-        if (left > 0) watched.current.set(key, left);
-        else watched.current.delete(key);
-      };
+  // POST /activity/seen y, al terminar, los conteos que responde el servidor.
+  const confirm = useCallback(
+    async (body, done) => {
+      const seq = (latest.current += 1);
+      try {
+        const raw = await api.post("/activity/seen", body);
+        done();
+        if (seq === latest.current) apply(raw);
+      } catch {
+        done();
+        refresh();
+      }
     },
-    [sendSeen],
+    [apply, refresh],
   );
 
-  const value = useMemo(() => ({ ...data, markSeen, watch }), [data, markSeen, watch]);
+  // El usuario abrió el registro `id` en la pestaña `key`: se quita la marca al instante.
+  const markSeen = useCallback(
+    (key, id) => {
+      if (!key || !id) return;
+      const sid = String(id);
+      const d = dataRef.current;
+      // Solo lo que está marcado se confirma con el servidor.
+      if (!d.unseen[key]?.has(sid)) return;
+      const ids = new Set(d.unseen[key]);
+      ids.delete(sid);
+      commit(build({ ...d.counts, [key]: Math.max(0, (d.counts[key] || 0) - 1) }, { ...d.unseen, [key]: ids }));
+      const set = pending.current.ids.get(key) || new Set();
+      set.add(sid);
+      pending.current.ids.set(key, set);
+      confirm({ key, entityId: sid }, () => {
+        set.delete(sid);
+        if (!set.size) pending.current.ids.delete(key);
+      });
+    },
+    [commit, confirm],
+  );
+
+  // «Marcar todo como visto» en una pestaña.
+  const markAllSeen = useCallback(
+    (key) => {
+      if (!key) return;
+      const d = dataRef.current;
+      commit(build({ ...d.counts, [key]: 0 }, { ...d.unseen, [key]: new Set() }));
+      pending.current.all.add(key);
+      confirm({ key, all: true }, () => pending.current.all.delete(key));
+    },
+    [commit, confirm],
+  );
+
+  const value = useMemo(
+    () => ({
+      counts: data.counts,
+      modules: data.modules,
+      isUnseen: (key, id) => Boolean(id) && Boolean(data.unseen[key]?.has(String(id))),
+      markSeen,
+      markAllSeen,
+    }),
+    [data, markSeen, markAllSeen],
+  );
 
   return <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>;
 }

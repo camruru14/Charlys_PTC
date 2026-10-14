@@ -192,15 +192,16 @@ ordersController.checkout = async (req, res) => {
     // 4) La venta a Finanzas (Ingreso "Ventas"). El cobro ya se hizo y el
     // pedido ya existe: si esto fallara, se registra en el log en vez de
     // responderle error a un cliente que sí pagó.
+    let sale = null;
     try {
-      await recordSaleTransaction(order);
+      sale = await recordSaleTransaction(order);
     } catch (error) {
       console.log(`error al registrar la venta de ${order.orderNumber} en Finanzas: ${error}`);
     }
 
-    // 5) La novedad para las burbujas del panel (Pedidos, Inventario > Pedidos y
-    // Finanzas). Tampoco tumba el pedido si falla.
-    await recordStoreOrderActivity(order);
+    // 5) Las novedades para el panel: el pedido (Pedidos e Inventario > Pedidos) y su
+    // venta (Finanzas). Tampoco tumban el pedido si fallan.
+    await recordStoreOrderActivity(order, sale);
 
     res.status(201).json({ order });
   } catch (error) {

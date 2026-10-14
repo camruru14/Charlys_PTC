@@ -22,13 +22,17 @@ import { fmtNumber, formatBatchNumber } from "../../lib/format";
 import { IconFactory, IconClock } from "../../lib/icons";
 import { batchState, productLabel, batchSearchText, pendingUnits, BATCH_GROUPS, groupBatches, batchTimeNote } from "../../lib/batchFlow";
 import { useProductionLines } from "../../hooks/useProductionLines";
+import UnseenDot from "../../components/ui/UnseenDot";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 
 // Valores de ?estadoLote=: «todos» o la clave de un grupo de BATCH_GROUPS.
 const STATE_KEYS = ["todos", ...BATCH_GROUPS.map((g) => g.key)];
 
 // Fila del lote (62px): número y nota de tiempo con el estado; producto, línea
 // y «Producido / Meta».
-function BatchListRow({ batch, selected, onSelect }) {
+function BatchListRow({ batch, selected, unseen, onSelect }) {
   const done = batch.status === "Completado";
   const note = batchTimeNote(batch);
   const target = batch.targetQuantity;
@@ -37,10 +41,12 @@ function BatchListRow({ batch, selected, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-current={selected || undefined}
-      className={`grid h-[62px] w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${
-        selected ? "bg-select-bg" : "hover:bg-surface-2"
+      data-unseen={unseen || undefined}
+      className={`relative grid h-[62px] w-full grid-cols-[5px_1fr] border-b border-line-soft text-left transition ${
+        selected ? "bg-select-bg" : unseen ? `${UNSEEN_BG} hover:bg-surface-2` : "hover:bg-surface-2"
       }`}
     >
+      <UnseenDot show={unseen} className="left-[9px] top-[15px]" />
       <span className={selected ? "bg-select-bar" : ""} />
       <span className="flex min-w-0 flex-col justify-center gap-1 px-3.5">
         <span className="flex items-center justify-between gap-3">
@@ -83,6 +89,8 @@ function BatchListRow({ batch, selected, onSelect }) {
   lista va agrupada por estado y el rango de fechas solo filtra «En bodega».
 */
 function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatches, operators, onEdit, onDelete }) {
+  // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("fabricacion.lotes");
   const [selectedId, setSelectedId] = useUrlState("id");
   const [query, setQuery] = useState("");
   const range = useDateRange();
@@ -219,8 +227,11 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-[15px] font-bold text-ink">Lotes</h2>
-                <span className="t-aux tabular-nums">
-                  {fmtNumber(visible.length)} {visible.length === 1 ? "lote" : "lotes"}
+                <span className="flex items-baseline gap-3">
+                  <MarkAllSeen activityKey="fabricacion.lotes" />
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(visible.length)} {visible.length === 1 ? "lote" : "lotes"}
+                  </span>
                 </span>
               </div>
               <p className="t-aux tabular-nums">{rangeLabel(range)}</p>
@@ -258,7 +269,16 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
             <Fragment key={g.key}>
               <ListGroupHeader label={g.label} note={g.note} count={g.items.length} />
               {g.items.map((b) => (
-                <BatchListRow key={b._id} batch={b} selected={b._id === selectedId} onSelect={() => select(b._id)} />
+                <BatchListRow
+                  key={b._id}
+                  batch={b}
+                  selected={b._id === selectedId}
+                  unseen={isUnseen(b._id)}
+                  onSelect={() => {
+                    select(b._id);
+                    markSeen(b._id);
+                  }}
+                />
               ))}
             </Fragment>
           ))

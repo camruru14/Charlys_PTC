@@ -24,6 +24,7 @@ const activitySchema = new Schema({
 });
 
 activitySchema.index({ keys: 1, at: -1 });
+activitySchema.index({ entityId: 1 });
 activitySchema.index({ at: 1 }, { expireAfterSeconds: ACTIVITY_TTL_DAYS * 24 * 60 * 60 });
 
 export default model("Activity", activitySchema);

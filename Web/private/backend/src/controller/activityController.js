@@ -8,10 +8,13 @@ import { ACTIVITY_KEYS, KEY_MODULES, moduleOfKey } from "../lib/activityKeys.js"
 import { employeeModules } from "../lib/permissions.js";
 import { HttpError, sendError } from "../lib/stock.js";
 
-// Punto de partida de quien nunca abrió una pestaña, si no se conoce su fecha
-// de alta (lo normal es usar el createdAt del empleado): así no le llueve todo
-// el historial al estrenar las burbujas.
+// Punto de partida de quien nunca marcó nada, si no se conoce su fecha de alta
+// (lo normal es usar el createdAt del empleado): así no le llueve todo el
+// historial al estrenar las novedades.
 const FALLBACK_START = new Date();
+
+// Máximo de ids sin ver que se devuelven por pestaña (el conteo sí es completo).
+const MAX_UNSEEN_IDS = 200;
 
 // Pestañas a las que tiene acceso el empleado: las de sus módulos (lib/permissions.js).
 const accessibleKeys = (employee) => {
@@ -19,37 +22,62 @@ const accessibleKeys = (employee) => {
   return ACTIVITY_KEYS.filter((key) => modules.has(KEY_MODULES[key]));
 };
 
-// { counts: { "fabricacion.pedidos": 1, … }, modules: { fabricacion: 1, … } } del
-// empleado: por cada pestaña suya, los elementos DISTINTOS (entityId) con
-// actividad posterior a su «visto». Una sola agregación.
+/*
+  { counts: { key: n }, modules: { modulo: n }, unseen: { key: [entityId, …] } }
+  del empleado. Un registro (entityId) está sin ver en una pestaña si tiene
+  actividad en esa clave posterior a su `seenAt` por registro Y a la base del
+  empleado en esa clave (ver models/ActivitySeen.js). Se cuentan registros
+  DISTINTOS, no acciones. Una sola agregación.
+*/
 async function countsFor(employeeId) {
   const employee = await employeeModel.findById(employeeId).lean();
   if (!employee?.isActive) throw new HttpError(404, "No se encontró tu cuenta");
 
   const keys = accessibleKeys(employee);
   const counts = Object.fromEntries(keys.map((k) => [k, 0]));
+  const unseen = Object.fromEntries(keys.map((k) => [k, []]));
+
   if (keys.length) {
-    const seen = await activitySeenModel.find({ employee: employee._id, key: { $in: keys } }).lean();
-    const seenAt = new Map(seen.map((s) => [s.key, s.seenAt]));
+    const bases = await activitySeenModel.find({ employee: employee._id, key: { $in: keys }, entityId: null }).lean();
+    const baseOf = new Map(bases.map((b) => [b.key, b.seenAt]));
     const start = employee.createdAt || FALLBACK_START;
-    const since = Object.fromEntries(keys.map((k) => [k, seenAt.get(k) || start]));
-    const earliest = new Date(Math.min(...Object.values(since).map((d) => new Date(d).getTime())));
+    const since = Object.fromEntries(keys.map((k) => [k, new Date(baseOf.get(k) || start)]));
+    const earliest = new Date(Math.min(...Object.values(since).map((d) => d.getTime())));
 
     const rows = await activityModel.aggregate([
       { $match: { keys: { $in: keys }, at: { $gt: earliest } } },
       { $unwind: "$keys" },
       { $match: { keys: { $in: keys } } },
+      { $group: { _id: { key: "$keys", entity: "$entityId" }, last: { $max: "$at" } } },
       {
-        $addFields: {
-          since: { $switch: { branches: keys.map((k) => ({ case: { $eq: ["$keys", k] }, then: new Date(since[k]) })), default: earliest } },
+        $lookup: {
+          from: activitySeenModel.collection.name,
+          let: { key: "$_id.key", entity: "$_id.entity" },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ["$employee", employee._id] }, { $eq: ["$key", "$$key"] }, { $eq: ["$entityId", "$$entity"] }] } } },
+            { $project: { _id: 0, seenAt: 1 } },
+          ],
+          as: "seen",
         },
       },
-      { $match: { $expr: { $gt: ["$at", "$since"] } } },
-      { $group: { _id: { key: "$keys", entity: "$entityId" } } },
-      { $group: { _id: "$_id.key", count: { $sum: 1 } } },
+      {
+        $addFields: {
+          seenAt: { $max: "$seen.seenAt" },
+          base: { $switch: { branches: keys.map((k) => ({ case: { $eq: ["$_id.key", k] }, then: since[k] })), default: earliest } },
+        },
+      },
+      {
+        $match: {
+          $expr: { $and: [{ $gt: ["$last", "$base"] }, { $or: [{ $eq: [{ $ifNull: ["$seenAt", null] }, null] }, { $gt: ["$last", "$seenAt"] }] }] },
+        },
+      },
+      { $sort: { last: -1 } },
+      { $group: { _id: "$_id.key", count: { $sum: 1 }, ids: { $push: "$_id.entity" } } },
+      { $project: { count: 1, ids: { $slice: ["$ids", MAX_UNSEEN_IDS] } } },
     ]);
     rows.forEach((r) => {
       counts[r._id] = r.count;
+      unseen[r._id] = r.ids.map(String);
     });
   }
 
@@ -58,28 +86,42 @@ async function countsFor(employeeId) {
     const name = moduleOfKey(key);
     modules[name] = (modules[name] || 0) + count;
   }
-  return { counts, modules };
+  return { counts, modules, unseen };
+}
+
+function sessionEmployee(req) {
+  if (!mongoose.isValidObjectId(req.user?.id)) throw new HttpError(401, "Sesión inválida");
+  return new mongoose.Types.ObjectId(req.user.id);
 }
 
 // GET /activity/counts
 activityController.getCounts = async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.user?.id)) throw new HttpError(401, "Sesión inválida");
-    res.json(await countsFor(req.user.id));
+    res.json(await countsFor(sessionEmployee(req)));
   } catch (error) {
     sendError(res, error);
   }
 };
 
-// POST /activity/seen { key }: el empleado abrió esa pestaña; su contador vuelve
-// a 0 (solo el suyo). Responde los conteos actualizados.
+// POST /activity/seen { key, entityId }: el empleado abrió ese registro en esa
+// pestaña (solo se limpia para él). { key, all: true }: marca TODO visto en la
+// pestaña (mueve su base a ahora). Responde los conteos actualizados.
 activityController.markSeen = async (req, res) => {
   try {
-    const key = req.body?.key;
+    const employee = sessionEmployee(req);
+    const { key, entityId, all } = req.body || {};
     if (!ACTIVITY_KEYS.includes(key)) throw new HttpError(400, "Pestaña inválida");
-    if (!mongoose.isValidObjectId(req.user?.id)) throw new HttpError(401, "Sesión inválida");
-    await activitySeenModel.updateOne({ employee: req.user.id, key }, { $set: { seenAt: new Date() } }, { upsert: true });
-    res.json(await countsFor(req.user.id));
+    const now = new Date();
+
+    if (all === true) {
+      await activitySeenModel.updateOne({ employee, key, entityId: null }, { $set: { seenAt: now } }, { upsert: true });
+      // Lo anterior a la base ya está visto: los «vistos» por registro sobran.
+      await activitySeenModel.deleteMany({ employee, key, entityId: { $ne: null } });
+    } else {
+      if (!mongoose.isValidObjectId(entityId)) throw new HttpError(400, "Registro inválido");
+      await activitySeenModel.updateOne({ employee, key, entityId: new mongoose.Types.ObjectId(entityId) }, { $set: { seenAt: now } }, { upsert: true });
+    }
+    res.json(await countsFor(employee));
   } catch (error) {
     sendError(res, error);
   }

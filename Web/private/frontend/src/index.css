@@ -242,3 +242,9 @@ button:not(:disabled),
     animation: none;
   }
 }
+
+/* Registro con novedades (UnseenDot): su texto principal en negrita hasta que se abre. */
+[data-unseen="true"] .unseen-title,
+[data-unseen="true"] .t-row-name {
+  font-weight: 700;
+}

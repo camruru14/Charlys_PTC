@@ -24,6 +24,10 @@ import { toastUndo } from "../../lib/toastUndo";
 import { TONE_SOFT } from "../../lib/tones";
 import { fmtNumber, fmtDate, fmtTime } from "../../lib/format";
 import { IconCheck, IconEdit, IconFactory, IconWarehouse, IconOrders, IconPlus } from "../../lib/icons";
+import UnseenDot from "../../components/ui/UnseenDot";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { UNSEEN_BG } from "../../lib/unseen";
+import { useUnseen } from "../../hooks/useActivity";
 import {
   DISPATCH_GROUPS,
   dispatchCounts,
@@ -63,7 +67,7 @@ function PickupChip({ location }) {
   );
 }
 
-function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute }) {
+function OrderRow({ order, group, route, moved, unseen, openRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute, onSeen }) {
   const info = dispatchInfo(order);
   const assigned = order.delivery?.route;
   const note = lotNote(order);
@@ -96,7 +100,12 @@ function OrderRow({ order, group, route, moved, openRoute, busy, onAdd, onRemove
   }
 
   return (
-    <div className={`flex flex-col gap-1.5 border-b border-line-soft px-3.5 py-3 ${moved ? "row-moved" : ""}`}>
+    <div
+      data-unseen={unseen || undefined}
+      onClick={onSeen}
+      className={`relative flex flex-col gap-1.5 border-b border-line-soft px-3.5 py-3 transition-colors ${unseen ? UNSEEN_BG : ""} ${moved ? "row-moved" : ""}`}
+    >
+      <UnseenDot show={unseen} className="left-[6px] top-[19px]" />
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[13.5px] font-bold tabular-nums text-ink">{order.orderNumber}</span>
@@ -468,6 +477,8 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
   (maestro) y la ruta abierta que se está armando (panel derecho).
 */
 function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, isBusy, act, onRemove, onNewRoute }) {
+  // Novedades: pedidos listos para despachar y rutas por salir, marcados hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("logistica.despacho");
   const ordersById = useMemo(() => new Map(orders.map((o) => [String(o._id), o])), [orders]);
   const pendingRoutes = routes.filter((r) => !r.departedAt);
   const openRoute = routes.find((r) => r._id === openRouteId) || null;
@@ -521,8 +532,11 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-[15px] font-bold text-ink">Pedidos para despacho</h2>
-                <span className="t-aux tabular-nums">
-                  {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
+                <span className="flex items-baseline gap-3">
+                  <MarkAllSeen activityKey="logistica.despacho" />
+                  <span className="t-aux tabular-nums">
+                    {fmtNumber(orders.length)} {orders.length === 1 ? "pedido" : "pedidos"}
+                  </span>
                 </span>
               </div>
               <p className="t-aux tabular-nums">{fmtDate(new Date())}</p>
@@ -558,6 +572,8 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
                   group={g.key}
                   route={routesById.get(routeIdOf(o))}
                   moved={moved.has(String(o._id))}
+                  unseen={isUnseen(o._id)}
+                  onSeen={() => markSeen(o._id)}
                   openRoute={buildingRoute}
                   busy={isBusy(`order:${o._id}`)}
                   onAdd={add}
@@ -576,9 +592,12 @@ function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId,
           <div className="flex flex-wrap items-center gap-2">
             <span className="t-label">Rutas por salir</span>
             <PillSelector
-              options={pendingRoutes.map((r) => ({ value: r._id, label: `${routeLabel(r)} · ${r.zone}` }))}
+              options={pendingRoutes.map((r) => ({ value: r._id, label: `${routeLabel(r)} · ${r.zone}`, unseen: isUnseen(r._id) }))}
               value={buildingRoute?._id || ""}
-              onChange={onOpenRoute}
+              onChange={(id) => {
+                onOpenRoute(id);
+                markSeen(id);
+              }}
             />
           </div>
         ) : null}

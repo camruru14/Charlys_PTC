@@ -12,6 +12,8 @@ import { attendanceStatus, employeeMonthRows, fmtHours, monthLabel, recordHours 
 import { fmtDateYear, fmtMoney, fmtTime, fmtWeekdayDate } from "../../lib/format";
 import { IconUsers } from "../../lib/icons";
 import { formatDui } from "../../lib/dui";
+import MarkAllSeen from "../../components/ui/MarkAllSeen";
+import { useUnseen } from "../../hooks/useActivity";
 
 const fullName = (emp) => `${emp.name || ""} ${emp.lastName || ""}`.trim();
 const employeeStatus = (emp) => (emp.isActive !== false ? "Activo" : "Inactivo");
@@ -25,14 +27,14 @@ function matches(emp, query, area) {
   return [fullName(emp), emp.position, emp.department, emp.email].some((v) => (v || "").toLowerCase().includes(q));
 }
 
-function EmployeeRow({ emp, selected, onSelect }) {
+function EmployeeRow({ emp, selected, unseen, onSelect }) {
   const role = roleLine(emp);
   return (
-    <ListRow selected={selected} onClick={onSelect}>
+    <ListRow selected={selected} unseen={unseen} dotClassName="top-[24px]" onClick={onSelect}>
       <span className="flex items-center gap-3">
         <Avatar person={emp} size={32} tone="color" />
         <span className="min-w-0 flex-1">
-          <span className="t-row-name block truncate">{fullName(emp)}</span>
+          <span className={`t-row-name block truncate ${unseen ? "!font-bold" : ""}`}>{fullName(emp)}</span>
           {role ? <span className="t-aux block truncate">{role}</span> : null}
         </span>
         <StatusPill status={employeeStatus(emp)} domain="empleado" variant="dot" />
@@ -159,6 +161,8 @@ function EmployeeDetail({ emp, days, month, schedule, onRegister }) {
 function Personal({ employees, days, month, schedule, loading, error, selectedId, onSelect, onRegister }) {
   const [query, setQuery] = useState("");
   const [area, setArea] = useState("all");
+  // Novedades: los empleados nuevos se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useUnseen("empleados.personal");
 
   const areaOptions = useMemo(() => {
     const counts = new Map();
@@ -183,7 +187,16 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
   else if (visible.length === 0) list = <EmptyState title={employees.length ? "Ningún empleado coincide." : "No hay empleados."} />;
   else
     list = visible.map((emp) => (
-      <EmployeeRow key={emp._id} emp={emp} selected={selected?._id === emp._id} onSelect={() => onSelect(String(emp._id))} />
+      <EmployeeRow
+        key={emp._id}
+        emp={emp}
+        selected={selected?._id === emp._id}
+        unseen={isUnseen(emp._id)}
+        onSelect={() => {
+          onSelect(String(emp._id));
+          markSeen(emp._id);
+        }}
+      />
     ));
 
   return (
@@ -191,6 +204,7 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
       <ListPanel
         header={
           <>
+            <MarkAllSeen activityKey="empleados.personal" asRow />
             <SearchInput value={query} onChange={setQuery} placeholder="Buscar empleado" />
             <FilterChips options={areaOptions} value={area} onChange={setArea} />
           </>

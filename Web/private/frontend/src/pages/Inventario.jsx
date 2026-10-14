@@ -21,8 +21,7 @@ import { fmtNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
 import { UNITS, MATERIAL_TYPES } from "../lib/inventoryOptions";
 import { statusTone } from "../lib/statusDomains";
-import { useActivity, useMarkSeen } from "../hooks/useActivity";
-import { tabKey } from "../lib/activityKeys";
+import { useActivity } from "../hooks/useActivity";
 
 // Los lotes de Fabricación entran directo a Producto terminado al enviarse a
 // bodega (Fase 5), así que ya no hay pestaña de «Lotes reportados».
@@ -51,9 +50,8 @@ function Inventario() {
   const { data: warehousesData } = useFetch("/warehouses");
   const warehouses = (Array.isArray(warehousesData) ? warehousesData : []).map((w) => w.name);
   const [activeTab, setActiveTab] = useUrlState("tab", "terminado", { allowed: TABS.map((t) => t.key) });
-  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  // Novedades: la burbuja de cada pestaña (abrirla no la limpia; se limpia registro por registro).
   const { counts } = useActivity();
-  useMarkSeen(tabKey("inventario", activeTab));
   const tabs = TABS.map((t) => ({ ...t, badge: counts[`inventario.${t.key}`] }));
 
   const [modalOpen, setModalOpen] = useState(false);

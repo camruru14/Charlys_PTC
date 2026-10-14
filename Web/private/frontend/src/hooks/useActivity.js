@@ -1,19 +1,25 @@
-import { useContext, useEffect } from "react";
+import { useContext } from "react";
 import { ActivityContext } from "../context/activityContextValue";
 
-// { counts, modules, markSeen, watch } de las burbujas de novedades.
+// { counts, modules, isUnseen(key, id), markSeen(key, id), markAllSeen(key) } de las novedades.
 export function useActivity() {
   const context = useContext(ActivityContext);
   if (!context) throw new Error("useActivity must be used within an ActivityProvider");
   return context;
 }
 
-// Marca la pestaña `key` como vista al abrirla y mientras siga abierta (lo que
-// llegue se marca solo). `key` null no hace nada. Úsalo con la pestaña activa:
-// al cambiar de pestaña, la anterior deja de vigilarse y la nueva se marca.
-export function useMarkSeen(key) {
-  const { watch } = useActivity();
-  useEffect(() => (key ? watch(key) : undefined), [key, watch]);
+// Las novedades de UNA pestaña (clave «modulo.pestana»), listas para sus filas:
+//   const { isUnseen, markSeen } = useUnseen("pedidos");
+//   <Row unseen={isUnseen(order._id)} onClick={() => markSeen(order._id)} />
+// `count` es lo que muestra su burbuja y `markAll` es «Marcar todo como visto».
+export function useUnseen(key) {
+  const { counts, isUnseen, markSeen, markAllSeen } = useActivity();
+  return {
+    count: counts[key] || 0,
+    isUnseen: (id) => isUnseen(key, id),
+    markSeen: (id) => markSeen(key, id),
+    markAll: () => markAllSeen(key),
+  };
 }
 
 export default useActivity;

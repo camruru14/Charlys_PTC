@@ -120,6 +120,7 @@ inventoryController.deleteItem = async (req, res) => {
 // enviado el panel, no vuelve a sumar nada: así nunca se cuenta dos veces.
 inventoryController.sendToWarehouse = async (req, res) => {
   try {
+    let stockItemId = null;
     const found = await withTransaction(async (session) => {
       const item = await inventoryModel.findById(req.params.id).session(session);
       if (!item || !item.batchNumber) return false;
@@ -128,7 +129,7 @@ inventoryController.sendToWarehouse = async (req, res) => {
       const batch = await batchModel.findOne({ batchNumber: item.batchNumber }).session(session);
       if (!batch?.sentToWarehouseAt) {
         const now = new Date();
-        await addFinishedStock(
+        const stock = await addFinishedStock(
           {
             product: item.name,
             color: item.color,
@@ -140,6 +141,7 @@ inventoryController.sendToWarehouse = async (req, res) => {
           },
           session,
         );
+        stockItemId = stock?._id;
         if (batch) {
           batch.sentToWarehouseAt = now;
           batch.destinationWarehouse = item.location;
@@ -155,7 +157,8 @@ inventoryController.sendToWarehouse = async (req, res) => {
     if (!found) {
       return res.status(404).json({ message: "Inventory item not found" });
     }
-    await recordFor(req, { keys: ["inventario.terminado"], entityType: "inventory", entityId: req.params.id, action: "sent-to-warehouse" });
+    // La fila que cambia en Producto terminado es el artículo que recibió las unidades.
+    await recordFor(req, { keys: ["inventario.terminado"], entityType: "inventory", entityId: stockItemId, action: "sent-to-warehouse" });
     res.json({ message: "Inventory item sent to warehouse" });
   } catch (error) {
     sendError(res, error);

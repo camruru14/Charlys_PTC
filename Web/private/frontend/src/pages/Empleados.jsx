@@ -17,8 +17,7 @@ import { buttonClass } from "../lib/buttonStyles";
 import { attendanceDays, attendanceMonths, defaultMonth } from "../lib/attendance";
 import Personal from "./empleados/Personal";
 import Asistencia from "./empleados/Asistencia";
-import { useActivity, useMarkSeen } from "../hooks/useActivity";
-import { tabKey } from "../lib/activityKeys";
+import { useActivity } from "../hooks/useActivity";
 
 const TABS = [
   { key: "personal", label: "Personal" },
@@ -38,9 +37,8 @@ function Empleados() {
   const { data, loading, error, refetch } = useFetch("/employees");
   const { schedule } = useWorkSchedule();
   const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
-  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  // Novedades: la burbuja de cada pestaña (abrirla no la limpia; se limpia registro por registro).
   const { counts } = useActivity();
-  useMarkSeen(tabKey("empleados", activeTab));
   const tabs = TABS.map((t) => ({ ...t, badge: counts[`empleados.${t.key}`] }));
   const [selectedId, setSelectedId] = useUrlState("id");
 

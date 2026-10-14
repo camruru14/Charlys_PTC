@@ -1,6 +1,10 @@
 import ActionsMenu from "../ui/ActionsMenu";
 import EmptyState from "../ui/EmptyState";
 import Pagination from "../ui/Pagination";
+import MarkAllSeen from "../ui/MarkAllSeen";
+import UnseenDot from "../ui/UnseenDot";
+import { useUnseen } from "../../hooks/useActivity";
+import { UNSEEN_BG } from "../../lib/unseen";
 import { usePagedRows } from "../../hooks/usePagedRows";
 import { IconEdit, IconAlert } from "../../lib/icons";
 
@@ -13,6 +17,9 @@ import { IconEdit, IconAlert } from "../../lib/icons";
               (usePagedRows, como las listas de Configuración: llega hasta el
               margen inferior y muestra las filas que caben)
     resetKey = cambia con los filtros: vuelve a la primera página
+    activityKey = pestaña de novedades («inventario.terminado» / «inventario.materia»):
+              los artículos nuevos o cambiados se marcan (punto azul y fondo suave)
+              hasta hacer clic en su fila; «Marcar todo como visto» va en la barra
   La última columna (Acción: editar + «…») la agrega la tarjeta.
 */
 
@@ -52,7 +59,9 @@ function InventoryItemsCard({
   summary,
   noun = "artículos",
   resetKey = "",
+  activityKey,
 }) {
+  const { isUnseen, markSeen } = useUnseen(activityKey);
   const { cardRef, areaRef, cardStyle, visible, page, setPage, size, total, paged } = usePagedRows(rows, { rowHeight: 46, headerHeight: 32, resetKey });
   const template = [...columns.map((c) => c.width), "92px"].join(" ");
   const gridStyle = { gridTemplateColumns: template };
@@ -62,12 +71,17 @@ function InventoryItemsCard({
   else if (error) body = <EmptyState title="No se pudo cargar el inventario" description={error} />;
   else if (rows.length === 0) body = <EmptyState title={emptyText} />;
   else {
-    body = visible.map((item) => (
+    body = visible.map((item) => {
+      const unseen = Boolean(activityKey) && isUnseen(item._id);
+      return (
       <div
         key={item._id}
         style={gridStyle}
-        className={`grid min-h-[46px] items-center border-b border-line-soft last:border-0 ${rowClassName?.(item) || ""}`}
+        data-unseen={unseen || undefined}
+        onClick={activityKey ? () => markSeen(item._id) : undefined}
+        className={`relative grid min-h-[46px] items-center border-b border-line-soft transition-colors last:border-0 ${rowClassName?.(item) || (unseen ? UNSEEN_BG : "")}`}
       >
+        {activityKey ? <UnseenDot show={unseen} className="left-[6px] top-[19px]" /> : null}
         {columns.map((c) => (
           <div
             key={c.key}
@@ -89,7 +103,8 @@ function InventoryItemsCard({
           <ActionsMenu size="row" items={[{ label: "Eliminar artículo", onClick: () => onDelete(item), danger: true }]} />
         </div>
       </div>
-    ));
+      );
+    });
   }
 
   return (
@@ -97,7 +112,10 @@ function InventoryItemsCard({
       {/* Cabecera: indicadores arriba a la izquierda (opcional) y debajo los filtros. */}
       <div className="flex shrink-0 flex-col gap-3 border-b border-line-soft px-[18px] py-[13px]">
         {kpis}
-        <div className="flex flex-wrap items-center gap-2">{filterBar}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {filterBar}
+          {activityKey ? <MarkAllSeen activityKey={activityKey} className="ml-auto" /> : null}
+        </div>
       </div>
       <div ref={areaRef} className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-[1080px]">

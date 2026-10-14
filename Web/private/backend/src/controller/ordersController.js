@@ -30,9 +30,11 @@ const ROUTE_FIELDS = "code number zone status date";
 // `fn` sobre la línea, recalcula el status y guarda. Todo o nada: si `fn`
 // lanza (estado inválido, stock insuficiente, lote ya en proceso), no se
 // aplica ningún movimiento de stock ni de lotes.
-// `track({ order, statusBefore })` (opcional) devuelve { keys, action } con las
-// pestañas que ven la novedad (burbujas, lib/activity.js), o null si no hay.
-// Se registra cuando la transacción ya se confirmó.
+// `track({ order, item, statusBefore })` (opcional) devuelve { keys, action } con las
+// pestañas que ven la novedad (burbujas, lib/activity.js), o null si no hay. Por
+// defecto el registro es el pedido; puede traer entityType/entityId (p. ej. el
+// lote) y devolver una lista de novedades. Se registra cuando la transacción ya
+// se confirmó.
 function lineAction(fn, okMessage, track) {
   return async (req, res) => {
     try {
@@ -50,10 +52,12 @@ function lineAction(fn, okMessage, track) {
         order.markModified("items");
         setOrderStatus(order, computeOrderStatus(order));
         await order.save({ session });
-        saved = { order, statusBefore };
+        saved = { order, item, statusBefore };
       });
       const activity = track?.(saved);
-      if (activity) await recordFor(req, { entityType: "order", entityId: saved.order._id, ...activity });
+      for (const entry of [activity].flat().filter(Boolean)) {
+        await recordFor(req, { entityType: "order", entityId: saved.order._id, ...entry });
+      }
       // `order`: el pedido actualizado (poblado como en GET /orders).
       res.json({ message: okMessage, order: await populateOrder(orderModel.findById(req.params.id)) });
     } catch (error) {
@@ -245,7 +249,8 @@ ordersController.sendItemToManufacturing = lineAction(
 ordersController.manufactureOrderItem = lineAction(
   ({ item, session }) => sendLineToManufacturing(item, session),
   "Order item sent to manufacturing",
-  () => ({ keys: ["fabricacion.lotes"], action: "manufacture" }),
+  // El registro que se ve en Lotes de fabricación es el lote que se crea.
+  ({ item }) => ({ keys: ["fabricacion.lotes"], action: "manufacture", entityType: "batch", entityId: item.manufacturingBatch?._id || item.manufacturingBatch }),
 );
 
 // Deshacer enviar a fabricación: si el lote sigue Programado lo elimina y la

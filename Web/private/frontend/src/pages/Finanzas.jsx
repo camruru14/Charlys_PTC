@@ -17,7 +17,6 @@ import { categoryTone, useExpenseCategories } from "../lib/expenseCategories";
 import { buildLedger, filterLedger, ledgerSummary, OTHER_INCOME, SALES_CATEGORY, transactionsCsv } from "../lib/finance";
 import { dayKey, inRange, statusLabel } from "../lib/transactionFilters";
 import { getPageMeta } from "../lib/nav";
-import { useMarkSeen } from "../hooks/useActivity";
 
 // Alto mínimo del bloque de abajo: más bajo que el predeterminado para que una ventana de
 // 1366×768 siga sin scroll (el panel y el libro hacen scroll o paginan por dentro).
@@ -34,8 +33,6 @@ const HIGHLIGHT_MS = 4000;
   (Configuración › Categorías de gasto).
 */
 function Finanzas() {
-  // Novedades: abrir el módulo marca su burbuja como vista (y lo que llegue mientras sigue abierto).
-  useMarkSeen("finanzas");
   const range = useDateRange();
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/transactions");

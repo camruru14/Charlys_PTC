@@ -18,8 +18,7 @@ import { dayKey, dispatchOrders, routeRef } from "../lib/logistics";
 import EnTransito from "./logistica/EnTransito";
 import ParaDespacho from "./logistica/ParaDespacho";
 import ModalNuevaRuta from "./logistica/ModalNuevaRuta";
-import { useActivity, useMarkSeen } from "../hooks/useActivity";
-import { tabKey } from "../lib/activityKeys";
+import { useActivity } from "../hooks/useActivity";
 
 const TABS = [
   { key: "transito", label: "En tránsito" },
@@ -61,9 +60,8 @@ function Logistica() {
   const { data: ordersData, loading: ordersLoading, error: ordersError, refetch: refetchOrders } = useFetch("/orders");
   const [, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useUrlState("tab", "transito", { allowed: TABS.map((t) => t.key) });
-  // Novedades: abrir una pestaña la marca vista y las demás muestran su burbuja.
+  // Novedades: la burbuja de cada pestaña (abrirla no la limpia; se limpia registro por registro).
   const { counts } = useActivity();
-  useMarkSeen(tabKey("logistica", activeTab));
   const tabs = TABS.map((t) => ({ ...t, badge: counts[`logistica.${t.key}`] }));
   const [routeId, setRouteId] = useUrlState("ruta");
   const [filter, setFilter] = useUrlState("filtro", "todos", { allowed: FILTERS });
