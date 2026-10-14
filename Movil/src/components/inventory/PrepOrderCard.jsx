@@ -1,3 +1,4 @@
+import { lineLabel } from "../../lib/lineLabel";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import UnseenMark from "../ui/UnseenMark";
 import Icon from "../ui/Icon";
@@ -46,7 +47,7 @@ function shortageNote(order, stockMap) {
   );
   if (!shortages.length) return null;
   const { item, available } = shortages[0];
-  const name = [item.product, item.color].filter(Boolean).join(" ");
+  const name = lineLabel(item, { color: true });
   const more = shortages.length > 1 ? ` · y ${shortages.length - 1} más` : "";
   return `${name}: hay ${formatNumber(available)} de ${formatNumber(item.quantity)}${more}`;
 }

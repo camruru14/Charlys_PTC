@@ -56,6 +56,9 @@ function finishedStockFilter(product, color, warehouse) {
   };
 }
 
+// Inventario NO distingue tamaños: el artículo se busca por nombre del Catálogo + color. Una línea
+// de pedido con `size` (p. ej. «Pajilla jumbo» tamaño «Normal») descuenta del mismo artículo que
+// una sin tamaño; el tamaño es solo informativo en el pedido.
 // Descuenta `quantity` del stock de ese producto/color en esa bodega. El
 // descuento es atómico y condicionado a que alcance (stock >= quantity), así
 // dos verificaciones simultáneas nunca dejan el stock negativo. El artículo

@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -221,7 +222,7 @@ export default function LoteDetalleScreen({ navigation, route }) {
     pack: () =>
       act(
         () => batchApi.packManufactured(orderLot.group.order._id, orderLot.lot.index),
-        `${[orderLot.lot.item.product, orderLot.lot.item.color].filter(Boolean).join(" · ")} empacado`,
+        `${lineLabel(orderLot.lot.item, { color: true })} empacado`,
         () => batchApi.unpackManufactured(orderLot.group.order._id, orderLot.lot.index),
       ),
   };

@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { routeLabel } from "../lib/logistics";
 import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -170,7 +171,7 @@ function OrderDetail({ order, canDelete, onDelete }) {
                         <td className="px-4">
                           <span className="flex items-center gap-2 t-row-name">
                             <ColorSwatch color={it.color} />
-                            {it.product}
+                            {lineLabel(it)}
                           </span>
                         </td>
                         <td className="t-row px-3">{it.color || "—"}</td>

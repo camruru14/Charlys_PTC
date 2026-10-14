@@ -5,7 +5,7 @@ import batchModel from "../models/ProductionBatch.js";
 import { generateBatchNumber } from "./productionBatchesController.js";
 import { assertProductName } from "../lib/productName.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 
 // Genera el siguiente número de lote diario correlativo (LTE-DIARIO-0001, LTE-DIARIO-0002, ...)
 async function generateDailyBatchNumber() {
@@ -102,6 +102,7 @@ dailyBatchesController.updateBatch = async (req, res) => {
 // Eliminar
 dailyBatchesController.deleteBatch = async (req, res) => {
   await dailyBatchModel.findByIdAndDelete(req.params.id);
+  await resolveActivity({ keys: ["fabricacion.diaria"], entityId: req.params.id });
   res.json({ message: "Daily batch deleted" });
 };
 
@@ -144,6 +145,9 @@ dailyBatchesController.scheduleBatch = async (req, res) => {
       return created;
     });
 
+    // El lote diario sale de Lotes diarios (pasa a Lotes): su novedad de ahí ya no se puede abrir.
+    await resolveActivity({ keys: ["fabricacion.diaria"], entityId: req.params.id });
+    // Programar crea un lote de stock (no de un pedido): su novedad va en Lotes.
     await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: newBatch._id, action: "scheduled" });
 
     res.json({ message: "Daily batch scheduled", batchNumber });

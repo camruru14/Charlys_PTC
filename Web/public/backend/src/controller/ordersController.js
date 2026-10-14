@@ -75,7 +75,7 @@ async function buildOrderItems(rawItems) {
       color = raw.color;
     }
 
-    // Igual con los tamaños (el tamaño va en el nombre de la línea).
+    // Igual con los tamaños (el tamaño se guarda aparte, en `size`).
     let size;
     if (product.sizes?.length) {
       if (typeof raw.size !== "string" || !product.sizes.includes(raw.size)) {
@@ -84,18 +84,19 @@ async function buildOrderItems(rawItems) {
       size = raw.size;
     }
 
-    // La línea guarda como "producto" el NOMBRE del producto del catálogo (el
-    // que se administra en Catálogo del panel, único en todo el sistema), no
-    // su categoría: es el nombre que usa todo el panel (Pedidos, Fabricación,
-    // Logística) y con el que Inventario busca el producto terminado al
-    // verificar el pedido (name + color, private/backend/src/lib/stock.js).
-    const productLabel = size ? `${product.name} (${size})` : product.name;
+    // La línea guarda como "producto" el NOMBRE EXACTO del producto del catálogo (el
+    // que se administra en Catálogo del panel, único en todo el sistema), sin el
+    // tamaño: es el nombre que usa todo el panel (Pedidos, Fabricación, Logística),
+    // con el que Inventario busca el producto terminado al verificar el pedido
+    // (name + color, private/backend/src/lib/stock.js) y con el que el Catálogo
+    // sabe si el producto tiene pedidos. El tamaño va aparte, en `size`.
     const unitPrice = product.price;
     const subtotal = Number((unitPrice * quantity).toFixed(2));
 
     items.push({
-      product: productLabel,
+      product: product.name,
       color,
+      size,
       quantity,
       unitPrice,
       subtotal,

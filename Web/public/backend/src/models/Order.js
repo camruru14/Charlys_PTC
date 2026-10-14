@@ -18,6 +18,9 @@ const orderItemSchema = new Schema(
   {
     product: { type: String, required: true }, // nombre del producto del Catálogo del producto, ej. "Pajilla jumbo"
     color: { type: String },
+    // Tamaño elegido (ver private/backend/src/models/Order.js): `product` es el nombre exacto del
+    // Catálogo y el tamaño va aparte.
+    size: { type: String, trim: true },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true, min: 0 },

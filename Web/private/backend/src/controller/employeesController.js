@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import employeeModel from "../models/Employee.js";
 import { FieldError, checkPassword, normalizeDui, normalizeEmail, normalizeName, sendEmployeeError } from "../lib/employeeFields.js";
 import cloudinary from "../lib/cloudinary.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 import { decryptPassword, encryptPassword, isEncryptedPassword, readablePassword } from "../lib/passwordCrypto.js";
 import { isAdministrator, isAdministratorId } from "../lib/permissions.js";
 import { setSessionCookie, signSessionToken } from "../lib/session.js";
@@ -225,6 +225,7 @@ employeesController.deleteEmployee = async (req, res) => {
       return res.status(409).json({ message: ADMIN_REQUIRED });
     }
     await employeeModel.findByIdAndDelete(id);
+    await resolveActivity({ keys: ["empleados.personal"], entityId: id });
     // Su foto de perfil no debe quedar huérfana en Cloudinary.
     if (target.photo?.publicId) await cloudinary.uploader.destroy(target.photo.publicId).catch(() => null);
     res.json({ message: "Employee deleted" });

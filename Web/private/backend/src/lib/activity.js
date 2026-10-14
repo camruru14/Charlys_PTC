@@ -26,6 +26,25 @@ export async function recordActivity({ keys, entityType, entityId, action, actor
   }
 }
 
+/*
+  Quita la clave `key` de las novedades de `entityId` (y borra las que se queden
+  sin claves): el registro salió de esa pestaña (o se eliminó) y ya no hay nada que ver
+  ahí; si no, la burbuja se quedaría pegada porque la fila ya no se puede abrir.
+  Igual que recordActivity: se llama DESPUÉS del commit y, si falla, solo escribe en el
+  log. `keys`: claves a quitar; `entityId` o `entityIds`: los registros.
+*/
+export async function resolveActivity({ keys, entityId, entityIds } = {}) {
+  try {
+    const list = [...new Set(keys || [])].filter((k) => ACTIVITY_KEYS.includes(k));
+    const ids = [...new Set([...(entityIds || []), entityId].filter(Boolean).map(String))];
+    if (!list.length || !ids.length) return;
+    await activityModel.updateMany({ entityId: { $in: ids }, keys: { $in: list } }, { $pull: { keys: { $in: list } } });
+    await activityModel.deleteMany({ entityId: { $in: ids }, keys: { $size: 0 } });
+  } catch (error) {
+    console.log(`error al resolver la actividad ${(keys || []).join(",")} de ${entityId || entityIds}: ${error}`);
+  }
+}
+
 // Versión para un controlador: toma el empleado de la sesión (req.user.id).
 export const recordFor = (req, activity) => recordActivity({ ...activity, actor: req.user?.id });
 

@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import transactionModel, { isStoreSale } from "../models/Transaction.js";
 import expenseCategoryModel, { NAME_COLLATION, normalizeName } from "../models/ExpenseCategory.js";
 import cloudinary, { uploadTransactionFileBuffer } from "../lib/cloudinary.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 import { nextCode } from "../lib/counters.js";
 
 // Categoría de todo ingreso manual (las «Ventas» solo las crea la tienda).
@@ -195,6 +195,7 @@ transactionsController.deleteTransaction = async (req, res) => {
   if (isStoreSale(transaction)) return res.status(409).json({ message: "Las ventas de la tienda no se eliminan" });
 
   await transaction.deleteOne();
+  await resolveActivity({ keys: ["finanzas"], entityId: transaction._id });
   await destroyFile(transaction.attachment);
   res.json({ message: "Transaction deleted" });
 };

@@ -2,7 +2,7 @@ const routesController = {};
 
 import routeModel from "../models/Route.js";
 import { sendError, withTransaction } from "../lib/stock.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 import {
   routesFilter,
   createRoute,
@@ -33,13 +33,20 @@ async function trackRoute(req, route, action, { keys, orderIds = [] }) {
   for (const orderId of orderIds) await recordFor(req, { keys: ["pedidos"], entityType: "order", entityId: orderId, action });
 }
 
+// Novedades que dejan de verse cuando una acción termina (lib/activity.js, resolveActivity):
+// `resolve(req, route)` devuelve [{ keys, entityIds }]. Se llama ya confirmada la transacción.
+async function resolveRoute(req, route, resolve) {
+  for (const entry of resolve(req, route) || []) await resolveActivity(entry);
+}
+
 // Ejecuta una acción de lib/routes.js en una transacción y responde la ruta
 // actualizada (poblada). `track(req, route)` (opcional) devuelve { keys, orderIds? }.
-function routeAction(fn, action, track) {
+function routeAction(fn, action, track, resolve) {
   return async (req, res) => {
     try {
       const route = await withTransaction((session) => fn(req, session));
       if (track) await trackRoute(req, route, action, track(req, route));
+      if (resolve) await resolveRoute(req, route, resolve);
       await sendRoute(res, route._id);
     } catch (error) {
       sendError(res, error);
@@ -103,6 +110,8 @@ routesController.updateRoute = routeAction((req, session) => updateRoute(req.par
 routesController.deleteRoute = async (req, res) => {
   try {
     await withTransaction((session) => deleteRoute(req.params.id, session));
+    // La ruta ya no existe: sus novedades de Para despacho y En tránsito no tienen nada que abrir.
+    await resolveActivity({ keys: ["logistica.despacho", "logistica.transito"], entityId: req.params.id });
     res.json({ message: "Route deleted" });
   } catch (error) {
     sendError(res, error);
@@ -113,13 +122,18 @@ const despacho = () => ({ keys: ["logistica.despacho"] });
 routesController.addOrder = routeAction((req, session) => addOrder(req.params.id, req.body?.orderId, session), "order-added", despacho);
 routesController.removeOrder = routeAction((req, session) => removeOrder(req.params.id, req.params.orderId, session), "order-removed", despacho);
 routesController.confirmPickup = routeAction((req, session) => confirmPickup(req.params.id, req.body?.location, session), "pickup", despacho);
-// Al salir, todos los pedidos de la ruta pasan a «En Tránsito».
-routesController.depart = routeAction((req, session) => depart(req.params.id, session), "departed", (_req, route) => ({
-  keys: ["logistica.transito"],
-  orderIds: route.orders,
-}));
+// Al salir, todos los pedidos de la ruta pasan a «En Tránsito»: la ruta y sus pedidos dejan de verse
+// en Para despacho (ya salieron), así que su novedad de esa pestaña se quita.
+routesController.depart = routeAction(
+  (req, session) => depart(req.params.id, session),
+  "departed",
+  (_req, route) => ({ keys: ["logistica.transito"], orderIds: route.orders }),
+  (_req, route) => [{ keys: ["logistica.despacho"], entityIds: [route._id, ...route.orders] }],
+);
 const delivery = (req) => ({ keys: ["logistica.transito"], orderIds: [req.params.orderId] });
-routesController.deliverOrder = routeAction((req, session) => deliverOrder(req.params.id, req.params.orderId, session), "delivered", delivery);
+// Una ruta Completada sale de En tránsito: su novedad de esa pestaña se quita.
+const completed = (_req, route) => (route.status === "Completada" ? [{ keys: ["logistica.transito"], entityId: route._id }] : []);
+routesController.deliverOrder = routeAction((req, session) => deliverOrder(req.params.id, req.params.orderId, session), "delivered", delivery, completed);
 routesController.undeliverOrder = routeAction((req, session) => undeliverOrder(req.params.id, req.params.orderId, session), "undelivered", delivery);
 
 export default routesController;

@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -205,7 +206,7 @@ export default function CheckoutPage() {
             {items.map((item) => (
               <li key={`${item.productId}-${item.color}-${item.size}`} className="flex justify-between">
                 <span className="text-muted-foreground">
-                  {item.quantity}x {item.name} {item.color ? `(${item.color})` : ""}
+                  {item.quantity}x {lineLabel(item)} {item.color ? `(${item.color})` : ""}
                 </span>
                 <span>${(item.price * item.quantity).toFixed(2)}</span>
               </li>

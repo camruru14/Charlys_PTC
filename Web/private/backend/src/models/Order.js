@@ -5,6 +5,10 @@ const orderItemSchema = new Schema(
   {
     product: { type: String, required: true }, // nombre del producto del Catálogo, ej. "Pajilla jumbo"
     color: { type: String }, // ej. "Rojo", "Azul"
+    // Tamaño elegido en la tienda (solo si el producto del Catálogo tiene `sizes`), ej. "Normal".
+    // Es solo informativo: `product` guarda siempre el nombre exacto del Catálogo, y Inventario no
+    // distingue tamaños (busca por nombre + color, ver lib/stock.js).
+    size: { type: String, trim: true },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true, min: 0 },

@@ -17,7 +17,7 @@ import {
   stampStatusChange,
 } from "../lib/batchFlow.js";
 import { packCompletedBatches } from "../lib/orderLines.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 import { currentYearSV, formatSequence, maxSequence, nextSequence } from "../lib/counters.js";
 
 // Siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...): contador
@@ -163,6 +163,20 @@ productionBatchesController.updateBatch = async (req, res) => {
   }
 };
 
+// Novedad de un cambio en un lote. Lotes de Fabricación > Lotes solo muestra los lotes de stock: la
+// novedad de un lote de PEDIDO se ve en Fabricación > Pedidos, en el pedido dueño de ese lote
+// (la línea con items.manufacturingBatch = lote). Así la burbuja aparece donde se puede abrir y marcar.
+async function trackBatch(req, batch, action) {
+  if (batch.category !== "Pedido") {
+    await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: batch._id, action });
+    return;
+  }
+  const order = await orderModel.findOne({ "items.manufacturingBatch": batch._id }).select("_id");
+  if (order) await recordFor(req, { keys: ["fabricacion.pedidos"], entityType: "order", entityId: order._id, action });
+  // Novedades viejas de este lote en Lotes (donde nunca se podían ver): se limpian.
+  await resolveActivity({ keys: ["fabricacion.lotes"], entityId: batch._id });
+}
+
 // Cambia el estado de un lote con una de las transiciones de lib/batchFlow y
 // responde el lote actualizado (con el operario poblado).
 function transition(apply, action) {
@@ -172,7 +186,7 @@ function transition(apply, action) {
       if (!batch) throw new HttpError(404, "Lote no encontrado");
       await apply(batch, req.body || {});
       await batch.save();
-      await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: batch._id, action });
+      await trackBatch(req, batch, action);
       res.json(await populateOperator(batchModel.findById(batch._id)));
     } catch (error) {
       sendError(res, error);
@@ -251,6 +265,7 @@ productionBatchesController.deleteBatch = async (req, res) => {
     }
 
     await batchModel.deleteOne({ _id: batch._id });
+    await resolveActivity({ keys: ["fabricacion.lotes"], entityId: batch._id });
     res.json({ message: "Batch deleted" });
   } catch (error) {
     sendError(res, error);

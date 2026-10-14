@@ -1,3 +1,4 @@
+import { lineLabel } from "../../lib/lineLabel";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import UnseenMark from "../ui/UnseenMark";
 import Button from "../ui/Button";
@@ -64,7 +65,7 @@ export default function ManufacturingOrderCard({ group, unseen, busy, onOpenLot,
             >
               <View style={styles.lotTexts}>
                 <Text style={styles.lotName} numberOfLines={1}>
-                  {[lot.item.product, lot.item.color].filter(Boolean).join(" · ")}
+                  {lineLabel(lot.item, { color: true })}
                 </Text>
                 <Text numberOfLines={1} style={styles.lotMeta}>
                   {lot.batch.batchNumber}

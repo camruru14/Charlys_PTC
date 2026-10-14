@@ -1,3 +1,4 @@
+import { lineLabel } from "../../lib/lineLabel";
 import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
@@ -376,7 +377,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                 {verifiable.length} {verifiable.length === 1 ? "producto tiene" : "productos tienen"} existencia completa en una bodega
               </p>
               <p className="mt-0.5 text-[12px] text-ink-2">
-                {verifiable.map((l) => `${l.item.product} → ${l.warehouse}`).join(" · ")}
+                {verifiable.map((l) => `${lineLabel(l.item)} → ${l.warehouse}`).join(" · ")}
               </p>
             </div>
             <Button size="row" disabled={busy} onClick={() => actions.verifyLines([{ order, lines: verifiable }])}>
@@ -417,7 +418,7 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
                             {pi === 0 ? (
                               <>
                                 <ColorSwatch color={item.color} />
-                                <span title={item.product} className="truncate text-[13.5px] font-semibold text-ink">{item.product}</span>
+                                <span title={lineLabel(item)} className="truncate text-[13.5px] font-semibold text-ink">{lineLabel(item)}</span>
                               </>
                             ) : (
                               <span className="t-aux pl-[19px]">↳ a fabricar</span>
@@ -559,7 +560,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
     verify: (order, index, warehouse) =>
       act(
         () => api.patch(`${base(order, index)}/verify`, { warehouse }),
-        `${order.items[index].product} verificado en ${warehouse}`,
+        `${lineLabel(order.items[index])} verificado en ${warehouse}`,
         () => api.patch(`${base(order, index)}/unverify`),
         { stock: true },
       ),
@@ -580,7 +581,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
     pack: (order, index) =>
       act(
         () => api.patch(`${base(order, index)}/pack`),
-        `${order.items[index].product} empacado`,
+        `${lineLabel(order.items[index])} empacado`,
         () => api.patch(`${base(order, index)}/unpack`),
       ),
     packVerified: (order, lines) =>
@@ -592,7 +593,7 @@ function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, 
     sendToManufacturing: (order, index) =>
       act(
         () => api.patch(`${base(order, index)}/send-manufacturing`),
-        `${order.items[index].product} enviado a fabricación`,
+        `${lineLabel(order.items[index])} enviado a fabricación`,
         () => api.del(`${base(order, index)}/send-manufacturing`),
       ),
     split: (order, index, warehouse, quantity) =>

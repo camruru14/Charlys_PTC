@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, FlatList, Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, Text, View } from "react-native";
@@ -372,7 +373,7 @@ export default function FabricacionScreen({ navigation }) {
           ? batchApi.packManufactured(group.order._id, lots[0].index)
           : batchApi.packCompleted(lots.map((l) => l.batch._id)),
       lots.length === 1
-        ? `${[lots[0].item.product, lots[0].item.color].filter(Boolean).join(" · ")} empacado`
+        ? `${lineLabel(lots[0].item, { color: true })} empacado`
         : `${formatNumber(lots.length)} lotes empacados`,
       () => runAll(lots.map((l) => () => batchApi.unpackManufactured(group.order._id, l.index))),
     );

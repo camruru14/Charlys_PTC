@@ -25,21 +25,27 @@ export function setOrderStatus(order, status, at = new Date()) {
 // estado real de todas las líneas del pedido, en vez de que cada acción de
 // Inventario/Fabricación lo fije a mano mirando solo la línea que acaba de
 // tocar. Prioridad:
-//   1. Si ya hay motorista asignado, el ciclo de despacho activo lo maneja
-//      Logística (rutas, ver lib/routes.js) aparte: no se toca.
+//   1. Si el pedido ya salió con su ruta (delivery.dispatchedAt, que pone depart
+//      en lib/routes.js), o ya se entregó, el ciclo de despacho lo maneja
+//      Logística aparte: no se toca. Tener motorista NO congela el estado: una
+//      ruta en «Recolectando» todavía acepta que se empaque o desempaque una
+//      línea, y el pedido pasa a «Empacado» (o vuelve) como cualquier otro.
 //   2. Todas las líneas empacadas -> "Empacado".
 //   3. Alguna línea enviada a fabricación y ninguna empacada -> "En Fabricación".
 //   4. Alguna línea con avance (verificada o empacada) -> "Procesando".
-//   5. Si ninguna línea tiene avance -> "Pendiente".
+//   5. Sin avance: "Procesando" si el pedido ya pasó a Inventario
+//      (sentToInventoryAt: los de la tienda nacen así y deshacer una acción no los
+//      devuelve a «Pendiente»); "Pendiente" solo si todavía no se manda a Inventario.
 export function computeOrderStatus(order) {
-  if (order.delivery?.driver) return order.status;
+  if (order.status === "Entregado" || order.delivery?.deliveredAt) return order.status;
+  if ((order.delivery?.dispatchedAt || order.status === "En Tránsito") && order.delivery?.route) return order.status;
 
   const items = order.items || [];
   const anyPack = items.some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);
   if (items.length > 0 && items.every((i) => i.packed)) return "Empacado";
   if (items.some((i) => i.sentToManufacturing) && !anyPack) return "En Fabricación";
   if (items.some((i) => i.verified) || anyPack) return "Procesando";
-  return "Pendiente";
+  return order.sentToInventoryAt ? "Procesando" : "Pendiente";
 }
 
 export default setOrderStatus;

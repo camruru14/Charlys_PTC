@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -88,7 +89,7 @@ function ProductLine({ order, item, index, stockMap, busy, actions }) {
           <View key={part.part} style={pi > 0 && styles.subPart}>
             <View style={styles.lineTop}>
               <Text style={styles.lineName} numberOfLines={2}>
-                {pi === 0 ? [item.product, item.color].filter(Boolean).join(" · ") : "↳ a fabricar"}
+                {pi === 0 ? lineLabel(item, { color: true }) : "↳ a fabricar"}
               </Text>
               <Text style={styles.lineQty}>{formatNumber(part.qty)} u</Text>
             </View>
@@ -202,7 +203,7 @@ function VerifySheet({ index, item: current, stockMap, busy, onClose, onVerify }
     <BottomSheet
       visible={Boolean(current)}
       onClose={onClose}
-      title={item ? `Verificar ${[item.product, item.color].filter(Boolean).join(" · ")}` : ""}
+      title={item ? `Verificar ${lineLabel(item, { color: true })}` : ""}
       subtitle={item ? `${formatNumber(item.quantity)} u · elige la bodega de donde se toma` : ""}
       footer={
         <Button
@@ -355,7 +356,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     verify: (o, index, warehouse) =>
       act(
         () => orderLineApi.verify(o._id, index, warehouse),
-        `${o.items[index].product} verificado en ${warehouse}`,
+        `${lineLabel(o.items[index])} verificado en ${warehouse}`,
         () => orderLineApi.unverify(o._id, index),
         { stock: true },
       ),
@@ -369,7 +370,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     pack: (o, index) =>
       act(
         () => orderLineApi.pack(o._id, index),
-        `${o.items[index].product} empacado`,
+        `${lineLabel(o.items[index])} empacado`,
         () => orderLineApi.unpack(o._id, index),
       ),
     packVerified: (o, lines) =>
@@ -381,7 +382,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
     sendToManufacturing: (o, index) =>
       act(
         () => orderLineApi.sendToManufacturing(o._id, index),
-        `${o.items[index].product} enviado a fabricación`,
+        `${lineLabel(o.items[index])} enviado a fabricación`,
         () => orderLineApi.cancelManufacturing(o._id, index),
       ),
     split: (o, index, warehouse, quantity) =>
@@ -458,7 +459,7 @@ export default function PedidoDetalleScreen({ navigation, route }) {
                 en una bodega
               </Text>
               <Text style={styles.verifyHintDetail}>
-                {verifiable.map((l) => `${l.item.product} → ${l.warehouse}`).join(" · ")}
+                {verifiable.map((l) => `${lineLabel(l.item)} → ${l.warehouse}`).join(" · ")}
               </Text>
             </View>
           ) : null}

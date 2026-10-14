@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
 import { HttpError, addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
-import { recordFor } from "../lib/activity.js";
+import { recordFor, resolveActivity } from "../lib/activity.js";
 import { assertProductName } from "../lib/productName.js";
 
 // SELECT
@@ -158,6 +158,8 @@ inventoryController.deleteItem = async (req, res) => {
       await inventoryModel.updateOne({ _id: item._id }, { sentToWarehouse: false });
     } else {
       await inventoryModel.deleteOne({ _id: item._id });
+      // Ya no hay fila que abrir: su novedad (en la pestaña de su categoría) se quita.
+      await resolveActivity({ keys: [item.category === "Producto Terminado" ? "inventario.terminado" : "inventario.materia"], entityId: item._id });
     }
 
     res.json({ message: "Inventory item deleted" });

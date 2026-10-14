@@ -1,3 +1,4 @@
+import { lineLabel } from "../../lib/lineLabel";
 import { Fragment, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -52,7 +53,7 @@ const STATE_KEYS = ["todos", ...MFG_GROUPS.map((g) => g.key)];
 // estado y la acción siguen a la derecha.
 const LOT_COLS =
   "grid-cols-[minmax(0,1fr)_auto_18px] @[700px]:grid-cols-[108px_minmax(130px,1.5fr)_82px_66px_104px_172px_18px]";
-const productLabel = (item) => `${item.product}${item.color ? ` · ${item.color}` : ""}`;
+const productLabel = (item) => lineLabel(item, { color: true });
 const plural = (n, one, many) => `${fmtNumber(n)} ${n === 1 ? one : many}`;
 // Ejecuta las llamadas en orden y devuelve todas sus respuestas.
 const runAll = (calls) => calls.reduce((p, fn) => p.then(async (results) => [...results, await fn()]), Promise.resolve([]));
@@ -453,7 +454,7 @@ function OrderDetail({ group, operators, operatorsLoading = false, lines, busy, 
                   <span className="min-w-0 pl-4 pr-3 @[700px]:pl-0">
                     <span className="flex items-center gap-2">
                       <ColorSwatch color={lot.item.color} />
-                      <span className="truncate text-[13.5px] font-semibold text-ink">{lot.item.product}</span>
+                      <span className="truncate text-[13.5px] font-semibold text-ink">{lineLabel(lot.item)}</span>
                     </span>
                     <span className="mt-0.5 block truncate pl-[19px] text-[11.5px] tabular-nums text-muted @[700px]:hidden">
                       {[number, lot.item.color, qty].filter(Boolean).join(" · ")}

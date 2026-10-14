@@ -12,7 +12,7 @@ import { routeLabel } from "./logistics";
   pedidos no entregados se ven siempre. `key` va en la URL (?estado=).
 */
 export const PEDIDO_GROUPS = [
-  { key: "pendiente", status: "Pendiente", label: "Pendientes", note: "aún no se revisan en Inventario", sort: "created" },
+  { key: "pendiente", status: "Pendiente", label: "Pendientes", note: "aún no pasan a Inventario", sort: "created" },
   { key: "procesando", status: "Procesando", label: "Procesando", note: "Inventario los está preparando", sort: "created" },
   { key: "fabricacion", status: "En Fabricación", label: "En fabricación", note: "esperan lotes de Fabricación", sort: "created" },
   { key: "empacado", status: "Empacado", label: "Empacados", note: "esperan salir a ruta", sort: "asc" },

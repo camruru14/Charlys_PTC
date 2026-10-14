@@ -1,3 +1,4 @@
+import { lineLabel } from "../lib/lineLabel";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useFetch } from "../hooks/useFetch";
@@ -125,7 +126,7 @@ export default function MisPedidosPage() {
                   {order.items?.map((item, i) => (
                     <div key={i} className="flex items-center justify-between gap-4 py-2.5 text-sm">
                       <span className="text-muted-foreground">
-                        <span className="font-medium text-foreground">{item.quantity}×</span> {item.product}
+                        <span className="font-medium text-foreground">{item.quantity}×</span> {lineLabel(item)}
                         {item.color ? ` (${item.color})` : ""}
                       </span>
                       <span className="font-medium">${item.subtotal?.toFixed(2)}</span>

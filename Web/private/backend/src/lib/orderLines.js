@@ -30,7 +30,7 @@ export function isSplit(item) {
 }
 
 export function lineLabel(item) {
-  return `${item.product}${item.color ? ` · ${item.color}` : ""}`;
+  return `${item.product}${item.size ? ` · ${item.size}` : ""}${item.color ? ` · ${item.color}` : ""}`;
 }
 
 // Algún empaque hecho sobre la línea (completo o de una de sus partes).
