@@ -33,6 +33,8 @@ import { runAll } from "../lib/inventoryOrders";
 import { MFG_GROUPS, buildGroups, groupMfgOrders, groupSearchText, inMfgRange } from "../lib/orderManufacturing";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 
 // Mismas vistas que Web/private/frontend/src/pages/Fabricacion.jsx.
 const TABS = [
@@ -106,6 +108,10 @@ export default function FabricacionScreen({ navigation }) {
     eliminar: eliminarDaily,
   } = useDailyBatches();
   const { orders, refreshing: ordersRefreshing, error: ordersError, refresh: refreshOrders } = useOrders();
+
+  // Novedades: burbuja de cada pestaña y registros marcados hasta que se abren.
+  const { counts, isUnseen, markSeen } = useActivity();
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`fabricacion.${t.value}`] }));
 
   const [tab, setTab] = useState("lotes");
   const [lotQuery, setLotQuery] = useState("");
@@ -385,6 +391,7 @@ export default function FabricacionScreen({ navigation }) {
 
   const header = (
     <View style={styles.listHeader}>
+      <MarkAllSeen activityKey={`fabricacion.${tab}`} />
       <KpiInline items={kpis} style={styles.kpis} />
       {tab === "lotes" ? (
         <>
@@ -444,7 +451,7 @@ export default function FabricacionScreen({ navigation }) {
   return (
     <View style={styles.screen}>
       <View style={styles.tabs}>
-        <Segmented options={TABS} value={tab} onChange={setTab} />
+        <Segmented options={tabs} value={tab} onChange={setTab} />
       </View>
 
       {tab === "lotes" ? (
@@ -456,7 +463,14 @@ export default function FabricacionScreen({ navigation }) {
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
           renderItem={({ item }) => (
-            <BatchCard batch={item} onPress={() => navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes" })} />
+            <BatchCard
+              batch={item}
+              unseen={isUnseen("fabricacion.lotes", item._id)}
+              onPress={() => {
+                markSeen("fabricacion.lotes", item._id);
+                navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes" });
+              }}
+            />
           )}
           refreshControl={refreshControl}
           keyboardShouldPersistTaps="handled"
@@ -505,9 +519,13 @@ export default function FabricacionScreen({ navigation }) {
                 <DailyBatchRow
                   key={b._id}
                   batch={b}
+                  unseen={isUnseen("fabricacion.diaria", b._id)}
                   busy={schedulingId === b._id}
                   onSchedule={() => schedule(b)}
-                  onPress={() => navigation.navigate("LoteDiarioForm", { id: b._id })}
+                  onPress={() => {
+                    markSeen("fabricacion.diaria", b._id);
+                    navigation.navigate("LoteDiarioForm", { id: b._id });
+                  }}
                   onLongPress={() => dailyMenu(b)}
                 />
               ))}
@@ -528,9 +546,16 @@ export default function FabricacionScreen({ navigation }) {
           renderItem={({ item: g }) => (
             <ManufacturingOrderCard
               group={g}
+              unseen={isUnseen("fabricacion.pedidos", g.order._id)}
               busy={busy}
-              onOpenLot={(lot) => navigation.navigate("LoteDetalle", { id: lot.batch._id, backLabel: "Pedidos" })}
-              onOpenOrder={() => navigation.navigate("PedidoDetalle", { id: g.order._id })}
+              onOpenLot={(lot) => {
+                markSeen("fabricacion.pedidos", g.order._id);
+                navigation.navigate("LoteDetalle", { id: lot.batch._id, backLabel: "Pedidos" });
+              }}
+              onOpenOrder={() => {
+                markSeen("fabricacion.pedidos", g.order._id);
+                navigation.navigate("PedidoDetalle", { id: g.order._id });
+              }}
               onResume={resumeLots}
               onPackCompleted={(lots) => packLots(g, lots)}
             />

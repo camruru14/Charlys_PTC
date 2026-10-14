@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import ColorSwatch from "../ui/ColorSwatch";
 import Icon from "../ui/Icon";
 import LevelMeter from "../ui/LevelMeter";
@@ -13,7 +14,7 @@ import { isRecentInbound, stockFillPercent, stockLevel, STOCK_LEVEL_TONE } from 
 // lib/stockLevel.js. Bajo mínimo lleva fondo rowAlert; un ingreso reciente
 // desde Fabricación, fondo rowNew y la línea «+N de Fabricación · lote · hoy»
 // (tiene prioridad el fondo de bajo mínimo, como en la web).
-export default function StockRow({ item, showColor = false, onPress, onLongPress }) {
+export default function StockRow({ item, showColor = false, unseen, onPress, onLongPress }) {
   const level = stockLevel(item);
   const tone = getTone(STOCK_LEVEL_TONE[level]);
   const recent = isRecentInbound(item);
@@ -28,9 +29,11 @@ export default function StockRow({ item, showColor = false, onPress, onLongPress
       accessibilityHint="Toca para editar; mantén presionado para más opciones"
       style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.surface2 : background }]}
     >
+      {/* Bajo mínimo e ingreso reciente conservan su fondo: ahí solo va el punto. */}
+      <UnseenMark show={unseen} tint={background === colors.surface} dotTop={16} />
       <View style={styles.top}>
         {showColor ? <ColorSwatch color={item.color} /> : null}
-        <Text style={styles.name} numberOfLines={1}>
+        <Text style={[styles.name, unseen && styles.bold]} numberOfLines={1}>
           {name}
         </Text>
         <Text style={styles.stock}>
@@ -98,6 +101,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: getTone("green").text,
     fontVariant: ["tabular-nums"],
+  },
+  bold: {
+    fontFamily: fonts.bold,
   },
   bottom: {
     flexDirection: "row",

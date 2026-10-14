@@ -17,7 +17,7 @@
 //      emulador) y localhost en iOS (simulador).
 import { Platform } from "react-native";
 import Constants from "expo-constants";
-import { emitUnauthorized } from "./sessionEvents";
+import { emitMutation, emitUnauthorized } from "./sessionEvents";
 
 const BACKEND_PORT = 4000;
 
@@ -120,6 +120,9 @@ async function request(path, { method = "GET", body } = {}) {
     error.status = response.status;
     throw error;
   }
+
+  // Una escritura exitosa puede cambiar las novedades (burbujas): se vuelven a pedir.
+  if (method !== "GET" && !path.startsWith("/activity")) emitMutation();
 
   return payload;
 }

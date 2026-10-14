@@ -16,3 +16,19 @@ export function onUnauthorized(listener) {
 export function emitUnauthorized() {
   listeners.forEach((listener) => listener());
 }
+
+// Aviso de que una escritura (POST/PUT/PATCH/DELETE) terminó bien: el contexto
+// de novedades (context/ActivityContext.jsx) vuelve a pedir sus conteos. Las
+// llamadas a /activity no lo emiten (no se piden a sí mismas).
+let mutationListeners = [];
+
+export function onMutation(listener) {
+  mutationListeners.push(listener);
+  return () => {
+    mutationListeners = mutationListeners.filter((l) => l !== listener);
+  };
+}
+
+export function emitMutation() {
+  mutationListeners.forEach((listener) => listener());
+}

@@ -2,6 +2,8 @@ import { createDrawerNavigator } from "@react-navigation/drawer";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../hooks/useAuth";
+import { useActivity } from "../hooks/useActivity";
+import CountBubble from "../components/ui/CountBubble";
 import Avatar from "../components/ui/Avatar";
 import DateRangeButton from "../components/ui/DateRangeButton";
 import Icon from "../components/ui/Icon";
@@ -41,7 +43,7 @@ const SCREENS = [
   { name: "Configuracion", component: ConfiguracionScreen },
 ];
 
-function DrawerLink({ label, icon, active, onPress }) {
+function DrawerLink({ label, icon, active, badge, onPress }) {
   return (
     <Pressable
       onPress={onPress}
@@ -54,6 +56,7 @@ function DrawerLink({ label, icon, active, onPress }) {
       <Text style={[styles.itemText, active && styles.itemTextActive]} numberOfLines={1}>
         {label}
       </Text>
+      <CountBubble count={badge} />
     </Pressable>
   );
 }
@@ -64,6 +67,7 @@ function DrawerLink({ label, icon, active, onPress }) {
 function CustomDrawerContent({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { modules } = useActivity();
   const displayName = user ? `${user.name || ""} ${user.lastName || ""}`.trim() || user.email : "Usuario";
   const displayRole = user?.position || user?.department || "";
   const activeRoute = state.routes[state.index]?.name;
@@ -94,6 +98,7 @@ function CustomDrawerContent({ state, navigation }) {
                 label={NAV_ITEMS[name].label}
                 icon={NAV_ITEMS[name].icon}
                 active={activeRoute === name}
+                badge={modules[name.toLowerCase()]}
                 onPress={() => navigation.navigate(name)}
               />
             ))}

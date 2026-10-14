@@ -40,6 +40,8 @@ import {
   routeSearchText,
 } from "../lib/logistics";
 import { useBottomPad } from "../hooks/useBottomPad";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 
 // Mismas vistas que Web/private/frontend/src/pages/Logistica.jsx.
 const TABS = [
@@ -94,6 +96,10 @@ export default function LogisticaScreen({ navigation }) {
     refresh: refreshOrders,
     refreshQuiet: refreshOrdersQuiet,
   } = useOrders();
+
+  // Novedades: burbuja de cada pestaña y registros marcados hasta que se abren.
+  const { counts, isUnseen, markSeen } = useActivity();
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`logistica.${t.value}`] }));
 
   const [tab, setTab] = useState("transito");
   const [filter, setFilter] = useState("todos");
@@ -254,7 +260,7 @@ export default function LogisticaScreen({ navigation }) {
 
   const header = (
     <View style={styles.header}>
-      <Segmented options={TABS} value={tab} onChange={setTab} />
+      <Segmented options={tabs} value={tab} onChange={setTab} />
     </View>
   );
 
@@ -281,6 +287,7 @@ export default function LogisticaScreen({ navigation }) {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <View style={styles.listHeader}>
+              <MarkAllSeen activityKey="logistica.transito" />
               <SearchField value={routeQuery} onChangeText={setRouteQuery} placeholder="Buscar por código, zona o motorista" />
               <FilterChips
                 options={ROUTE_CHIPS.map((c) => ({ ...c, count: routeChipCounts[c.value] }))}
@@ -292,7 +299,14 @@ export default function LogisticaScreen({ navigation }) {
           renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.count} />}
           renderItem={({ item }) => (
             <MovedFlash moved={movedRoutes.has(String(item._id))}>
-              <RouteCard route={item} onPress={() => openRoute(item._id)} />
+              <RouteCard
+                route={item}
+                unseen={isUnseen("logistica.transito", item._id)}
+                onPress={() => {
+                  markSeen("logistica.transito", item._id);
+                  openRoute(item._id);
+                }}
+              />
             </MovedFlash>
           )}
           refreshControl={<RefreshControl refreshing={refreshing || ordersRefreshing} onRefresh={reloadAll} />}
@@ -335,6 +349,7 @@ export default function LogisticaScreen({ navigation }) {
 
   const listHeader = (
     <View style={styles.listHeader}>
+      <MarkAllSeen activityKey="logistica.despacho" />
       <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar por pedido, cliente o ruta" />
       <FilterChips
         options={DISPATCH_CHIPS.map((c) => ({ ...c, count: dispatchChipCounts[c.value] }))}
@@ -345,9 +360,12 @@ export default function LogisticaScreen({ navigation }) {
         <View style={styles.routePicker}>
           <Text style={styles.pickerLabel}>Rutas por salir</Text>
           <FilterChips
-            options={pendingRoutes.map((r) => ({ value: r._id, label: `${routeLabel(r)} · ${r.zone}` }))}
+            options={pendingRoutes.map((r) => ({ value: r._id, label: `${routeLabel(r)} · ${r.zone}`, unseen: isUnseen("logistica.despacho", r._id) }))}
             value={buildingRoute?._id}
-            onChange={setBuildingId}
+            onChange={(id) => {
+              markSeen("logistica.despacho", id);
+              setBuildingId(id);
+            }}
           />
         </View>
       ) : null}
@@ -391,6 +409,7 @@ export default function LogisticaScreen({ navigation }) {
             <MovedFlash moved={movedOrders.has(String(item._id))}>
               <DispatchOrderCard
                 order={item}
+                unseen={isUnseen("logistica.despacho", item._id)}
                 group={section.key}
                 route={routesById.get(routeIdOf(item))}
                 buildingRoute={buildingRoute}
@@ -399,7 +418,10 @@ export default function LogisticaScreen({ navigation }) {
                 onRemove={removeFromRoute}
                 onOpenRoute={openRoute}
                 onNewRoute={() => setNewOpen(true)}
-                onPress={() => navigation.navigate("PedidoDetalle", { id: item._id })}
+                onPress={() => {
+                  markSeen("logistica.despacho", item._id);
+                  navigation.navigate("PedidoDetalle", { id: item._id });
+                }}
               />
             </MovedFlash>
           )}

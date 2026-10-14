@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Avatar from "../ui/Avatar";
 import LevelMeter from "../ui/LevelMeter";
 import Pill from "../ui/Pill";
@@ -10,7 +11,7 @@ import { statusTone } from "../../lib/statusTones";
 
 // Tarjeta de una ruta de hoy (RouteListRow de EnTransito.jsx en la web):
 // «Ruta N · Zona» con su estado, motorista y placa, y el avance de entregas.
-export default function RouteCard({ route, onPress }) {
+export default function RouteCard({ route, unseen, onPress }) {
   const { delivered, total } = routeProgress(route);
   const tone = statusTone(route.status, "ruta");
   const driver = personName(route.driver);
@@ -21,6 +22,7 @@ export default function RouteCard({ route, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} radius={16} dotTop={21} />
       <View style={styles.row}>
         <View style={styles.titles}>
           <Text style={styles.title} numberOfLines={1}>

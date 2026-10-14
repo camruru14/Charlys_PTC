@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
 import { colors, getTone, tones } from "../../lib/theme";
@@ -42,7 +43,7 @@ function JourneyBar({ order }) {
 
 // Tarjeta de un pedido en la lista de Pedidos: el número lleva al lado su nota
 // de tiempo con reloj («llegó hace 3 h», «salió 08:05 · R-2026-0048»…).
-export default function OrderCard({ order, onPress }) {
+export default function OrderCard({ order, unseen, onPress }) {
   const products = (order.items || []).length;
   const time = orderTimeNote(order);
   const timeColor = time?.tone === "amber" ? tones.amber.text : colors.muted;
@@ -53,6 +54,7 @@ export default function OrderCard({ order, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} radius={16} dotTop={20} />
       <View style={styles.row}>
         <View style={styles.numberBox}>
           <Text style={styles.number}>{order.orderNumber}</Text>

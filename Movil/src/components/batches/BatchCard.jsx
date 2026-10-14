@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import ColorSwatch from "../ui/ColorSwatch";
 import Icon from "../ui/Icon";
 import LevelMeter from "../ui/LevelMeter";
@@ -13,7 +14,7 @@ import { statusTone } from "../../lib/statusTones";
 // con reloj («detenido hace 2 h», «desde 07:30») y estado, producto y línea,
 // avance producido / meta (la meta en gris) y una nota según el estado
 // («Listo para enviar a bodega», o el motivo y el tiempo detenido).
-export default function BatchCard({ batch, onPress }) {
+export default function BatchCard({ batch, unseen, onPress }) {
   const state = batchState(batch);
   const target = batch.targetQuantity;
   const produced = batch.producedQuantity || 0;
@@ -39,6 +40,7 @@ export default function BatchCard({ batch, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} radius={16} dotTop={20} />
       <View style={styles.row}>
         <View style={styles.numberBox}>
           <Text style={styles.number}>{batch.batchNumber}</Text>

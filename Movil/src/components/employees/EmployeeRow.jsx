@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Avatar, { personTone, photoOf } from "../ui/Avatar";
 import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
@@ -12,7 +13,7 @@ export const roleLine = (emp) => [emp.position, emp.department].filter(Boolean).
 // Fila de un empleado en Empleados > Personal (EmployeeRow de la web), para
 // ir dentro de un ListGroup: avatar con un tono fijo por persona, nombre,
 // «Puesto · Área» y la Pill Activo / Inactivo.
-export default function EmployeeRow({ employee, onPress }) {
+export default function EmployeeRow({ employee, unseen, onPress }) {
   const status = employeeStatus(employee);
   const inactive = status === "Inactivo";
   const role = roleLine(employee);
@@ -23,6 +24,7 @@ export default function EmployeeRow({ employee, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} dotTop={25} />
       <Avatar name={fullName(employee)} photoUrl={photoOf(employee)} tone={personTone(employee)} size={36} />
       <View style={styles.texts}>
         <Text style={[styles.name, inactive && styles.muted]} numberOfLines={1}>

@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import CategoryAvatar from "../finance/CategoryAvatar";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
@@ -13,7 +14,7 @@ import { statusLabel } from "../../lib/transactionFilters";
 // «Categoría · Método» —o cuándo vence si está pendiente— y el monto con
 // signo; si falta pagar o cobrar, su etiqueta («por pagar», «vencido»…).
 // Tocarla la edita; mantenerla presionada abre sus acciones.
-export default function TransactionRow({ transaction: t, category, now = new Date(), onPress, onLongPress }) {
+export default function TransactionRow({ transaction: t, category, now = new Date(), unseen, onPress, onLongPress }) {
   const income = t.type === "Ingreso";
   const label = statusLabel(t, now);
   const due = dueText(t, now);
@@ -27,10 +28,11 @@ export default function TransactionRow({ transaction: t, category, now = new Dat
       accessibilityLabel={`${t.concept || "Movimiento"}, ${income ? "ingreso" : "gasto"} de ${money(Number(t.amount) || 0)}, ${label}`}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} dotTop={29} />
       {income ? <CategoryAvatar name="dollar" color="green" /> : <CategoryAvatar icon={category?.icon} color={category?.color} />}
       <View style={styles.texts}>
         <View style={styles.conceptLine}>
-          <Text style={styles.concept} numberOfLines={1}>
+          <Text style={[styles.concept, unseen && styles.bold]} numberOfLines={1}>
             {t.concept || "—"}
           </Text>
           {t.attachment?.url ? <Icon name="paperclip" size={13} color={colors.faint} /> : null}
@@ -56,6 +58,7 @@ const styles = StyleSheet.create({
   texts: { flex: 1, gap: 2 },
   conceptLine: { flexDirection: "row", alignItems: "center", gap: 5 },
   concept: { flexShrink: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.ink },
+  bold: { fontFamily: fonts.bold },
   meta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
   overdue: { fontFamily: fonts.semibold, color: tones.rose.text },
   right: { alignItems: "flex-end", gap: 4 },

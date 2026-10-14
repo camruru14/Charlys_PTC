@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Button from "../ui/Button";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
@@ -14,7 +15,7 @@ import { statusTone } from "../../lib/statusTones";
 // Completado, Empacado) y sus lotes. Tocar un lote abre su detalle. Las
 // acciones de todo el pedido son las de la web: reanudar los detenidos y
 // empacar los completados.
-export default function ManufacturingOrderCard({ group, busy, onOpenLot, onOpenOrder, onResume, onPackCompleted }) {
+export default function ManufacturingOrderCard({ group, unseen, busy, onOpenLot, onOpenOrder, onResume, onPackCompleted }) {
   const { order, lots, stopped } = group;
   const completed = lots.filter((l) => lotState(l) === "Completado");
   const time = mfgTimeNote(group);
@@ -22,6 +23,7 @@ export default function ManufacturingOrderCard({ group, busy, onOpenLot, onOpenO
 
   return (
     <View style={styles.card}>
+      <UnseenMark show={unseen} radius={16} dotTop={20} />
       <View style={styles.row}>
         <View style={styles.numberBox}>
           <Text style={styles.number}>{order.orderNumber}</Text>

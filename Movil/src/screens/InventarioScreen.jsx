@@ -30,6 +30,8 @@ import { isBelowMinimum } from "../lib/stockLevel";
 import { MATERIAL_TYPES } from "../lib/inventoryOptions";
 import { statusTone } from "../lib/statusTones";
 import { useBottomPad } from "../hooks/useBottomPad";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 import {
   buildStockMap,
   finishedItemsOf,
@@ -65,7 +67,9 @@ function LowStockChip({ active, count, onToggle }) {
   );
 }
 
-function StockList({ items, showColor, emptyText, onEdit, onLongPress }) {
+// `activityKey`: la pestaña de novedades de estos artículos (se marcan hasta tocarlos).
+function StockList({ items, showColor, emptyText, activityKey, onEdit, onLongPress }) {
+  const { isUnseen, markSeen } = useActivity();
   if (items.length === 0) return <EmptyState message={emptyText} icon="box" />;
   return (
     <ListGroup>
@@ -74,7 +78,11 @@ function StockList({ items, showColor, emptyText, onEdit, onLongPress }) {
           key={item._id}
           item={item}
           showColor={showColor}
-          onPress={() => onEdit(item)}
+          unseen={isUnseen(activityKey, item._id)}
+          onPress={() => {
+            markSeen(activityKey, item._id);
+            onEdit(item);
+          }}
           onLongPress={() => onLongPress(item)}
         />
       ))}
@@ -100,6 +108,10 @@ export default function InventarioScreen({ navigation }) {
   } = useOrders();
   const { warehouses: warehouseList } = useWarehouses();
   const warehouses = useMemo(() => warehouseList.map((w) => w.name), [warehouseList]);
+
+  // Novedades: burbuja de cada pestaña y registros marcados hasta que se abren.
+  const { counts, isUnseen, markSeen } = useActivity();
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`inventario.${t.value}`] }));
 
   const [tab, setTab] = useState("terminado");
   const [lowOnly, setLowOnly] = useState(false);
@@ -272,11 +284,12 @@ export default function InventarioScreen({ navigation }) {
   return (
     <View style={styles.screen}>
       <View style={styles.tabs}>
-        <Segmented options={TABS} value={tab} onChange={changeTab} />
+        <Segmented options={tabs} value={tab} onChange={changeTab} />
       </View>
 
       {tab === "terminado" ? (
         <ScrollView style={styles.flex} contentContainerStyle={[styles.content, bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+          <MarkAllSeen activityKey="inventario.terminado" />
           <KpiInline items={kpis} style={styles.kpis} />
           <View style={styles.searchRow}>
             <SearchField
@@ -305,6 +318,7 @@ export default function InventarioScreen({ navigation }) {
           </View>
           <StockList
             items={finishedFiltered}
+            activityKey="inventario.terminado"
             showColor
             emptyText={finishedItems.length === 0 ? "No hay productos terminados en almacén." : "Ningún artículo coincide con los filtros."}
             onEdit={editItem}
@@ -317,6 +331,7 @@ export default function InventarioScreen({ navigation }) {
         </ScrollView>
       ) : tab === "materia" ? (
         <ScrollView style={styles.flex} contentContainerStyle={[styles.content, bottomPad]} refreshControl={inventoryRefresh} keyboardShouldPersistTaps="handled">
+          <MarkAllSeen activityKey="inventario.materia" />
           <KpiInline items={kpis} style={styles.kpis} />
           <FilterChips
             style={styles.chips}
@@ -338,6 +353,7 @@ export default function InventarioScreen({ navigation }) {
           </View>
           <StockList
             items={rawFiltered}
+            activityKey="inventario.materia"
             emptyText={rawItems.length === 0 ? "No hay materia prima en almacén." : "Ningún artículo coincide con los filtros."}
             onEdit={editItem}
             onLongPress={openItemMenu}
@@ -359,7 +375,11 @@ export default function InventarioScreen({ navigation }) {
               order={o}
               stockMap={stockMap}
               group={section.group}
-              onPress={() => navigation.navigate("PedidoDetalle", { id: o._id })}
+              unseen={isUnseen("inventario.pedidos", o._id)}
+              onPress={() => {
+                markSeen("inventario.pedidos", o._id);
+                navigation.navigate("PedidoDetalle", { id: o._id });
+              }}
             />
           )}
           refreshControl={
@@ -373,6 +393,7 @@ export default function InventarioScreen({ navigation }) {
           }
           ListHeaderComponent={
             <View style={styles.ordersHeader}>
+              <MarkAllSeen activityKey="inventario.pedidos" />
               <SearchField value={orderQuery} onChangeText={setOrderQuery} placeholder="Buscar por pedido o cliente" />
               <View style={styles.ordersChipsRow}>
                 <FilterSelectChip

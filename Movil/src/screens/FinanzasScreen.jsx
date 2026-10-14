@@ -41,6 +41,8 @@ import {
   plural,
 } from "../lib/finance";
 import { categoryIconName, categoryTone } from "../lib/expenseCategories";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 
 const TABS = [
   { value: "resumen", label: "Resumen" },
@@ -61,6 +63,10 @@ export default function FinanzasScreen({ navigation }) {
   const range = useDateRange();
   const { transactions, loading, refreshing, error, refresh, eliminar, pagar } = useTransactions();
   const { categories, refresh: refreshCategories } = useExpenseCategories();
+
+  // Novedades: la burbuja va en Movimientos; los movimientos nuevos se marcan hasta que se abren.
+  const { counts, isUnseen, markSeen } = useActivity();
+  const tabs = TABS.map((t) => (t.value === "movimientos" ? { ...t, badge: counts.finanzas } : t));
 
   const [tab, setTab] = useState("resumen");
   const [ledgerTab, setLedgerTab] = useState("todos");
@@ -156,7 +162,7 @@ export default function FinanzasScreen({ navigation }) {
 
   const header = (
     <View style={styles.tabs}>
-      <Segmented options={TABS} value={tab} onChange={setTab} />
+      <Segmented options={tabs} value={tab} onChange={setTab} />
     </View>
   );
 
@@ -260,6 +266,7 @@ export default function FinanzasScreen({ navigation }) {
     body = (
       <View style={styles.flex}>
         <View style={styles.controls}>
+          <MarkAllSeen activityKey="finanzas" />
           <Segmented options={ledgerTabs} value={ledgerTab} onChange={setLedgerTab} scrollable />
           <SearchField value={query} onChangeText={setQuery} placeholder="Concepto o referencia" />
           {category ? (
@@ -296,14 +303,27 @@ export default function FinanzasScreen({ navigation }) {
               <ListGroup>
                 {day.rows.map((row) =>
                   row.kind === "sales" ? (
-                    <SalesRow key={row.id} sales={row.sales} onPress={() => navigation.navigate("VentasDia", { day: day.key })} />
+                    <SalesRow
+                      key={row.id}
+                      sales={row.sales}
+                      unseen={row.sales.some((t) => isUnseen("finanzas", t._id))}
+                      onPress={() => {
+                        // Al abrir las ventas del día, se marcan vistas todas las de ese día.
+                        row.sales.forEach((t) => markSeen("finanzas", t._id));
+                        navigation.navigate("VentasDia", { day: day.key });
+                      }}
+                    />
                   ) : (
                     <TransactionRow
                       key={row.id}
                       transaction={row.tx}
                       category={categoryByName.get(row.tx.category)}
                       now={now}
-                      onPress={() => openEdit(row.tx)}
+                      unseen={isUnseen("finanzas", row.tx._id)}
+                      onPress={() => {
+                        markSeen("finanzas", row.tx._id);
+                        openEdit(row.tx);
+                      }}
                       onLongPress={() => setMenuFor(row.tx)}
                     />
                   ),

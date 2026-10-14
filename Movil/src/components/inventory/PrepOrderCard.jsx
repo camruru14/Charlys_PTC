@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
 import { colors, getTone, tones } from "../../lib/theme";
@@ -54,7 +55,7 @@ function shortageNote(order, stockMap) {
 // grupo de la lista (ORDER_GROUPS): mientras el pedido sigue en bodega
 // muestra cuándo llegó (ámbar si pasa de 2 días) y su avance; ya despachado,
 // la ruta y la hora.
-export default function PrepOrderCard({ order, stockMap, group, onPress }) {
+export default function PrepOrderCard({ order, stockMap, group, unseen, onPress }) {
   const macro = inventoryMacroStatus(order);
   const inWarehouse = group ? group.sort === "arrival" : true;
   const arrival = inWarehouse ? arrivalLabel(order) : null;
@@ -66,6 +67,7 @@ export default function PrepOrderCard({ order, stockMap, group, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} radius={16} dotTop={20} />
       <View style={styles.row}>
         <View style={styles.numberBox}>
           <Text style={styles.number}>{order.orderNumber}</Text>

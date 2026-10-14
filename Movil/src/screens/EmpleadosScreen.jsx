@@ -19,6 +19,8 @@ import { fonts } from "../lib/typography";
 import { formatDayLong, formatNumber } from "../lib/format";
 import { attendanceDays, attendanceMonths, defaultMonth, fullName, monthLabel } from "../lib/attendance";
 import { useBottomPad } from "../hooks/useBottomPad";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 
 const TABS = [
   { value: "personal", label: "Personal" },
@@ -43,6 +45,10 @@ export default function EmpleadosScreen({ navigation }) {
   const bottomPad = useBottomPad(32);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
+
+  // Novedades: burbuja de la pestaña Personal y empleados marcados hasta que se abren.
+  const { counts, isUnseen, markSeen } = useActivity();
+  const tabs = TABS.map((t) => ({ ...t, badge: counts[`empleados.${t.value}`] }));
 
   const [tab, setTab] = useState("personal");
   const [query, setQuery] = useState("");
@@ -113,7 +119,7 @@ export default function EmpleadosScreen({ navigation }) {
 
   const header = (
     <View style={styles.tabs}>
-      <Segmented options={TABS} value={tab} onChange={setTab} />
+      <Segmented options={tabs} value={tab} onChange={setTab} />
     </View>
   );
 
@@ -128,6 +134,7 @@ export default function EmpleadosScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} />}
       >
+        <MarkAllSeen activityKey="empleados.personal" />
         <SearchField value={query} onChangeText={setQuery} placeholder="Buscar empleado" style={styles.search} />
         <FilterChips
           options={areaOptions}
@@ -139,7 +146,15 @@ export default function EmpleadosScreen({ navigation }) {
         {visible.length ? (
           <ListGroup>
             {visible.map((emp) => (
-              <EmployeeRow key={emp._id} employee={emp} onPress={() => openEmployee(emp)} />
+              <EmployeeRow
+                key={emp._id}
+                employee={emp}
+                unseen={isUnseen("empleados.personal", emp._id)}
+                onPress={() => {
+                  markSeen("empleados.personal", emp._id);
+                  openEmployee(emp);
+                }}
+              />
             ))}
           </ListGroup>
         ) : (

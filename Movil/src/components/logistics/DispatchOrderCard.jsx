@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Button from "../ui/Button";
 import Icon from "../ui/Icon";
 import Pill from "../ui/Pill";
@@ -28,7 +29,7 @@ function PickupChip({ location }) {
 // `group` (lib/logistics.js, dispatchGroup) agrega lo propio de cada grupo:
 // en «Incompletos», qué falta; en «En recolección», la ruta y qué recogidas
 // faltan (`route` es esa ruta de /routes, con sus recogidas confirmadas).
-export default function DispatchOrderCard({ order, group, route, buildingRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute, onPress }) {
+export default function DispatchOrderCard({ order, group, route, buildingRoute, busy, onAdd, onRemove, onOpenRoute, onNewRoute, unseen, onPress }) {
   const info = dispatchInfo(order);
   const assigned = order.delivery?.route;
   const note = lotNote(order);
@@ -70,6 +71,7 @@ export default function DispatchOrderCard({ order, group, route, buildingRoute, 
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && onPress && styles.pressed]}>
+      <UnseenMark show={unseen} radius={16} dotTop={20} />
       <View style={styles.row}>
         <View style={styles.titleRow}>
           <Text style={styles.number}>{order.orderNumber}</Text>

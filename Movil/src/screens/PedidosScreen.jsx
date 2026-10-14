@@ -17,6 +17,8 @@ import { formatNumber } from "../lib/format";
 import { statusTone } from "../lib/statusTones";
 import { PEDIDO_GROUPS, groupOrders, matchesOrderSearch } from "../lib/orderList";
 import { useBottomPad } from "../hooks/useBottomPad";
+import MarkAllSeen from "../components/ui/MarkAllSeen";
+import { useActivity } from "../hooks/useActivity";
 
 // Lista de pedidos, como Web/private/frontend/src/pages/Pedidos.jsx: búsqueda
 // por N° de pedido, cliente o correo, filtro «Estado» y lista agrupada por
@@ -44,6 +46,9 @@ export default function PedidosScreen({ navigation, route }) {
       refresh();
     }, [refresh]),
   );
+
+  // Novedades: los pedidos nuevos o que cambiaron se marcan hasta que se abren.
+  const { isUnseen, markSeen } = useActivity();
 
   const activeCount = useMemo(() => orders.filter((o) => o.status !== "Entregado").length, [orders]);
 
@@ -92,12 +97,20 @@ export default function PedidosScreen({ navigation, route }) {
       stickySectionHeadersEnabled={false}
       renderSectionHeader={({ section }) => <GroupHeader title={section.title} note={section.note} count={section.count} />}
       renderItem={({ item }) => (
-        <OrderCard order={item} onPress={() => navigation.navigate("PedidoDetalle", { id: item._id })} />
+        <OrderCard
+          order={item}
+          unseen={isUnseen("pedidos", item._id)}
+          onPress={() => {
+            markSeen("pedidos", item._id);
+            navigation.navigate("PedidoDetalle", { id: item._id });
+          }}
+        />
       )}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={
         <View style={styles.header}>
+          <MarkAllSeen activityKey="pedidos" />
           <SearchField value={search} onChangeText={setSearch} placeholder="Buscar pedido, cliente o correo" />
           <View style={styles.filterRow}>
             <FilterSelectChip

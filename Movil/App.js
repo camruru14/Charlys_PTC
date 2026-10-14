@@ -14,6 +14,7 @@ import { Figtree_600SemiBold } from "@expo-google-fonts/figtree/600SemiBold";
 import { Figtree_700Bold } from "@expo-google-fonts/figtree/700Bold";
 import { Figtree_800ExtraBold } from "@expo-google-fonts/figtree/800ExtraBold";
 import { AuthProvider } from "./src/context/AuthContext";
+import { ActivityProvider } from "./src/context/ActivityContext";
 import { DateRangeProvider } from "./src/context/DateRangeContext";
 import { useAuth } from "./src/hooks/useAuth";
 import RootNavigator from "./src/navigation/RootNavigator";
@@ -68,10 +69,12 @@ export default function App() {
         <ToastProvider>
           <DateRangeProvider>
             <AuthProvider>
-              <NavigationContainer>
-                <StatusBar style="dark" />
-                <Gate fontsReady={fontsReady} />
-              </NavigationContainer>
+              <ActivityProvider>
+                <NavigationContainer>
+                  <StatusBar style="dark" />
+                  <Gate fontsReady={fontsReady} />
+                </NavigationContainer>
+              </ActivityProvider>
             </AuthProvider>
           </DateRangeProvider>
         </ToastProvider>

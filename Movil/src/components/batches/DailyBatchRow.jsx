@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import UnseenMark from "../ui/UnseenMark";
 import Button from "../ui/Button";
 import ColorSwatch from "../ui/ColorSwatch";
 import { colors, tones } from "../../lib/theme";
@@ -10,7 +11,7 @@ import { formatNumber, formatRelativeDay, fromDateOnly } from "../../lib/format"
 // convierte en un lote de fabricación (el backend lo quita de esta lista al
 // hacerlo) y exige la meta: sin ella queda deshabilitado y al tocar la fila se
 // abre la edición para agregarla.
-export default function DailyBatchRow({ batch, busy, onSchedule, onPress, onLongPress }) {
+export default function DailyBatchRow({ batch, unseen, busy, onSchedule, onPress, onLongPress }) {
   const date = fromDateOnly(batch.date);
   const hasTarget = Boolean(batch.targetQuantity);
   return (
@@ -21,10 +22,11 @@ export default function DailyBatchRow({ batch, busy, onSchedule, onPress, onLong
       accessibilityHint="Toca para editar; mantén presionado para más opciones"
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
+      <UnseenMark show={unseen} dotTop={19} />
       <View style={styles.texts}>
         <View style={styles.top}>
           <ColorSwatch color={batch.color} />
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={[styles.name, unseen && styles.bold]} numberOfLines={1}>
             {[batch.product, batch.color].filter(Boolean).join(" · ") || "—"}
           </Text>
         </View>
@@ -50,6 +52,7 @@ const styles = StyleSheet.create({
   texts: { flex: 1, gap: 3 },
   top: { flexDirection: "row", alignItems: "center", gap: 8 },
   name: { flex: 1, fontFamily: fonts.semibold, fontSize: 14, color: colors.ink },
+  bold: { fontFamily: fonts.bold },
   meta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] },
   noTarget: { fontFamily: fonts.semibold, color: tones.amber.text },
 });

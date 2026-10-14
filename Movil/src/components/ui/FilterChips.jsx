@@ -1,9 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
 // Fila horizontal de filtros con scroll. `options` es un arreglo de
-// { value, label, count? }; `count` se muestra al lado del texto.
+// { value, label, count?, unseen? }; `count` se muestra al lado del texto y
+// `unseen` pone un punto azul (registro con novedades) antes del texto.
 export default function FilterChips({ options, value, onChange, style, contentContainerStyle }) {
   return (
     <ScrollView
@@ -27,6 +28,9 @@ export default function FilterChips({ options, value, onChange, style, contentCo
               active ? styles.chipActive : pressed && styles.chipPressed,
             ]}
           >
+            {option.unseen ? (
+              <View accessible accessibilityLabel="Nuevo" style={[styles.unseen, active && styles.unseenActive]} />
+            ) : null}
             <Text style={[styles.text, active && styles.textActive]}>{option.label}</Text>
             {option.count != null ? (
               <Text style={[styles.count, active && styles.countActive]}>{option.count}</Text>
@@ -56,6 +60,8 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.surface,
   },
+  unseen: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary },
+  unseenActive: { backgroundColor: colors.white },
   chipPressed: {
     backgroundColor: colors.surface2,
   },

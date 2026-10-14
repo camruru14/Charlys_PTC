@@ -1,21 +1,25 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import CountBubble from "./CountBubble";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
 const defaultGetLabel = (option) => (typeof option === "object" ? option.label : option);
 const defaultGetValue = (option) => (typeof option === "object" ? option.value : option);
+const defaultGetBadge = (option) => (typeof option === "object" ? option.badge : undefined);
 
 // Control segmentado (pestañas de arriba de una pantalla): contenedor gris
 // con la opción activa en blanco. `options` puede ser un arreglo de strings o
 // de objetos { label, value } (o cualquier forma, con getLabel/getValue).
 // Con más de 4 opciones, o `scrollable`, las opciones no se reparten el
-// ancho sino que se desplazan horizontalmente.
+// ancho sino que se desplazan horizontalmente. `badge` (o getBadge) es la burbuja
+// de novedades a la derecha del texto (CountBubble); no se muestra si es 0.
 export default function Segmented({
   options,
   value,
   onChange,
   getLabel = defaultGetLabel,
   getValue = defaultGetValue,
+  getBadge = defaultGetBadge,
   scrollable,
   style,
 }) {
@@ -36,6 +40,7 @@ export default function Segmented({
         <Text style={[styles.text, selected && styles.textActive]} numberOfLines={1}>
           {getLabel(option)}
         </Text>
+        <CountBubble count={getBadge(option)} style={styles.badge} />
       </Pressable>
     );
   });
@@ -75,12 +80,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   option: {
+    flexDirection: "row",
+    gap: 6,
     minHeight: 34,
     paddingHorizontal: 12,
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
   },
+  badge: { flexShrink: 0 },
   optionFill: {
     flex: 1,
   },
