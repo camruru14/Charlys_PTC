@@ -41,7 +41,7 @@ function CartQuantity({ item, onCommit }) {
 }
 
 export default function CarritoPage() {
-  const { items, updateQuantity, removeItem, total, syncWithCatalog, hasSoldOut } = useCart();
+  const { items, updateQuantity, removeItem, total, syncWithCatalog } = useCart();
   const navigate = useNavigate();
 
   // Al abrir el carrito se refrescan precios y disponibilidad desde el catálogo.
@@ -53,10 +53,6 @@ export default function CarritoPage() {
   // Sin sesión, <PrivateRoute> (App.jsx) manda a /cuenta/login con
   // state.from = /checkout, y LoginPage vuelve aquí al iniciar sesión.
   const goToCheckout = () => {
-    if (hasSoldOut) {
-      toast.error("Quita del carrito los productos agotados para continuar.");
-      return;
-    }
     navigate("/checkout");
   };
 
@@ -101,7 +97,7 @@ export default function CarritoPage() {
                         {[item.color, item.size].filter(Boolean).join(" · ")}
                       </p>
                       {item.stock != null && item.stock <= 0 && (
-                        <p className="mt-1 text-xs font-medium text-red-600">Agotado</p>
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">Bajo pedido</p>
                       )}
                     </div>
                     <button
@@ -142,8 +138,7 @@ export default function CarritoPage() {
           <button
             type="button"
             onClick={goToCheckout}
-            disabled={hasSoldOut}
-            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
           >
             Continuar al pago
           </button>

@@ -4,11 +4,12 @@ import { PRODUCT_COLOR_HEX } from "../lib/catalogOptions";
 import QuickAddModal from "./QuickAddModal";
 
 // Disponibilidad según product.stock, con los colores de estado que ya usa el
-// sitio: verde de éxito (Entregado en Mis pedidos, Pago confirmado), ámbar de
-// advertencia (En Fabricación) y el rojo de error de Field.
+// sitio: verde de éxito (Entregado en Mis pedidos, Pago confirmado) y ámbar de
+// advertencia (En Fabricación). Sin existencias no es «agotado»: Industrias Charly fabrica
+// bajo pedido, así que el producto se sigue vendiendo y la etiqueta es informativa (neutra).
 const LOW_STOCK_MAX = 10;
 function availability(stock = 0) {
-  if (stock <= 0) return { label: "Agotado", tone: "text-red-600" };
+  if (stock <= 0) return { label: "Bajo pedido", tone: "text-muted-foreground" };
   if (stock <= LOW_STOCK_MAX) return { label: "Stock bajo", tone: "text-amber-700" };
   return { label: "Disponible", tone: "text-green-700" };
 }
@@ -53,7 +54,6 @@ export default function ProductCard({ product }) {
   const colorsCount = product.colors?.length || 0;
   const sizesCount = product.sizes?.length || 0;
   const stock = availability(product.stock);
-  const soldOut = (product.stock ?? 0) <= 0;
 
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-border bg-card transition hover:shadow-xl hover:shadow-primary/10">
@@ -139,11 +139,10 @@ export default function ProductCard({ product }) {
         <button
           type="button"
           onClick={() => setAddOpen(true)}
-          disabled={soldOut}
-          title={soldOut ? "Producto agotado" : "Elegir color y cantidad"}
-          className="pointer-events-auto absolute bottom-3 right-3 inline-flex items-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover:disabled:opacity-60"
+          title="Elegir color y cantidad"
+          className="pointer-events-auto absolute bottom-3 right-3 inline-flex items-center rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
         >
-          {soldOut ? "Agotado" : "Agregar"}
+          Agregar
         </button>
       </div>
 

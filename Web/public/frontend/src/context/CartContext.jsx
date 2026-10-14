@@ -90,7 +90,8 @@ export function CartProvider({ children }) {
 
   // Refresca precio, nombre, imagen, mínimo y disponibilidad de los productos del carrito
   // con lo que hay hoy en el catálogo (GET /products, solo productos activos), y quita los
-  // que ya no existen. Avisa de lo que cambió. Un fallo de red deja el carrito como estaba.
+  // que ya no existen (o están inactivos), pero NO los que tienen stock 0: esos se venden bajo pedido.
+  // Avisa de lo que cambió. Un fallo de red deja el carrito como estaba.
   const syncWithCatalog = async () => {
     const current = itemsRef.current;
     if (current.length === 0) return;
@@ -137,8 +138,9 @@ export function CartProvider({ children }) {
     setItems((prev) => prev.map((i) => (byId.has(String(i.productId)) ? { ...i, price: byId.get(String(i.productId)) } : i)));
   };
 
-  // Hay un producto del carrito sin existencias (según el último refresco).
-  const hasSoldOut = items.some((i) => i.stock != null && i.stock <= 0);
+  // Hay un producto del carrito sin existencias (según el último refresco): se fabrica bajo pedido.
+  // Solo informativo: no bloquea el carrito ni el pago.
+  const hasMadeToOrder = items.some((i) => i.stock != null && i.stock <= 0);
 
   // Igual que el backend: cada subtotal se redondea a centavos y se suma en centavos enteros
   // (con precios de hasta 2 decimales, price × cantidad ya es un número exacto de centavos).
@@ -151,7 +153,7 @@ export function CartProvider({ children }) {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, updateQuantity, removeItem, clearCart, syncWithCatalog, applyPrices, hasSoldOut, total, count }}
+      value={{ items, addItem, updateQuantity, removeItem, clearCart, syncWithCatalog, applyPrices, hasMadeToOrder, total, count }}
     >
       {children}
     </CartContext.Provider>

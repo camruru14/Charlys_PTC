@@ -33,7 +33,7 @@ const readUnconfirmed = () => {
 };
 
 export default function CheckoutPage() {
-  const { items, total, clearCart, syncWithCatalog, applyPrices, hasSoldOut } = useCart();
+  const { items, total, clearCart, syncWithCatalog, applyPrices, hasMadeToOrder } = useCart();
   const { customer } = useAuth();
   const navigate = useNavigate();
 
@@ -84,10 +84,6 @@ export default function CheckoutPage() {
     }
     if (!card.number.replace(/\s/g, "") || !card.month || !card.year || !card.cvv) {
       toast.error("Completa los datos de la tarjeta.");
-      return;
-    }
-    if (hasSoldOut) {
-      toast.error("Quita del carrito los productos agotados para continuar.");
       return;
     }
     if (paymentBlocked) {
@@ -258,6 +254,11 @@ export default function CheckoutPage() {
             <span className="font-display text-lg font-semibold">Total</span>
             <span className="font-display text-lg font-bold">${total.toFixed(2)}</span>
           </div>
+          {hasMadeToOrder && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Algunos productos se fabrican bajo pedido: se producen al confirmar tu compra y pueden tardar más en entregarse.
+            </p>
+          )}
         </div>
       </div>
     </section>

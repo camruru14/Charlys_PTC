@@ -58,6 +58,7 @@ async function buildOrderItems(rawItems) {
       throw fail(404, "Uno de los productos de tu carrito ya no está disponible. Revisa tu carrito.");
     }
 
+    // Sin validación de stock a propósito: los productos se fabrican bajo pedido.
     const quantity = Number(raw.quantity);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
       throw fail(400, `"${product.name}" requiere una cantidad entera de máximo ${MAX_QUANTITY.toLocaleString("en-US")} unidades.`);

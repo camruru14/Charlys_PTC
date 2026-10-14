@@ -43,8 +43,9 @@ export default function ProductoDetallePage() {
   }
 
   const min = product.minOrderQuantity || 1;
-  // Misma regla de «Agotado» que ProductCard.jsx: sin existencias no se agrega al carrito.
-  const soldOut = (product.stock ?? 0) <= 0;
+  // Sin existencias el producto se fabrica bajo pedido (como en ProductCard.jsx): se puede comprar
+  // igual, solo se avisa que tarda más.
+  const madeToOrder = (product.stock ?? 0) <= 0;
   const parsed = validateQuantity(quantity, min);
 
   const handleQuantityChange = (text) => {
@@ -53,7 +54,6 @@ export default function ProductoDetallePage() {
   };
 
   const handleAddToCart = () => {
-    if (soldOut) return;
     if (!parsed.ok) {
       setQuantityError(parsed.message);
       return;
@@ -184,11 +184,15 @@ export default function ProductoDetallePage() {
           <button
             type="button"
             onClick={handleAddToCart}
-            disabled={soldOut}
-            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 sm:w-auto"
           >
-            {soldOut ? "Agotado" : `Agregar al carrito${parsed.ok ? ` — $${(product.price * parsed.value).toFixed(2)}` : ""}`}
+            {`Agregar al carrito${parsed.ok ? ` — $${(product.price * parsed.value).toFixed(2)}` : ""}`}
           </button>
+          {madeToOrder && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Bajo pedido: se fabrica al confirmar tu compra; puede tardar más en entregarse.
+            </p>
+          )}
         </div>
       </div>
     </section>
