@@ -53,5 +53,7 @@ npx eas-cli build -p android --profile preview
 ```
 
 Al terminar, EAS muestra el enlace de descarga del APK. La URL del backend del panel está en
-`eas.json` (`EXPO_PUBLIC_API_URL` de cada perfil, con el `/api` final): cámbiala ahí antes de
-compilar. El `.env` no se usa en los builds de EAS (está en `.gitignore` y no se sube).
+`eas.json` (`EXPO_PUBLIC_API_URL` de cada perfil): debe ser la del **backend del panel** (el
+privado, no el de la tienda) y terminar exactamente en `/api`, sin barra final. Verifica antes de
+compilar que `curl https://<url>/auth/me` responda 401/403 con un JSON del backend; si responde 404
+o HTML, la URL es incorrecta y el APK no podrá iniciar sesión. El `.env` no se usa en los builds de EAS (está en `.gitignore` y no se sube).

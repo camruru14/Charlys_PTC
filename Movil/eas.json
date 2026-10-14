@@ -4,11 +4,11 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://REEMPLAZAR-backend-privado.onrender.com/api" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://charly-private-backend.onrender.com/api" }
     },
     "production": {
       "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://REEMPLAZAR-backend-privado.onrender.com/api" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://charly-private-backend.onrender.com/api" }
     }
   }
 }
