@@ -54,7 +54,8 @@ export function monthsInRange(from, to) {
 */
 export function rangeInfo(range, now = new Date()) {
   const hasRange = Boolean(range?.from && range?.to);
-  const months = hasRange && range.granularity === "month" ? monthsInRange(range.from, range.to) : null;
+  // «Este mes» (preset) cuenta como el mes en curso, igual que elegirlo en «Por mes».
+  const months = hasRange && (range.granularity === "month" || range.preset === "month") ? monthsInRange(range.from, range.to) : null;
   return { hasRange, months, currentMonthOnly: Boolean(months && months.length === 1 && months[0] === monthKey(now)) };
 }
 
@@ -202,7 +203,7 @@ export function expenseTotal(transactions, range, now = new Date()) {
   const to = range.to > today ? today : range.to;
   const total = paidExpenses(transactions, from, range.to);
 
-  const inCurrentMonth = !range.preset && from.getDate() === 1 && from.getFullYear() === now.getFullYear() && from.getMonth() === now.getMonth() && range.to >= startOfToday(now);
+  const inCurrentMonth = (!range.preset || range.preset === "month") && from.getDate() === 1 && from.getFullYear() === now.getFullYear() && from.getMonth() === now.getMonth() && range.to >= startOfToday(now);
   let previous;
   let label;
   if (inCurrentMonth) {

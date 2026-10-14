@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AppState } from "react-native";
+import { MONTHS_LONG } from "../lib/dashboard";
 
 // Contexto global del rango de fechas — equivalente móvil de
 // Web/private/frontend/src/context/DateRangeContext.jsx. Lo comparten el
@@ -8,7 +9,7 @@ import { AppState } from "react-native";
 // BatchHistoryScreen. InventarioScreen NO lo
 // usa — Inventario.jsx tampoco lo usa en la web.
 //
-// Se guarda la ELECCIÓN, no las fechas: un preset («Esta semana», «Últimos 7
+// Se guarda la ELECCIÓN, no las fechas: un preset («Este mes», «Últimos 7
 // días»…) guarda solo { preset } y sus fechas se calculan con el día de hoy;
 // un rango personalizado guarda { from, to } (esas sí son fijas). `today` es la
 // clave del día local («2026-10-14»): cambia sola a la medianoche y al volver a
@@ -36,6 +37,13 @@ function daysAgo(today, n) {
   return d;
 }
 
+// Día 1 del mes actual a las 00:00 (igual que «Este mes» de la web).
+function startOfMonth(today) {
+  const d = new Date(today);
+  d.setDate(1);
+  return d;
+}
+
 // Lunes de esta semana a las 00:00 (igual que «Esta semana» de la web).
 function startOfWeek(today) {
   const d = new Date(today);
@@ -60,6 +68,7 @@ function endOfDay(today) {
 
 const PRESETS = {
   all: { label: "Todo" },
+  month: { month: true, label: "Este mes" },
   week: { week: true, label: "Esta semana" },
   "7d": { days: 7, label: "Últimos 7 días" },
   "30d": { days: 30, label: "Últimos 30 días" },
@@ -68,21 +77,26 @@ const PRESETS = {
   "365d": { days: 365, label: "Últimos 12 meses" },
 };
 
-// Rango con el que arranca la app (y al que vuelve reset): esta semana, como
-// en la web (DEFAULT_PRESET de context/dateRange.js). No es «Todo».
-const DEFAULT_PRESET = "week";
+// Rango con el que arranca la app (y al que vuelve reset): el mes en curso,
+// como en la web (DEFAULT_PRESET de context/dateRange.js). No es «Todo».
+const DEFAULT_PRESET = "month";
 
 function presetRange(preset, today) {
   // "Todo" desactiva el rango: from/to null = sin filtrar por fecha.
   if (preset === "all") return { from: null, to: null, preset };
   const p = PRESETS[preset];
   // «Últimos n días» cuenta n días calendario contando hoy (7 días el 14-oct: del 8 al 14).
-  const from = p.week ? startOfWeek(today) : p.months ? monthsAgo(today, p.months) : daysAgo(today, p.days - 1);
+  const from = p.month ? startOfMonth(today) : p.week ? startOfWeek(today) : p.months ? monthsAgo(today, p.months) : daysAgo(today, p.days - 1);
   return { from, to: endOfDay(today), preset };
 }
 
-// Etiqueta legible del rango actual (para el botón del header).
+// Etiqueta legible del rango actual (para el botón del header). «Este mes» muestra
+// el mes y el año («Octubre 2026»), como en la web.
 export function rangeLabel(range) {
+  if (range.preset === "month" && range.from) {
+    const name = MONTHS_LONG[range.from.getMonth()];
+    return `${name[0].toUpperCase()}${name.slice(1)} ${range.from.getFullYear()}`;
+  }
   if (range.preset && PRESETS[range.preset]) return PRESETS[range.preset].label;
   const opts = { day: "2-digit", month: "short" };
   const f = range.from?.toLocaleDateString("es-SV", opts);

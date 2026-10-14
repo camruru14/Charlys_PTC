@@ -13,9 +13,22 @@ export const MONTHS_LONG = [
 
 const lastDayOf = (year, month) => new Date(year, month + 1, 0).getDate();
 
-// Si el rango del selector es UN mes calendario completo: { year, month }; si no, null.
-export function monthOfRange(range) {
+// Rango que se manda a GET /dashboard. «Este mes» llega hasta hoy, pero el backend reconoce el
+// mes en curso cuando el rango es el mes calendario completo (día 1 al último día) y entonces lo
+// compara con los mismos días del mes anterior: por eso se pide hasta el fin de mes (lo que aún no
+// pasó no tiene datos).
+export function dashboardRange(range) {
   const { from, to } = range || {};
+  if (range?.preset === "month" && from) {
+    return { from, to: new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999) };
+  }
+  return { from, to };
+}
+
+// Si el rango del selector es UN mes calendario completo (o «Este mes», que el Dashboard trata
+// como tal): { year, month }; si no, null.
+export function monthOfRange(range) {
+  const { from, to } = dashboardRange(range);
   if (!from || !to) return null;
   if (from.getFullYear() !== to.getFullYear() || from.getMonth() !== to.getMonth()) return null;
   return from.getDate() === 1 && to.getDate() === lastDayOf(to.getFullYear(), to.getMonth())

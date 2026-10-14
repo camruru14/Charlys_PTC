@@ -42,7 +42,7 @@ const SUBTITLES = {
   Para despacho), ?estado= (lista de rutas de En tránsito).
   Rutas: GET /routes?from=&to= devuelve TODAS las rutas sin completar (sin
   importar su fecha) y las completadas dentro del rango de fechas global (el
-  mismo selector de Finanzas, solo en En tránsito; por defecto esta semana).
+  mismo selector de Finanzas, solo en En tránsito; por defecto este mes).
   Para despacho no se filtra por fecha.
   Tiempo real: no hay WebSocket ni SSE, así que los datos se vuelven a leer en
   silencio cada 15 s mientras la pestaña del navegador está visible (y al

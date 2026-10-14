@@ -6,7 +6,7 @@ import { dayKey } from "../lib/logistics";
 
 // GET /routes?from=&to= (private/backend): todas las rutas sin completar (sin
 // importar su fecha) más las completadas dentro del rango de fechas global (por
-// defecto, esta semana); una ruta = un
+// defecto, este mes); una ruta = un
 // motorista, un vehículo y varios pedidos), más GET /routes/availability
 // (motoristas y vehículos con su disponibilidad del día). Las acciones son
 // los mismos endpoints que Web/private/frontend/src/pages/logistica/: cada

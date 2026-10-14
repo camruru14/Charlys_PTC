@@ -11,6 +11,7 @@ export const DateRangeContext = createContext(null);
 
 export const PRESETS = {
   all: { label: "Todo" },
+  month: { month: true, label: "Este mes" },
   week: { week: true, label: "Esta semana" },
   "7d": { days: 7, label: "Últimos 7 días" },
   "30d": { days: 30, label: "Últimos 30 días" },
@@ -20,16 +21,18 @@ export const PRESETS = {
 };
 
 // Rango con el que arrancan Dashboard, Fabricación, Finanzas y los
-// historiales (y al que vuelve «Restablecer»). No es «Todo».
-export const DEFAULT_PRESET = "week";
+// historiales (y al que vuelve «Restablecer»): el mes en curso, del día 1 a
+// hoy. No es «Todo».
+export const DEFAULT_PRESET = "month";
 
 // Etiqueta legible del rango actual (botón del selector): las fechas reales
 // («1 – 19 sep 2026»; por meses «Abr – sep 2026»); «Todo» sin rango. Un rango
 // elegido en «Por mes» lleva granularity: "month" y se muestra por meses
-// («Octubre 2026», «Ago – oct 2026», «Nov 2025 – feb 2026»).
+// («Octubre 2026», «Ago – oct 2026», «Nov 2025 – feb 2026»). «Este mes» se
+// muestra igual que un mes de «Por mes» («Octubre 2026»).
 export function rangeLabel(range) {
   if (!range.from || !range.to) return PRESETS.all.label;
-  return fmtRange(range.from, range.to, { months: range.granularity === "month" || Boolean(PRESETS[range.preset]?.months) });
+  return fmtRange(range.from, range.to, { months: range.granularity === "month" || Boolean(PRESETS[range.preset]?.months || PRESETS[range.preset]?.month) });
 }
 
 export function useDateRange() {

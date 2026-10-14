@@ -267,7 +267,7 @@ function CustomPanel({ range, onApply, onReset }) {
   Control de 38px + popover para elegir el rango de fechas. Va en las
   acciones del PageHeader de Dashboard, Fabricación, Finanzas, Logística,
   Inventario, Pedidos y los historiales. El popover tiene tres pestañas:
-    · Rápido: los PRESETS (Todo, Esta semana —el predeterminado—, 7/30 días,
+    · Rápido: los PRESETS (Todo, Este mes —el predeterminado—, Esta semana, 7/30 días,
       3/6/12 meses); al tocar uno se aplica y se cierra.
     · Por mes: cuadrícula de meses; uno o dos toques (rango de meses).
     · Personalizado: campos Desde/Hasta y calendario propio de un mes.

@@ -5,7 +5,7 @@ import { DateRangeContext, PRESETS, DEFAULT_PRESET } from "./dateRange";
   Provider del rango de fechas global (ver context/dateRange.js para el
   contexto, los presets, rangeLabel y el hook useDateRange).
 
-  Se guarda la ELECCIÓN, no las fechas: un preset («Esta semana», «Últimos 7
+  Se guarda la ELECCIÓN, no las fechas: un preset («Este mes», «Últimos 7
   días»…) guarda solo { preset } y sus fechas se calculan con el día de hoy;
   un rango personalizado o por meses guarda { from, to } (esas sí son fijas).
   `today` es la clave del día local («2026-10-14»): cambia sola a la medianoche
@@ -42,6 +42,13 @@ function monthsAgo(today, n) {
   return d;
 }
 
+// Día 1 del mes actual a las 00:00.
+function startOfMonth(today) {
+  const d = new Date(today);
+  d.setDate(1);
+  return d;
+}
+
 // Lunes de esta semana a las 00:00.
 function startOfWeek(today) {
   const d = new Date(today);
@@ -60,7 +67,7 @@ function presetRange(preset, today) {
   if (preset === "all") return { from: null, to: null, preset };
   const p = PRESETS[preset];
   // «Últimos n días» cuenta n días calendario contando hoy (7 días el 14-oct: del 8 al 14).
-  const from = p.week ? startOfWeek(today) : p.months ? monthsAgo(today, p.months) : daysAgo(today, p.days - 1);
+  const from = p.month ? startOfMonth(today) : p.week ? startOfWeek(today) : p.months ? monthsAgo(today, p.months) : daysAgo(today, p.days - 1);
   return { from, to: endOfDay(today), preset };
 }
 

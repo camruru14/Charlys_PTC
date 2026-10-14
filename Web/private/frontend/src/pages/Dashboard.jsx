@@ -18,7 +18,7 @@ import Sparkline from "../components/charts/Sparkline";
 import { TooltipRow } from "../components/charts/ChartTooltip";
 import { SERIES_COLORS, TARGET_COLOR } from "../lib/chartColors";
 import { productColors } from "../lib/productColors";
-import { change, dayDate, monthDate, monthOfRange, money, ORDER_STAGES, previousLabel, rangeWhen } from "../lib/dashboard";
+import { change, dashboardRange, dayDate, monthDate, monthOfRange, money, ORDER_STAGES, previousLabel, rangeWhen } from "../lib/dashboard";
 import { fmtCompactMoney, fmtMoney, fmtNumber, fmtWeekdayDate } from "../lib/format";
 import { getPageMeta } from "../lib/nav";
 
@@ -135,7 +135,8 @@ function Dashboard() {
   const gridRef = useRef(null);
   const gridHeight = useFillHeight(gridRef, wide, MIN_HEIGHT);
 
-  const path = range.from && range.to ? `/dashboard?from=${range.from.toISOString()}&to=${range.to.toISOString()}` : "/dashboard";
+  const query = dashboardRange(range);
+  const path = query.from && query.to ? `/dashboard?from=${query.from.toISOString()}&to=${query.to.toISOString()}` : "/dashboard";
   const { data, loading, error } = useFetch(path);
   const initial = loading && !data;
 
