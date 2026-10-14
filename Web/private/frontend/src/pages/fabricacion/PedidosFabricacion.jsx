@@ -240,7 +240,7 @@ function LotBox({ kind, lot, operators, lines, busy, onClose, actions }) {
   );
 }
 
-function OrderDetail({ group, operators, lines, busy, actions }) {
+function OrderDetail({ group, operators, operatorsLoading = false, lines, busy, actions }) {
   const { order, lots, stopped } = group;
   // Las filas empiezan colapsadas; el chevron abre su detalle.
   const [expanded, setExpanded] = useState(() => new Set());
@@ -304,9 +304,10 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
             variant="start"
             size="row"
             icon={IconPlay}
-            disabled={busy}
+            disabled={busy || operatorsLoading}
             onClick={stop(() => {
-              const hasOperator = lot.batch.operator || operators.length === 0;
+              // «No hay operarios» solo cuenta cuando los empleados ya cargaron.
+              const hasOperator = lot.batch.operator || (!operatorsLoading && operators.length === 0);
               if (lot.batch.productionLine && hasOperator) lotActions.start(lot, {});
               else setBox({ id, kind: "start" });
             })}
@@ -498,7 +499,7 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
   (Programado) y avanzan con acciones directas hasta el empaque, que queda
   para recoger en «Fabricación» en Logística.
 */
-function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
+function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, operatorsLoading, lines }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
   const [selectedId, setSelectedId] = useUrlState("id");
   // El registro abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
@@ -686,7 +687,7 @@ function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll
       </ListPanel>
 
       {selected ? (
-        <OrderDetail key={selected.order._id} group={selected} operators={operators} lines={lines} busy={busy} actions={actions} />
+        <OrderDetail key={selected.order._id} group={selected} operators={operators} operatorsLoading={operatorsLoading} lines={lines} busy={busy} actions={actions} />
       ) : (
         <DetailPanel>
           <EmptyState

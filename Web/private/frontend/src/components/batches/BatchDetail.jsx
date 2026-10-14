@@ -318,7 +318,7 @@ function ActionBox({ kind, batch, operators, lines, busy, onCancel, actions }) {
   Detalle de un lote de Lotes de fabricación: encabezado con la acción según
   el estado, avance, tiles, gráfica de la línea y ficha del lote.
 */
-function BatchDetail({ batch, batches, operators, lines, busy, openBox, setOpenBox, actions }) {
+function BatchDetail({ batch, batches, operators, operatorsLoading = false, lines, busy, openBox, setOpenBox, actions }) {
   const state = batchState(batch);
   const { history, previous, average } = lineStats(batch, batches);
 
@@ -329,9 +329,10 @@ function BatchDetail({ batch, batches, operators, lines, busy, openBox, setOpenB
           <Button
             variant="start"
             size="detail"
-            disabled={busy}
+            disabled={busy || operatorsLoading}
             onClick={() => {
-              const hasOperator = batch.operator || operators.length === 0;
+              // «No hay operarios» solo cuenta cuando los empleados ya cargaron.
+              const hasOperator = batch.operator || (!operatorsLoading && operators.length === 0);
               if (batch.productionLine && hasOperator) actions.start(batch, {});
               else setOpenBox("start");
             }}

@@ -88,7 +88,7 @@ function BatchListRow({ batch, selected, unseen, onSelect }) {
   con «Deshacer» donde hay reversa. `list` son todos los lotes de stock: la
   lista va agrupada por estado y el rango de fechas solo filtra «En bodega».
 */
-function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatches, operators, onEdit, onDelete }) {
+function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatches, operators, operatorsLoading, onEdit, onDelete }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
   const [selectedId, setSelectedId] = useUrlState("id");
   // El registro abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
@@ -292,6 +292,7 @@ function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatche
           batch={selected}
           batches={batches}
           operators={operators}
+          operatorsLoading={operatorsLoading}
           lines={lines}
           busy={busy}
           openBox={openBox}

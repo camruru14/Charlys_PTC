@@ -11,7 +11,7 @@ import ProductSelect from "../components/ui/ProductSelect";
 import SelectField from "../components/ui/SelectField";
 import { useToast } from "../components/ui/Toast";
 import { colors } from "../lib/theme";
-import { todayInput, toDateInputValue } from "../lib/format";
+import { todayInput, toDateInputValue, toLocalDateInputValue } from "../lib/format";
 import { BATCH_STATUSES, COLORS, previewBatchNumber } from "../lib/batchFlow";
 
 const emptyForm = {
@@ -44,13 +44,15 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
 
   const [form, setForm] = useState(isEditing ? null : { ...emptyForm, startDate: todayInput() });
   const [saving, setSaving] = useState(false);
+  // El formulario tal como se abrió al editar: al guardar solo se mandan los campos que cambiaron.
+  const original = useRef(null);
 
   const batch = isEditing ? batches.find((b) => b._id === id) : null;
 
   useEffect(() => {
     if (!isEditing || form) return;
     if (batch) {
-      setForm({
+      const opened = {
         product: batch.product || "",
         color: batch.color || "",
         productionLine: batch.productionLine || "",
@@ -58,8 +60,11 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
         targetQuantity: batch.targetQuantity != null ? String(batch.targetQuantity) : "",
         status: batch.status || "Programado",
         operator: batch.operator?._id || batch.operator || "",
-        startDate: toDateInputValue(batch.startDate || batch.createdAt),
-      });
+        // Sin fecha de inicio guardada se muestra la de creación (local), pero no se reenvía si no se toca.
+        startDate: batch.startDate ? toDateInputValue(batch.startDate) : toLocalDateInputValue(batch.createdAt),
+      };
+      original.current = opened;
+      setForm(opened);
       return;
     }
     if (!batchesLoading) {
@@ -94,15 +99,33 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
       Alert.alert("Falta información", "Elige la categoría y el producto");
       return;
     }
+    // Al editar solo se mandan los campos que cambiaron respecto al lote que se abrió: nunca el estado
+    // ni lo producido (cambian con las acciones del lote), y «Sin asignar» manda operator: null.
+    let payload;
+    if (isEditing) {
+      const was = original.current || {};
+      payload = {};
+      for (const field of ["product", "color", "productionLine", "startDate"]) {
+        if (form[field] !== was[field]) payload[field] = form[field];
+      }
+      if (form.targetQuantity !== was.targetQuantity && form.targetQuantity !== "") payload.targetQuantity = Number(form.targetQuantity);
+      if (form.operator !== was.operator) payload.operator = form.operator || null;
+      if (Object.keys(payload).length === 0) {
+        toast.show("No hay cambios que guardar");
+        navigation.goBack();
+        return;
+      }
+    } else {
+      payload = {
+        ...form,
+        producedQuantity: Number(form.producedQuantity) || 0,
+        // Sin meta no se manda.
+        targetQuantity: form.targetQuantity === "" ? undefined : Number(form.targetQuantity),
+        operator: form.operator || undefined,
+        startDate: form.startDate || undefined,
+      };
+    }
     setSaving(true);
-    const payload = {
-      ...form,
-      producedQuantity: Number(form.producedQuantity) || 0,
-      // Sin meta no se manda: así editar no borra una meta que ya tenga.
-      targetQuantity: form.targetQuantity === "" ? undefined : Number(form.targetQuantity),
-      operator: form.operator || undefined,
-      startDate: form.startDate || undefined,
-    };
     try {
       if (isEditing) {
         await actualizar(id, payload);
@@ -146,19 +169,24 @@ export default function LoteFabricacionFormScreen({ navigation, route }) {
           keyboardType="number-pad"
           suffix="u"
         />
-        <FormField
-          label="Cantidad producida"
-          value={form.producedQuantity}
-          onChangeText={(v) => handleChange("producedQuantity", onlyDigits(v))}
-          keyboardType="number-pad"
-          suffix="u"
-        />
-        <SelectField
-          label="Estado"
-          value={form.status}
-          options={BATCH_STATUSES.map((s) => ({ label: s, value: s }))}
-          onChange={(v) => handleChange("status", v)}
-        />
+        {/* Al editar no hay producido ni estado: cambian con las acciones del lote (iniciar, completar…). */}
+        {isEditing ? null : (
+          <>
+            <FormField
+              label="Cantidad producida"
+              value={form.producedQuantity}
+              onChangeText={(v) => handleChange("producedQuantity", onlyDigits(v))}
+              keyboardType="number-pad"
+              suffix="u"
+            />
+            <SelectField
+              label="Estado"
+              value={form.status}
+              options={BATCH_STATUSES.map((s) => ({ label: s, value: s }))}
+              onChange={(v) => handleChange("status", v)}
+            />
+          </>
+        )}
         <SelectField
           label="Operario responsable"
           value={form.operator}

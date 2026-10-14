@@ -1,6 +1,9 @@
 const productionBatchesController = {};
 
+import mongoose from "mongoose";
 import batchModel from "../models/ProductionBatch.js";
+import inventoryModel from "../models/InventoryItem.js";
+import orderModel from "../models/Order.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import { assertProductName } from "../lib/productName.js";
 import {
@@ -15,18 +18,18 @@ import {
 } from "../lib/batchFlow.js";
 import { packCompletedBatches } from "../lib/orderLines.js";
 import { recordFor } from "../lib/activity.js";
+import { currentYearSV, formatSequence, maxSequence, nextSequence } from "../lib/counters.js";
 
-// Genera el siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...)
+// Siguiente número de lote correlativo del año (LOTE-2026-0001, LOTE-2026-0002, ...): contador
+// atómico (lib/counters.js). El número nunca se reutiliza, ni siquiera si el lote se borra, así que
+// tampoco choca con artículos de Inventario viejos que guardan ese batchNumber (reportes de lote):
+// la primera vez el contador se siembra con el mayor número que exista en lotes o en esos artículos.
 export async function generateBatchNumber() {
-  const prefix = `LOTE-${new Date().getFullYear()}-`;
-  const last = await batchModel
-    .findOne({ batchNumber: { $regex: `^${prefix}` } })
-    .sort({ batchNumber: -1 });
-
-  const lastNumber = last ? parseInt(last.batchNumber.slice(prefix.length), 10) : 0;
-  const next = (Number.isNaN(lastNumber) ? 0 : lastNumber) + 1;
-
-  return `${prefix}${String(next).padStart(4, "0")}`;
+  const key = `LOTE-${currentYearSV()}`;
+  const seq = await nextSequence(key, async () =>
+    Math.max(await maxSequence(batchModel, "batchNumber", `${key}-`), await maxSequence(inventoryModel, "batchNumber", `${key}-`)),
+  );
+  return formatSequence(key, seq);
 }
 
 const populateOperator = (query) => query.populate("operator", "name lastName photo");
@@ -94,43 +97,63 @@ productionBatchesController.insertBatch = async (req, res) => {
   }
 };
 
-// ACTUALIZAR. Un lote ya enviado a bodega no cambia producto, color,
-// producido ni estado: esas unidades ya están en Inventario (primero se
-// deshace el envío).
+// ACTUALIZAR los datos del lote (producto, color, línea, meta, operario y fechas). El ESTADO y lo
+// PRODUCIDO no se editan aquí: solo cambian con las transiciones start / stop / resume / complete /
+// reopen, que validan el flujo (lib/batchFlow.js); `status`, `producedQuantity`, `completedAt` y
+// demás campos de estado del cuerpo se ignoran. Los campos que no llegan no se tocan.
+//  - Un lote de pedido, o ya empacado o enviado a bodega, no cambia producto, color ni meta.
+//  - Uno empacado o enviado a bodega tampoco cambia nada más (primero se deshace).
+//  - `operator: null` quita el operario.
 productionBatchesController.updateBatch = async (req, res) => {
   try {
-    const {
-      product,
-      color,
-      productionLine,
-      producedQuantity,
-      targetQuantity,
-      status,
-      operator,
-      startDate,
-      endDate,
-    } = req.body;
-
+    if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, "Lote no encontrado");
     const batch = await batchModel.findById(req.params.id);
+    if (!batch) throw new HttpError(404, "Lote no encontrado");
 
-    if (!batch) {
-      return res.status(404).json({ message: "Batch not found" });
-    }
+    const { product, color, productionLine, targetQuantity, operator, startDate, endDate } = req.body ?? {};
 
-    const previousStatus = batch.status;
     // Conserva el producto que ya tenía aunque se haya renombrado o eliminado después.
     const productName = await assertProductName(product, { current: batch.product });
-    // Los campos que no llegan no se tocan (así editar no borra, p. ej., la Meta).
-    const changes = { product: productName, color, productionLine, producedQuantity, targetQuantity, status, operator, startDate, endDate };
-    batch.set(Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)));
 
-    if (batch.sentToWarehouseAt && ["product", "color", "producedQuantity", "status"].some((f) => batch.isModified(f))) {
+    let target;
+    if (targetQuantity !== undefined && targetQuantity !== null && targetQuantity !== "") {
+      target = Number(targetQuantity);
+      if (!Number.isFinite(target) || target < 0) throw new HttpError(400, "La meta debe ser un número de 0 o más");
+    }
+    if (operator !== undefined && operator !== null && operator !== "" && !mongoose.isValidObjectId(operator)) {
+      throw new HttpError(400, "Operario inválido");
+    }
+
+    // ¿Cambia el producto, el color o la meta? (reenviar el mismo valor no cuenta)
+    const identityChange =
+      (productName !== undefined && productName !== batch.product) ||
+      (color !== undefined && (color || "") !== (batch.color || "")) ||
+      (target !== undefined && target !== (batch.targetQuantity ?? 0));
+    const sent = Boolean(batch.sentToWarehouseAt);
+    if (identityChange && (batch.category === "Pedido" || batch.packedAt || sent)) {
       throw new HttpError(
         409,
-        `El lote ${batch.batchNumber} ya está en ${batch.destinationWarehouse || "bodega"}: deshaz el envío para cambiar producto, color, producido o estado`,
+        sent
+          ? `El lote ${batch.batchNumber} ya está en ${batch.destinationWarehouse || "bodega"}: deshaz el envío para cambiar producto, color o meta`
+          : "Este lote está ligado a un pedido",
       );
     }
-    stampStatusChange(batch, previousStatus);
+
+    const changes = {
+      product: productName,
+      color: color === null ? undefined : color,
+      productionLine,
+      targetQuantity: target,
+      startDate: startDate === null ? undefined : startDate,
+      endDate: endDate === null ? undefined : endDate,
+    };
+    const defined = Object.entries(changes).filter(([, v]) => v !== undefined);
+    const operatorChange = operator !== undefined;
+    if ((defined.length || operatorChange) && (batch.packedAt || sent)) {
+      throw new HttpError(409, `El lote ${batch.batchNumber} ya está ${sent ? "en bodega" : "empacado"}: deshazlo para editarlo`);
+    }
+    batch.set(Object.fromEntries(defined));
+    if (operatorChange) batch.operator = operator ? operator : undefined;
 
     await batch.save();
 
@@ -210,14 +233,27 @@ productionBatchesController.packCompleted = async (req, res) => {
   }
 };
 
-//Eliminar
+// Eliminar. Solo un lote Programado que no sea de un pedido ni esté en bodega.
 productionBatchesController.deleteBatch = async (req, res) => {
   try {
-    await batchModel.findByIdAndDelete(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, "Lote no encontrado");
+    const batch = await batchModel.findById(req.params.id);
+    if (!batch) throw new HttpError(404, "Lote no encontrado");
+
+    if (await orderModel.exists({ "items.manufacturingBatch": batch._id })) {
+      throw new HttpError(409, "Este lote es de un pedido; deshaz el envío a fabricación desde el pedido");
+    }
+    if (batch.sentToWarehouseAt) {
+      throw new HttpError(409, `El lote ${batch.batchNumber} ya está en ${batch.destinationWarehouse || "bodega"}: deshaz el envío antes de eliminarlo`);
+    }
+    if (batch.status !== "Programado") {
+      throw new HttpError(409, `El lote ${batch.batchNumber} está ${batch.status.toLowerCase()}: solo se puede eliminar un lote Programado`);
+    }
+
+    await batchModel.deleteOne({ _id: batch._id });
     res.json({ message: "Batch deleted" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 

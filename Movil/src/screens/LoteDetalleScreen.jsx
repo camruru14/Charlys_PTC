@@ -78,7 +78,8 @@ export default function LoteDetalleScreen({ navigation, route }) {
   const { orders, refresh: refreshOrders } = useOrders();
   const { items: inventory, refresh: refreshInventory } = useInventory();
   const { warehouses: warehouseList } = useWarehouses();
-  const { employees } = useEmployees();
+  // `employeesLoading`: mientras los empleados cargan no se sabe si hay operarios (Iniciar espera).
+  const { employees, loading: employeesLoading } = useEmployees();
   const { options: lines } = useProductionLines();
 
   const [busy, setBusy] = useState(false);
@@ -226,7 +227,8 @@ export default function LoteDetalleScreen({ navigation, route }) {
   };
 
   const startOrAsk = () => {
-    const hasOperator = b.operator || operators.length === 0;
+    // «No hay operarios» solo cuenta cuando los empleados ya cargaron.
+    const hasOperator = b.operator || (!employeesLoading && operators.length === 0);
     if (b.productionLine && hasOperator) actions.start({});
     else setSheet("start");
   };
@@ -235,7 +237,7 @@ export default function LoteDetalleScreen({ navigation, route }) {
   let barActions = [];
   switch (state) {
     case "Programado":
-      barActions = [{ title: "Iniciar", icon: "factory", onPress: startOrAsk }];
+      barActions = [{ title: "Iniciar", icon: "factory", disabled: employeesLoading, onPress: startOrAsk }];
       break;
     case "En proceso":
       barActions = [

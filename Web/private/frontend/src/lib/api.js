@@ -53,7 +53,10 @@ async function request(path, { method = "GET", body } = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(payload?.message || `Error ${response.status}`);
+    // El status viaja en el error: los formularios distinguen un 409 (conflicto) de otros fallos.
+    const error = new Error(payload?.message || `Error ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   if (method !== "GET" && !path.startsWith("/activity")) window.dispatchEvent(new Event(MUTATION_EVENT));

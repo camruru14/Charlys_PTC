@@ -38,6 +38,13 @@ export function hasAnyPack(item) {
   return Boolean(item.packed || item.stockPackedAt || item.manufacturePackedAt);
 }
 
+// Una línea que el motorista ya recogió o entregó no se deshace (ni se desempaca, ni se devuelve su
+// stock a la bodega): esas unidades ya salieron. delivery.pickup*At no basta, porque una entrega
+// parcial o agregar el pedido a otra ruta limpian order.delivery.
+function assertNotDispatched(item) {
+  if (item.pickedUpAt || item.deliveredAt) throw new HttpError(409, "Esta línea ya se recogió o entregó");
+}
+
 function isUntouched(item) {
   return !item.verified && !item.sentToManufacturing && !item.manufacturingBatch && !hasAnyPack(item) && !isSplit(item);
 }
@@ -120,6 +127,7 @@ export async function verifyLine(item, warehouse, session) {
 
 // Deshacer verificar: devuelve el stock (solo si no está empacada).
 export async function unverifyLine(item, session) {
+  assertNotDispatched(item);
   if (isSplit(item)) throw new HttpError(409, `${lineLabel(item)} está dividida: deshaz la división`);
   if (!item.verified || item.sentToManufacturing) throw new HttpError(409, `${lineLabel(item)} no está verificado`);
   if (item.packed) throw new HttpError(409, `${lineLabel(item)} ya está empacado: primero deshaz el empaque`);
@@ -149,6 +157,7 @@ export function packLine(item) {
 
 // Deshacer empacar en Almacén: solo si el motorista no recogió en Almacén.
 export function unpackLine(item, order) {
+  assertNotDispatched(item);
   if (order.delivery?.pickupWarehouseAt) {
     throw new HttpError(409, `El motorista ya recogió en Almacén; no se puede desempacar ${lineLabel(item)}`);
   }
@@ -187,6 +196,7 @@ export async function sendLineToManufacturing(item, session) {
 // Deshacer enviar a fabricación: borra el lote si sigue Programado y
 // regresa la línea a sin procesar.
 export async function cancelLineManufacturing(item, session) {
+  assertNotDispatched(item);
   if (isSplit(item)) throw new HttpError(409, `${lineLabel(item)} está dividida: deshaz la división`);
   if (!item.sentToManufacturing) throw new HttpError(409, `${lineLabel(item)} no está en fabricación`);
   if (hasAnyPack(item)) throw new HttpError(409, `${lineLabel(item)} ya está empacado`);
@@ -220,6 +230,7 @@ export async function splitLine(item, warehouse, quantity, session) {
 
 // Deshacer la división: devuelve lo tomado y borra el lote si sigue Programado.
 export async function unsplitLine(item, session) {
+  assertNotDispatched(item);
   if (!isSplit(item)) throw new HttpError(409, `${lineLabel(item)} no está dividida`);
   if (hasAnyPack(item)) throw new HttpError(409, `${lineLabel(item)} ya tiene una parte empacada: primero deshaz el empaque`);
   await discardProgrammedBatch(item, session);
@@ -246,6 +257,15 @@ export async function packManufacturedLine(item, session) {
   if (isSplit(item) ? item.manufacturePackedAt : item.packed) {
     throw new HttpError(409, `${isSplit(item) ? "La parte fabricada de " : ""}${lineLabel(item)} ya está empacada`);
   }
+  // Lo producido tiene que cubrir lo que la línea mandó a fabricar (la parte fabricada si está dividida).
+  const needed = isSplit(item) ? item.toManufactureQty : item.quantity;
+  const produced = batch.producedQuantity || 0;
+  if (produced < needed) {
+    throw new HttpError(
+      409,
+      `El lote ${batch.batchNumber} de ${lineLabel(item)} produjo ${produced.toLocaleString("es-SV")} de ${needed.toLocaleString("es-SV")} unidades: faltan ${(needed - produced).toLocaleString("es-SV")} para empacar`,
+    );
+  }
   const now = new Date();
   // Lo fabricado ya salió del lote: desde aquí no se puede reabrir.
   batch.packedAt = now;
@@ -269,6 +289,7 @@ export async function packManufacturedLine(item, session) {
 // recogió en Fabricación. La línea vuelve a esperar su empaque y el lote
 // queda Completado sin packedAt (se puede volver a empacar o reabrir).
 export async function unpackManufacturedLine(item, order, session) {
+  assertNotDispatched(item);
   if (order.delivery?.pickupFactoryAt) {
     throw new HttpError(409, `El motorista ya recogió en Fabricación; no se puede desempacar ${lineLabel(item)}`);
   }

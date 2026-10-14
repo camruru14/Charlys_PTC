@@ -18,6 +18,15 @@ export function todayInput() {
   return local.toISOString().slice(0, 10);
 }
 
+// Instante (p. ej. la fecha de creación) -> "yyyy-mm-dd" en el calendario LOCAL del dispositivo
+// (no en UTC: de noche, en El Salvador, la fecha UTC ya es la del día siguiente).
+export function toLocalDateInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 // Fecha ya guardada (instante UTC) -> "yyyy-mm-dd" para precargar el
 // formulario. Se lee en UTC (no en el huso local) porque así fue guardada:
 // evita correrla un día hacia atrás en husos detrás de UTC (ej. El Salvador).

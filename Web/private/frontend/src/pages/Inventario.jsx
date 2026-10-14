@@ -19,6 +19,7 @@ import { IconPlus } from "../lib/icons";
 import { buttonClass } from "../lib/buttonStyles";
 import { fmtNumber } from "../lib/format";
 import { isBelowMinimum } from "../lib/stockLevel";
+import { blockNegativeKey } from "../lib/numberInput";
 import { UNITS, MATERIAL_TYPES } from "../lib/inventoryOptions";
 import { statusTone } from "../lib/statusDomains";
 import { useActivity } from "../hooks/useActivity";
@@ -56,6 +57,9 @@ function Inventario() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  // Existencia que el usuario vio al abrir el artículo (null al crear): el backend solo aplica un
+  // cambio de existencia si sigue siendo esa, para no pisar lo que entró o salió mientras editaba.
+  const [editingStock, setEditingStock] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
@@ -97,12 +101,14 @@ function Inventario() {
   // pero se puede cambiar en el modal. Editar sigue sirviendo para ambos.
   function openCreate() {
     setEditingId(null);
+    setEditingStock(null);
     setForm({ ...emptyForm, category: "Materia Prima", unit: "kg", location: warehouses[0] || "" });
     setModalOpen(true);
   }
 
   function openEdit(item) {
     setEditingId(item._id);
+    setEditingStock(Number(item.stock) || 0);
     setForm({
       name: item.name || "",
       category: item.category || "Materia Prima",
@@ -132,10 +138,16 @@ function Inventario() {
     const payload = {
       name: form.name,
       category: form.category,
-      stock: Number(form.stock) || 0,
       unit: form.unit,
       location: form.location,
     };
+    // Al crear siempre va la existencia; al editar solo si el usuario la cambió (con la que vio).
+    if (!editingId) {
+      payload.stock = Number(form.stock) || 0;
+    } else if ((Number(form.stock) || 0) !== editingStock) {
+      payload.stock = Number(form.stock) || 0;
+      payload.expectedStock = editingStock;
+    }
     if (form.category === "Producto Terminado") {
       payload.unitCost = Number(form.unitCost) || 0;
       payload.type = form.type.trim();
@@ -154,6 +166,12 @@ function Inventario() {
       refetch();
     } catch (err) {
       toast.error(err.message);
+      // 409: la existencia cambió mientras editaba (u otro conflicto): se muestra el mensaje y
+      // se actualiza la lista; el artículo se vuelve a abrir con los datos nuevos.
+      if (err.status === 409) {
+        setModalOpen(false);
+        refetch();
+      }
     } finally {
       setSaving(false);
     }
@@ -237,11 +255,11 @@ function Inventario() {
           ) : (
             <SelectField label="Tipo" name="materialType" value={form.materialType} onChange={handleChange} options={MATERIAL_TYPES} required />
           )}
-          <Field label="Existencia" name="stock" type="number" value={form.stock} onChange={handleChange} required />
+          <Field label="Existencia" name="stock" type="number" min="0" onKeyDown={blockNegativeKey} value={form.stock} onChange={handleChange} required />
           <SelectField label="Unidad" name="unit" value={form.unit} onChange={handleChange} options={UNITS} />
           <SelectField label="Bodega" name="location" value={form.location} onChange={handleChange} options={warehouses} required />
           {isFinished ? (
-            <Field label="Costo unitario ($)" name="unitCost" type="number" step="0.01" value={form.unitCost} onChange={handleChange} />
+            <Field label="Costo unitario ($)" name="unitCost" type="number" step="0.01" min="0" onKeyDown={blockNegativeKey} value={form.unitCost} onChange={handleChange} />
           ) : null}
         </form>
       </Modal>

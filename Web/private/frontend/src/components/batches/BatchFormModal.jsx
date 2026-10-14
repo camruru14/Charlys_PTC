@@ -37,8 +37,13 @@ function BatchFormModal({ open, onClose, editingId, form, handleChange, handleSu
         <SelectField label="Color" name="color" value={form.color} onChange={handleChange} options={COLORS} placeholder="Sin color" />
         <SelectField label="Línea de producción" name="productionLine" value={form.productionLine} onChange={handleChange} options={withCurrentLine(lineOptions, form.productionLine)} placeholder="Sin línea" />
         <Field label="Meta (unidades)" name="targetQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.targetQuantity} onChange={handleChange} />
-        <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
-        <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={BATCH_STATUSES} />
+        {/* Al editar no hay estado ni producido: cambian con las acciones del lote (iniciar, completar…). */}
+        {editingId ? null : (
+          <>
+            <Field label="Cantidad producida" name="producedQuantity" type="number" min="0" onKeyDown={blockNegativeKey} value={form.producedQuantity} onChange={handleChange} />
+            <SelectField label="Estado" name="status" value={form.status} onChange={handleChange} options={BATCH_STATUSES} />
+          </>
+        )}
         <SelectField
           label="Operario responsable"
           name="operator"

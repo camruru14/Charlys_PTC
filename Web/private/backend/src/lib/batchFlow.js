@@ -49,6 +49,11 @@ export function completeBatch(batch, producedQuantity) {
   if (producedQuantity === "" || producedQuantity == null || !Number.isInteger(produced) || produced < 0) {
     throw new HttpError(400, "Ingresa las unidades producidas (número entero, 0 o más)");
   }
+  // Un lote de pedido se completa con todo lo pedido: con menos, el pedido saldría incompleto.
+  const target = batch.targetQuantity || 0;
+  if (batch.category === "Pedido" && produced < target) {
+    throw new HttpError(409, `Faltan ${(target - produced).toLocaleString("es-SV")} unidades para completar el pedido`);
+  }
   batch.producedQuantity = produced;
   batch.status = "Completado";
   batch.completedAt = new Date();

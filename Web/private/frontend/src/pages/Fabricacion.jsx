@@ -77,6 +77,7 @@ function Fabricacion() {
     form,
     saving,
     operators,
+    operatorsLoading,
     openCreate,
     openEdit,
     handleChange,
@@ -165,6 +166,7 @@ function Fabricacion() {
           refetch={refetch}
           mutateBatches={mutateBatches}
           operators={operators}
+          operatorsLoading={operatorsLoading}
           onEdit={openEdit}
           onDelete={handleDelete}
         />
@@ -189,6 +191,7 @@ function Fabricacion() {
           mutateOrders={mutateOrders}
           mutateBatches={mutateBatches}
           operators={operators}
+          operatorsLoading={operatorsLoading}
           lines={lines}
         />
       )}

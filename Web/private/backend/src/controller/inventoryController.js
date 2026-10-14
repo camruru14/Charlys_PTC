@@ -1,8 +1,9 @@
 const inventoryController = {};
 
+import mongoose from "mongoose";
 import inventoryModel from "../models/InventoryItem.js";
 import batchModel from "../models/ProductionBatch.js";
-import { addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
+import { HttpError, addFinishedStock, sendError, withTransaction } from "../lib/stock.js";
 import { recordFor } from "../lib/activity.js";
 import { assertProductName } from "../lib/productName.js";
 
@@ -28,14 +29,40 @@ inventoryController.getItem = async (req, res) => {
   }
 };
 
+// Cantidad (existencia, mínimo…) válida: un número que no sea negativo.
+function parseAmount(value, label) {
+  const amount = typeof value === "boolean" ? NaN : Number(value);
+  if (value === "" || value === null || !Number.isFinite(amount) || amount < 0) {
+    throw new HttpError(400, `${label} debe ser un número de 0 o más`);
+  }
+  return amount;
+}
+
 // INSERT
 inventoryController.insertItem = async (req, res) => {
   try {
     const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
-      req.body;
+      req.body ?? {};
 
     // El nombre de un producto terminado es el de un producto del Catálogo.
     const itemName = category === "Producto Terminado" ? await assertProductName(name, { required: true }) : name;
+
+    if (stock !== undefined) parseAmount(stock, "La existencia");
+    if (minStock !== undefined) parseAmount(minStock, "El mínimo");
+    if (unitCost !== undefined) parseAmount(unitCost, "El costo");
+
+    // Un solo «Producto Terminado» por producto, color y bodega (sin batchNumber): las
+    // existencias se suman al que ya existe, no se duplican.
+    if (category === "Producto Terminado") {
+      const duplicate = await inventoryModel.exists({
+        category: "Producto Terminado",
+        name: itemName,
+        color: color || { $in: [null, ""] },
+        location: location || { $in: [null, ""] },
+        batchNumber: { $exists: false },
+      });
+      if (duplicate) throw new HttpError(409, "Ya existe ese producto en esa bodega; edita su existencia");
+    }
 
     const newItem = new inventoryModel({
       name: itemName,
@@ -59,25 +86,53 @@ inventoryController.insertItem = async (req, res) => {
   }
 };
 
-// ACTUALIZAR
+// ACTUALIZAR. Los campos que no llegan no se tocan. Si llega `stock` hay que mandar también
+// `expectedStock` (la existencia que el usuario vio al abrir el artículo): el cambio solo se
+// aplica si la existencia sigue siendo esa, así editar un artículo nunca pisa las unidades que
+// entraron (lote enviado a bodega) o salieron (pedido verificado) mientras tanto.
 inventoryController.updateItem = async (req, res) => {
   try {
-    const { name, category, type, materialType, color, unit, stock, minStock, unitCost, location } =
-      req.body;
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Identificador inválido");
+    const existing = await inventoryModel.findById(id);
+    if (!existing) throw new HttpError(404, "Artículo no encontrado");
+
+    const { name, category, type, materialType, color, unit, stock, expectedStock, minStock, unitCost, location } =
+      req.body ?? {};
 
     // Un producto terminado conserva su nombre aunque el producto se haya
     // renombrado o eliminado del Catálogo; un nombre nuevo debe existir en él.
-    let itemName = name;
-    if (category === "Producto Terminado") {
-      const existing = await inventoryModel.findById(req.params.id);
-      itemName = await assertProductName(name, { current: existing?.name, required: true });
+    // La categoría es la que llega o, si no llega, la ya guardada.
+    const finalCategory = category ?? existing.category;
+    const itemName = finalCategory === "Producto Terminado" ? await assertProductName(name, { current: existing.name }) : name;
+
+    const changes = { name: itemName, category, type, materialType, color, unit, minStock, unitCost, location };
+    if (minStock !== undefined) changes.minStock = parseAmount(minStock, "El mínimo");
+    if (unitCost !== undefined) changes.unitCost = parseAmount(unitCost, "El costo");
+
+    const filter = { _id: id };
+    if (stock !== undefined) {
+      const wanted = parseAmount(stock, "La existencia");
+      if (expectedStock === undefined || expectedStock === null || !Number.isFinite(Number(expectedStock))) {
+        throw new HttpError(400, "Falta la existencia que viste al abrir el artículo (expectedStock)");
+      }
+      // Sin cambio de existencia no hay nada que proteger ni que pisar.
+      if (wanted !== Number(expectedStock)) {
+        changes.stock = wanted;
+        filter.stock = Number(expectedStock);
+      }
     }
 
-    await inventoryModel.findByIdAndUpdate(
-      req.params.id,
-      { name: itemName, category, type, materialType, color, unit, stock, minStock, unitCost, location },
-      { returnDocument: "after" },
+    const updated = await inventoryModel.findOneAndUpdate(
+      filter,
+      { $set: Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)) },
+      { returnDocument: "after", runValidators: true },
     );
+    if (!updated) {
+      const current = await inventoryModel.findById(id);
+      if (!current) throw new HttpError(404, "Artículo no encontrado");
+      throw new HttpError(409, `La existencia cambió mientras editabas (ahora hay ${current.stock}). Vuelve a abrir el artículo.`);
+    }
 
     res.json({ message: "Inventory item updated" });
   } catch (error) {

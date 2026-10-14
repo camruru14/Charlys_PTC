@@ -4,6 +4,7 @@ import dailyBatchModel from "../models/DailyBatch.js";
 import batchModel from "../models/ProductionBatch.js";
 import { generateBatchNumber } from "./productionBatchesController.js";
 import { assertProductName } from "../lib/productName.js";
+import { HttpError, sendError, withTransaction } from "../lib/stock.js";
 import { recordFor } from "../lib/activity.js";
 
 // Genera el siguiente número de lote diario correlativo (LTE-DIARIO-0001, LTE-DIARIO-0002, ...)
@@ -88,7 +89,9 @@ dailyBatchesController.updateBatch = async (req, res) => {
   // Conserva el producto que ya tenía aunque se haya renombrado o eliminado después.
   const productName = await assertProductName(product, { current: batch.product });
 
-  batch.set({ date, product: productName, color, targetQuantity: target.value });
+  // Los campos que no llegan no se tocan (un PUT parcial no borra el color ni pisa la fecha).
+  const changes = { date, product: productName, color, targetQuantity: target.value };
+  batch.set(Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)));
 
   await batch.save();
   await recordFor(req, { keys: ["fabricacion.diaria"], entityType: "dailyBatch", entityId: batch._id, action: "updated" });
@@ -105,33 +108,48 @@ dailyBatchesController.deleteBatch = async (req, res) => {
 // Programar - envía el lote diario a Lotes de fabricación (Línea, Producido
 // y Operario quedan vacíos y se completan después) y lo quita de Lotes Diarios.
 // El lote diario debe tener meta: pasa a targetQuantity del lote de fabricación.
+// Todo en una transacción y borrando el lote diario PRIMERO: si dos clics (o dos usuarios)
+// programan el mismo lote a la vez, solo uno lo encuentra para borrarlo y el otro recibe 409.
 dailyBatchesController.scheduleBatch = async (req, res) => {
-  const daily = await dailyBatchModel.findById(req.params.id);
+  try {
+    const daily = await dailyBatchModel.findById(req.params.id);
 
-  if (!daily) {
-    return res.status(404).json({ message: "Daily batch not found" });
+    if (!daily) {
+      return res.status(404).json({ message: "Daily batch not found" });
+    }
+
+    if (!daily.targetQuantity) {
+      return res.status(400).json({ message: `Agrega la meta de ${daily.dailyBatchNumber} antes de programarlo.` });
+    }
+
+    // El número se reserva antes (contador atómico): nunca se reutiliza.
+    const batchNumber = await generateBatchNumber();
+
+    const newBatch = await withTransaction(async (session) => {
+      const taken = await dailyBatchModel.findOneAndDelete({ _id: req.params.id }, { session });
+      if (!taken) throw new HttpError(409, "Ese lote ya se programó");
+      const [created] = await batchModel.create(
+        [
+          {
+            batchNumber,
+            product: taken.product,
+            color: taken.color,
+            targetQuantity: taken.targetQuantity,
+            startDate: taken.date,
+            status: "Programado",
+          },
+        ],
+        { session },
+      );
+      return created;
+    });
+
+    await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: newBatch._id, action: "scheduled" });
+
+    res.json({ message: "Daily batch scheduled", batchNumber });
+  } catch (error) {
+    sendError(res, error);
   }
-
-  if (!daily.targetQuantity) {
-    return res.status(400).json({ message: `Agrega la meta de ${daily.dailyBatchNumber} antes de programarlo.` });
-  }
-
-  const batchNumber = await generateBatchNumber();
-
-  const newBatch = new batchModel({
-    batchNumber,
-    product: daily.product,
-    color: daily.color,
-    targetQuantity: daily.targetQuantity,
-    startDate: daily.date,
-    status: "Programado",
-  });
-
-  await newBatch.save();
-  await dailyBatchModel.findByIdAndDelete(req.params.id);
-  await recordFor(req, { keys: ["fabricacion.lotes"], entityType: "batch", entityId: newBatch._id, action: "scheduled" });
-
-  res.json({ message: "Daily batch scheduled", batchNumber });
 };
 
 export default dailyBatchesController;
