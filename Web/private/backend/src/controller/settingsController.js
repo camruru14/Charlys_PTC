@@ -38,8 +38,9 @@ settingsController.getWorkSchedule = async (req, res) => {
 
 // PUT /settings/work-schedule { startTime, workdayHours }
 settingsController.updateWorkSchedule = async (req, res) => {
-  const { startTime } = req.body;
-  const workdayHours = Number(req.body.workdayHours);
+  const body = req.body ?? {};
+  const { startTime } = body;
+  const workdayHours = Number(body.workdayHours);
 
   if (typeof startTime !== "string" || !TIME_PATTERN.test(startTime)) {
     return res.status(400).json({ message: "La hora de entrada debe tener el formato HH:MM" });
@@ -76,12 +77,13 @@ settingsController.getCompany = async (req, res) => {
 // se recibe: el sistema solo maneja USD.
 settingsController.updateCompany = async (req, res) => {
   const text = (v) => (typeof v === "string" ? v.trim() : "");
+  const body = req.body ?? {};
   const update = {
-    name: text(req.body.name),
-    nit: text(req.body.nit),
-    email: text(req.body.email).toLowerCase(),
-    phone: text(req.body.phone),
-    address: text(req.body.address),
+    name: text(body.name),
+    nit: text(body.nit),
+    email: text(body.email).toLowerCase(),
+    phone: text(body.phone),
+    address: text(body.address),
   };
 
   if (!update.name) return res.status(400).json({ message: "Escribe el nombre de la empresa" });
@@ -121,7 +123,7 @@ settingsController.updateLogo = async (req, res) => {
     res.json(toCompany(saved));
   } catch (error) {
     console.log("error " + error);
-    res.status(500).json({ message: error.message || "No se pudo subir el logo." });
+    res.status(500).json({ message: "No se pudo subir el logo." });
   }
 };
 

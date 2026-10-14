@@ -15,27 +15,48 @@ const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 /*
   «Contraseña actual»: fija como el correo (no se edita aquí), con el ojo
-  para mostrarla. Viene del backend ya desencriptada (GET /auth/me/password).
-  Si todavía es un hash bcrypt viejo (legacy), no se puede desencriptar: se
-  usa la que se escribió al iniciar sesión en esta pestaña
-  (AuthContext.sessionPassword) y, si tampoco hay, el ojo avisa que hay que
-  actualizarla.
+  para mostrarla. La contraseña NO se carga al entrar a Configuración: solo se
+  pide al backend (GET /auth/me/password, ya desencriptada) cuando se pulsa el
+  ojo. Si todavía es un hash bcrypt viejo (legacy), no se puede mostrar: el ojo
+  avisa que hay que actualizarla.
 */
-function CurrentPasswordField({ password, legacy }) {
+function CurrentPasswordField() {
   const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // { password, legacy } del backend; null hasta que se pulsa el ojo.
+  const [stored, setStored] = useState(null);
+  const password = stored?.password || "";
   const shown = visible && password ? password : "•".repeat(password ? Math.min(password.length, 16) : 8);
 
-  function toggle() {
-    if (!password) {
+  async function toggle() {
+    if (visible) {
+      setVisible(false);
+      return;
+    }
+    if (busy) return;
+    let current = stored;
+    if (!current) {
+      setBusy(true);
+      try {
+        current = await api.get("/auth/me/password");
+        setStored(current);
+      } catch (err) {
+        toast.error(err.message);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    if (!current?.password) {
       toast(
-        legacy
+        current?.legacy
           ? "Tu contraseña no se puede mostrar hasta que se actualice: escribe una nueva en «Cambiar contraseña» para reemplazarla."
-          : "Todavía no se pudo cargar tu contraseña. Intenta de nuevo en un momento.",
+          : "No se pudo cargar tu contraseña. Intenta de nuevo en un momento.",
         { duration: 6000 },
       );
       return;
     }
-    setVisible((v) => !v);
+    setVisible(true);
   }
 
   return (
@@ -48,10 +69,11 @@ function CurrentPasswordField({ password, legacy }) {
         <button
           type="button"
           onClick={toggle}
+          disabled={busy}
           aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
           aria-pressed={visible}
           title={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
-          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-[10px] text-muted transition hover:text-ink"
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-[10px] text-muted transition hover:text-ink disabled:opacity-60"
         >
           {/* El ícono muestra el estado: tachado = oculta, abierto = visible. */}
           {visible ? <IconEye width={16} height={16} /> : <IconEyeOff width={16} height={16} />}
@@ -69,12 +91,12 @@ function CurrentPasswordField({ password, legacy }) {
   actual, que se pide al guardar (ConfirmPasswordModal). Los datos de OTRO
   empleado se editan en Personal y permisos.
     form: { name, lastName, newEmail, newPassword, phone, dui }
-    storedPassword: { password, legacy } de GET /auth/me/password (null mientras carga)
+    passwordVersion: cambia al guardar una contraseña nueva (reinicia el ojo de «Contraseña actual»)
     onAccount: recibe la cuenta que devuelve el backend tras cambiar la foto
   La foto NO espera a «Guardar cambios»: se sube (o se quita) al momento.
 */
-function MiCuenta({ account, loading, error, form, onChange, onAccount, storedPassword }) {
-  const { sessionPassword, updateUser } = useAuth();
+function MiCuenta({ account, loading, error, form, onChange, onAccount, passwordVersion = 0 }) {
+  const { updateUser } = useAuth();
   const { confirm, confirmProps } = useConfirm();
   const fileRef = useRef(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -186,7 +208,7 @@ function MiCuenta({ account, loading, error, form, onChange, onAccount, storedPa
         <Field label="Cambiar correo" name="newEmail" type="email" value={form.newEmail} onChange={onChange} placeholder="Nuevo correo" autoComplete="off" />
 
         {/* Fija, como el correo; se confirma aparte al guardar un cambio de acceso. */}
-        <CurrentPasswordField password={storedPassword?.password || (storedPassword?.legacy ? sessionPassword : "")} legacy={Boolean(storedPassword?.legacy)} />
+        <CurrentPasswordField key={passwordVersion} />
         <PasswordField
           label="Cambiar contraseña"
           name="newPassword"

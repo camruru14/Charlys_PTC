@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../../lib/api";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useAuth } from "../../hooks/useAuth";
 import Modal from "../ui/Modal";
 import ConfirmModal from "../ui/ConfirmModal";
 import { Field, PasswordField, SelectField } from "../ui/Field";
@@ -36,6 +37,7 @@ function toForm(emp) {
 */
 function EmployeeFormModal({ employee, positions = [], onClose, onSaved, onDeleted }) {
   const { confirm, confirmProps } = useConfirm();
+  const { updateUser } = useAuth();
   const [form, setForm] = useState(() => toForm(employee));
   const [saving, setSaving] = useState(false);
   const editing = Boolean(employee);
@@ -79,7 +81,9 @@ function EmployeeFormModal({ employee, positions = [], onClose, onSaved, onDelet
     if (editing && (!payload.password || payload.password === savedPassword)) delete payload.password;
     try {
       if (editing) {
-        await api.put(`/employees/${employee._id}`, payload);
+        const saved = await api.put(`/employees/${employee._id}`, payload);
+        // Un administrador que cambia SU contraseña recibe un token nuevo: conserva su sesión.
+        if (saved?.token) updateUser({}, saved.token);
         toast.success("Empleado actualizado");
       } else {
         await api.post("/employees", payload);

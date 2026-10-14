@@ -237,9 +237,9 @@ function Configuracion() {
   const { categories, loading: categoriesLoading, error: categoriesError, refetch: refetchCategories, mutate: mutateCategories } = useExpenseCategories({ usage: monthKey(new Date()) });
   const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useFetch("/employees");
   const { data: account, loading: accountLoading, error: accountError, mutate: mutateAccount } = useFetch("/auth/me");
-  // Contraseña propia desencriptada, para el ojo de Mi cuenta: { password, legacy }.
-  const { data: myPassword, mutate: mutateMyPassword } = useFetch("/auth/me/password");
-  const { updateUser, setSessionPassword } = useAuth();
+  // Sube al guardar una contraseña nueva: reinicia el ojo de Mi cuenta (que pide la contraseña solo al pulsarlo).
+  const [passwordVersion, setPasswordVersion] = useState(0);
+  const { user, updateUser } = useAuth();
 
   const warehouses = useMemo(() => (Array.isArray(warehousesData) ? warehousesData : []), [warehousesData]);
   const vehicles = useMemo(() => (Array.isArray(vehiclesData) ? vehiclesData : []), [vehiclesData]);
@@ -401,13 +401,11 @@ function Configuracion() {
         }
         setPasswordPrompt(null);
         mutateAccount(saved);
-        // El correo del usuario en sesión (pie del menú lateral).
-        updateUser({ email: saved.email });
-        // El ojo de «Contraseña actual» pasa a mostrar la nueva.
-        if (credentials.newPassword) {
-          setSessionPassword(credentials.newPassword);
-          mutateMyPassword({ password: credentials.newPassword, legacy: false });
-        }
+        // El correo del usuario en sesión (pie del menú lateral) y el token nuevo: cambiar el
+        // correo o la contraseña cierra las demás sesiones y renueva esta.
+        updateUser({ email: saved.email }, saved.token);
+        // El ojo de «Contraseña actual» vuelve a pedirla al pulsarlo.
+        if (credentials.newPassword) setPasswordVersion((v) => v + 1);
         // Ya aplicado: si falla algo después, reintentar no lo repite.
         setAccountDraft((d) => (d ? { ...d, newEmail: "", newPassword: "" } : d));
       }
@@ -673,7 +671,7 @@ function Configuracion() {
               setDraft={setBudgetDraft}
             />
           ) : section === "personal" ? (
-            <PersonalPermisos employees={employees} loading={employeesLoading} error={employeesError} refetch={refetchEmployees} />
+            <PersonalPermisos employees={employees} loading={employeesLoading} error={employeesError} refetch={refetchEmployees} isAdmin={Boolean(user?.isAdmin)} currentUserId={user?.id} onOpenAccount={() => setSection("cuenta")} />
           ) : (
             <MiCuenta
               account={account}
@@ -682,7 +680,7 @@ function Configuracion() {
               form={accountForm}
               onChange={handleAccountChange}
               onAccount={mutateAccount}
-              storedPassword={myPassword}
+              passwordVersion={passwordVersion}
             />
           )}
         </div>

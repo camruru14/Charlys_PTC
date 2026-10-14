@@ -9,10 +9,18 @@ export class HttpError extends Error {
   }
 }
 
-// Responde un error: los HttpError con su status y mensaje; el resto como 500.
+// Responde un error: los HttpError con su status y mensaje; los de validación de
+// Mongoose (ValidationError) y los identificadores mal formados (CastError) como
+// 400; el resto como 500 sin detalles internos.
 export function sendError(res, error) {
   if (error instanceof HttpError) {
     return res.status(error.status).json({ message: error.message });
+  }
+  if (error?.name === "ValidationError") {
+    return res.status(400).json({ message: Object.values(error.errors || {})[0]?.message || "Datos inválidos" });
+  }
+  if (error?.name === "CastError") {
+    return res.status(400).json({ message: "Identificador inválido" });
   }
   console.log("error " + error);
   return res.status(500).json({ message: "Error interno del servidor." });

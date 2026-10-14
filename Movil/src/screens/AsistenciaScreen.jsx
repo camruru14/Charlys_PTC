@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../hooks/useAuth";
 import { useMyAttendance } from "../hooks/useMyAttendance";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
@@ -16,13 +15,8 @@ import { colors } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
 import { formatClock, formatWeekdayDate } from "../lib/format";
 import { dayKey, fmtHours, hoursPayload, recordDay } from "../lib/attendance";
+import { clearCheckIn, readCheckIn, saveCheckIn } from "../lib/checkInStorage";
 import { useBottomPad } from "../hooks/useBottomPad";
-
-// Igual que SecureStore.getItemAsync/setItemAsync ya usa AuthContext para el
-// token: acá guarda la hora de "Marcar entrada" localmente hasta que se
-// marca la salida, así sobrevive a que la app se cierre por completo antes
-// de terminar el ciclo.
-const CHECKIN_KEY = "charly-attendance-checkin";
 
 // "jue 24 sep" -> "Jue 24"
 function shortDay(date) {
@@ -73,17 +67,23 @@ export default function AsistenciaScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   // Al abrir la pantalla, recupera una entrada marcada previamente (incluso
-  // si la app se cerró por completo mientras tanto).
+  // si la app se cerró por completo mientras tanto). Solo vale la de este mismo
+  // usuario y de hoy: cualquier otra se descarta (lib/checkInStorage.js).
+  const userId = user?.id;
   useEffect(() => {
+    let ignore = false;
     (async () => {
       try {
-        const stored = await SecureStore.getItemAsync(CHECKIN_KEY);
-        if (stored) setCheckIn(new Date(stored));
+        const at = await readCheckIn(userId);
+        if (!ignore) setCheckIn(at);
       } finally {
-        setRestoring(false);
+        if (!ignore) setRestoring(false);
       }
     })();
-  }, []);
+    return () => {
+      ignore = true;
+    };
+  }, [userId]);
 
   const week = useMemo(() => {
     const from = startOfWeek();
@@ -96,7 +96,7 @@ export default function AsistenciaScreen() {
   const handleCheckIn = async () => {
     const at = new Date();
     try {
-      await SecureStore.setItemAsync(CHECKIN_KEY, at.toISOString());
+      await saveCheckIn(userId, at);
       setCheckIn(at);
       toast.show(`Entrada marcada a las ${formatClock(at)}`);
     } catch (err) {
@@ -118,7 +118,7 @@ export default function AsistenciaScreen() {
         checkOut: checkOut.toISOString(),
         ...hours,
       });
-      await SecureStore.deleteItemAsync(CHECKIN_KEY);
+      await clearCheckIn();
       setCheckIn(null);
       toast.show(`Salida marcada · ${fmtHours(hours.workedHours)} h trabajadas`);
       refresh();

@@ -41,17 +41,11 @@ async function request(path, { method = "GET", body } = {}) {
     ?.includes("application/json");
   const payload = isJson ? await response.json().catch(() => ({})) : null;
 
-  // Sesión inválida/expirada -> forzar re-login. El 403 de «solo
-  // administradores» (code ADMIN_ONLY) no es una sesión inválida: se muestra
-  // su mensaje y la sesión sigue abierta.
-  if (response.status === 401 || (response.status === 403 && payload?.code !== "ADMIN_ONLY")) {
+  // Sesión inválida/expirada -> forzar re-login. Un 403 con `code` (ADMIN_ONLY,
+  // ACCOUNT_FORBIDDEN, MODULE_FORBIDDEN: falta de permiso para esa acción) no es
+  // una sesión inválida: se muestra su mensaje y la sesión sigue abierta.
+  if (response.status === 401 || (response.status === 403 && !payload?.code)) {
     localStorage.removeItem(SESSION_STORAGE_KEY);
-    // La contraseña recordada para el ojo de Mi cuenta (ver AuthContext.jsx).
-    try {
-      sessionStorage.removeItem("charly:session-password");
-    } catch {
-      // Sin acceso al almacenamiento: no hay nada que borrar.
-    }
     if (!window.location.pathname.startsWith("/login")) {
       window.location.assign("/login");
     }

@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useEmployees } from "../hooks/useEmployees";
+import { useAuth } from "../hooks/useAuth";
 import PermissionChip from "../components/employees/PermissionChip";
 import { roleLine } from "../components/employees/EmployeeRow";
 import Avatar, { personTone, photoOf } from "../components/ui/Avatar";
@@ -30,8 +31,9 @@ function PersonRow({ employee, onPress }) {
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.row, inactive && styles.rowInactive, pressed && styles.pressed]}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      style={({ pressed }) => [styles.row, inactive && styles.rowInactive, pressed && onPress && styles.pressed]}
     >
       <Avatar name={fullName(employee)} photoUrl={photoOf(employee)} tone={inactive ? "gray" : personTone(employee)} size={36} />
       <View style={styles.texts}>
@@ -45,7 +47,7 @@ function PersonRow({ employee, onPress }) {
         ) : null}
         <PermissionChip employee={employee} short style={styles.chip} />
       </View>
-      <Icon name="chevronRight" size={18} color={colors.chevron} />
+      {onPress ? <Icon name="chevronRight" size={18} color={colors.chevron} /> : null}
     </Pressable>
   );
 }
@@ -57,6 +59,10 @@ function PersonRow({ employee, onPress }) {
 export default function ConfigPersonalScreen({ navigation }) {
   const bottomPad = useBottomPad(32);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
+  // Un administrador agrega y edita; los demás ven la lista de solo lectura y, en su
+  // propia fila, un acceso a Mi cuenta (como en la web).
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.isAdmin);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
 
@@ -69,17 +75,19 @@ export default function ConfigPersonalScreen({ navigation }) {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: "Personal y permisos",
-      headerSubtitle: "Los permisos salen del área y el puesto",
-      headerRight: () => (
-        <IconButton
-          icon="plus"
-          variant="primary"
-          onPress={() => navigation.navigate("EmpleadoForm")}
-          accessibilityLabel="Agregar empleado"
-        />
-      ),
+      headerSubtitle: isAdmin ? "Los permisos salen del área y el puesto" : "Solo lectura · tus datos están en Mi cuenta",
+      headerRight: isAdmin
+        ? () => (
+            <IconButton
+              icon="plus"
+              variant="primary"
+              onPress={() => navigation.navigate("EmpleadoForm")}
+              accessibilityLabel="Agregar empleado"
+            />
+          )
+        : undefined,
     });
-  }, [navigation]);
+  }, [navigation, isAdmin]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -115,7 +123,17 @@ export default function ConfigPersonalScreen({ navigation }) {
       {visible.length ? (
         <ListGroup>
           {visible.map((e) => (
-            <PersonRow key={e._id} employee={e} onPress={() => navigation.navigate("EmpleadoForm", { id: e._id })} />
+            <PersonRow
+              key={e._id}
+              employee={e}
+              onPress={
+                isAdmin
+                  ? () => navigation.navigate("EmpleadoForm", { id: e._id })
+                  : String(e._id) === String(user?.id)
+                    ? () => navigation.navigate("MiCuenta")
+                    : undefined
+              }
+            />
           ))}
         </ListGroup>
       ) : (

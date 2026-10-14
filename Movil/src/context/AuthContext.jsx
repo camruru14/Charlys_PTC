@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { api, setTokenGetter } from "../lib/api";
 import { onUnauthorized } from "../lib/sessionEvents";
+import { clearCheckIn } from "../lib/checkInStorage";
 
 // Contexto global de autenticación de la app móvil. Equivalente a
 // Web/private/frontend/src/context/AuthContext.jsx, pero en vez de una
@@ -78,9 +79,11 @@ export function AuthProvider({ children }) {
     if (!nextToken) {
       tokenRef.current = null;
       setSessionPassword(null);
+      // También la entrada de asistencia sin salida: es de quien tenía la sesión.
       await Promise.all([
         SecureStore.deleteItemAsync(TOKEN_KEY),
         SecureStore.deleteItemAsync(USER_KEY),
+        clearCheckIn(),
       ]);
       setToken(null);
       setUser(null);
@@ -147,9 +150,21 @@ export function AuthProvider({ children }) {
   }, [persistSession]);
 
   // Actualiza datos del usuario en sesión (p. ej. el correo nuevo desde Mi
-  // cuenta), igual que updateUser de la web; el token no cambia.
+  // cuenta), igual que updateUser de la web. Si el backend entregó un token nuevo
+  // (cambiar la contraseña o el correo cierra las demás sesiones y renueva esta),
+  // se pasa en `nextToken`: se usa de inmediato en las siguientes llamadas y se
+  // guarda en SecureStore; si no, el token no cambia.
   const updateUser = useCallback(
-    async (partial) => {
+    async (partial, nextToken) => {
+      if (nextToken) {
+        tokenRef.current = nextToken;
+        setToken(nextToken);
+        try {
+          await SecureStore.setItemAsync(TOKEN_KEY, nextToken);
+        } catch {
+          // Si no se puede guardar, sigue en memoria hasta cerrar la app.
+        }
+      }
       const next = { ...(userRef.current || {}), ...partial };
       userRef.current = next;
       setUser(next);

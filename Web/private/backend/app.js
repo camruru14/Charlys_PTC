@@ -5,7 +5,7 @@ import fs from "node:fs";
 import swaggerUi from "swagger-ui-express";
 import swaggerDocument from "./src/docs/Charlys_documentacion.json" with {type: "json"};
 import limiter from "./src/middlewares/limiter.js";
-import { validateAuthCookie } from "./src/middlewares/authMiddleware.js";
+import { requireAdministrator, validateAuthCookie } from "./src/middlewares/authMiddleware.js";
 
 import authRoutes from "./src/routes/auth.js";
 import ordersRoutes from "./src/routes/orders.js";
@@ -37,16 +37,23 @@ const app = express();
 // el limitador de peticiones y las cookies secure vean la IP y el https reales.
 app.set("trust proxy", 1);
 
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
-  : ["http://localhost:5173", "http://localhost:5174"];
+// Orígenes que pueden llamar a este backend desde el navegador: las URLs exactas
+// de CORS_ORIGINS (o, si no está definida, los localhost de desarrollo) y la URL
+// de producción del panel.
+const allowedOrigins = [
+  ...(process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : ["http://localhost:5173", "http://localhost:5174"]),
+  "https://charly-private-frontend.vercel.app",
+];
 
-// Además de las URLs exactas de arriba, aceptamos cualquier URL que Vercel
-// genere para estos 2 proyectos (cada deployment/preview tiene un hash
-// distinto en el dominio, ej. charly-private-frontend-ghi92n8y8-ptc4.vercel.app),
-// para no tener que actualizar CORS_ORIGINS manualmente en cada deploy nuevo.
-const vercelPreviewPattern =
-  /^https:\/\/charly-(public|private)-frontend(-[a-z0-9-]+)?\.vercel\.app$/;
+// Además, las URLs que Vercel genera para cada deployment/preview del frontend
+// PRIVADO desde el equipo propio (sufijo -ptc4), ej.
+// charly-private-frontend-ghi92n8y8-ptc4.vercel.app, para no tener que
+// actualizar CORS_ORIGINS en cada deploy. El frontend público (la tienda) no
+// llama a este backend, y un proyecto con el mismo nombre de otro equipo no
+// coincide con el sufijo, así que no se aceptan.
+const vercelPreviewPattern = /^https:\/\/charly-private-frontend(-[a-z0-9]+)*-ptc4\.vercel\.app$/;
 
 app.use(
   cors({
@@ -70,16 +77,17 @@ app.use(cookieParser());
 app.use(express.json());
 
 // Documentación de la API (Swagger UI y especificación JSON)
-// Solo se monta fuera del entorno de producción y está protegida exclusivamente para rol admin
+// Solo se monta fuera del entorno de producción y está protegida: solo un administrador
 if (process.env.NODE_ENV !== "production") {
-  app.get("/api-docs.json", validateAuthCookie(["admin"]), (req, res) => {
+  app.get("/api-docs.json", validateAuthCookie(), requireAdministrator(), (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.json(openapiDoc);
   });
 
   app.use(
     "/api-docs",
-    validateAuthCookie(["admin"]),
+    validateAuthCookie(),
+    requireAdministrator(),
     swaggerUi.serve,
     swaggerUi.setup(openapiDoc),
   );
@@ -136,8 +144,10 @@ app.use("/api/expense-categories", validateAuthCookie(), expenseCategoriesRoutes
 // Resumen del Dashboard
 app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
 
-// Documentación de la API
-app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Documentación de la API (también solo fuera de producción)
+if (process.env.NODE_ENV !== "production") {
+  app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
 
 // Manejador de errores global (igual que en public/backend): un error lanzado
 // antes del controlador (p. ej. multer rechazando el logo por tamaño o tipo)
@@ -151,13 +161,22 @@ const MULTER_MESSAGES = {
 app.use((err, _req, res, _next) => {
   console.log("error " + err);
   const isMulter = err.name === "MulterError";
-  const status = err.status || err.http_code || (isMulter ? 400 : 500);
+  // Solo los errores del cliente (4xx, menos 401 y 403: esos los decide el middleware
+  // de sesión; MulterError, body-parser, HttpError) conservan su status y mensaje.
+  // Cualquier otro error, incluidos los de Cloudinary con http_code 401 o 403,
+  // responde 500 genérico: nunca se devuelve err.message crudo en un 500.
+  const raw = err.status ?? err.statusCode;
+  const isClientError = Number.isInteger(raw) && raw >= 400 && raw < 500 && raw !== 401 && raw !== 403;
+  if (!isClientError && !isMulter) {
+    return res.status(500).json({ message: "Error interno del servidor." });
+  }
+  const status = isClientError ? raw : 400;
   const message =
     err.code === "LIMIT_FILE_SIZE"
       ? err.field === "file"
         ? `La factura no puede pesar más de ${TRANSACTION_FILE_MAX_MB} MB`
         : `La imagen no puede pesar más de ${err.field === "images" ? PRODUCT_IMAGE_MAX_MB : 5} MB`
-      : (isMulter && MULTER_MESSAGES[err.code]) || err.message || "Error interno del servidor.";
+      : (isMulter && MULTER_MESSAGES[err.code]) || err.message || "Solicitud inválida.";
   res.status(status).json({ message });
 });
 

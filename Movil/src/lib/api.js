@@ -106,9 +106,14 @@ async function request(path, { method = "GET", body } = {}) {
     ?.includes("application/json");
   const payload = isJson ? await response.json().catch(() => ({})) : null;
 
-  // El 403 de «solo administradores» (code ADMIN_ONLY) no es una sesión
-  // inválida: se muestra su mensaje y la sesión sigue abierta.
-  if (response.status === 401 || (response.status === 403 && payload?.code !== "ADMIN_ONLY")) {
+  // Sesión inválida: un 401 o un 403 sin `code`. Un 403 con `code` (ADMIN_ONLY,
+  // ACCOUNT_FORBIDDEN, MODULE_FORBIDDEN: falta de permiso para esa acción) no es una
+  // sesión inválida: se muestra su mensaje y la sesión sigue abierta. El login
+  // tampoco pasa por aquí: sus 401, 403 y 429 son respuestas normales («Correo o
+  // contraseña incorrectos», «Tu cuenta está desactivada…», «Demasiados
+  // intentos…») y se muestran tal cual.
+  const isLogin = path === "/auth/login";
+  if (!isLogin && (response.status === 401 || (response.status === 403 && !payload?.code))) {
     const error = new Error("Sesión expirada. Inicia sesión nuevamente.");
     error.status = response.status;
     emitUnauthorized();

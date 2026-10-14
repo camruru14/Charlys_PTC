@@ -20,10 +20,15 @@ const STATUS_FILTERS = {
 
 /*
   Configuración > Personal y permisos: registro completo de empleados
-  (activos e inactivos), con alta y edición. Cada fila muestra a qué paneles
-  tendría acceso según su área y puesto (informativo, ver lib/permissions.js).
+  (activos e inactivos). Un administrador da de alta, edita y elimina; cualquier
+  otro empleado ve la lista de solo lectura y, en su propia fila, un acceso a
+  Mi cuenta (el backend lo exige igual: routes/employees.js). Cada fila muestra
+  a qué paneles tendría acceso según su área y puesto (informativo, ver
+  lib/permissions.js).
+    isAdmin: quien tiene la sesión es administrador (useAuth().user.isAdmin)
+    currentUserId / onOpenAccount: su propia fila lleva a Configuración > Mi cuenta
 */
-function PersonalPermisos({ employees, loading, error, refetch }) {
+function PersonalPermisos({ employees, loading, error, refetch, isAdmin = false, currentUserId, onOpenAccount }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   // null = cerrado; { employee: null } = nuevo; { employee } = editar.
@@ -63,7 +68,11 @@ function PersonalPermisos({ employees, loading, error, refetch }) {
             <PermissionLine employee={e} />
           </div>
         </div>
-        <RowAction icon={IconEdit} label={`Editar a ${fullName(e)}`} onClick={() => setEditing({ employee: e })} />
+        {isAdmin ? (
+          <RowAction icon={IconEdit} label={`Editar a ${fullName(e)}`} onClick={() => setEditing({ employee: e })} />
+        ) : String(e._id) === String(currentUserId) ? (
+          <RowAction icon={IconEdit} label="Editar mi cuenta" onClick={onOpenAccount} />
+        ) : null}
       </div>
     );
   };
@@ -72,11 +81,17 @@ function PersonalPermisos({ employees, loading, error, refetch }) {
     <>
       <ListCard
         title="Personal y permisos"
-        subtitle="Registro completo de empleados. Los permisos son informativos: se calculan con el área y el puesto, y todavía no restringen el acceso."
+        subtitle={
+          isAdmin
+            ? "Registro completo de empleados. Los permisos son informativos: se calculan con el área y el puesto, y todavía no restringen el acceso."
+            : "Registro de empleados, solo lectura. Solo un administrador puede agregar, editar o eliminar cuentas; tus propios datos se cambian en Mi cuenta."
+        }
         action={
-          <Button size="detail" icon={IconPlus} onClick={() => setEditing({ employee: null })}>
-            Agregar empleado
-          </Button>
+          isAdmin ? (
+            <Button size="detail" icon={IconPlus} onClick={() => setEditing({ employee: null })}>
+              Agregar empleado
+            </Button>
+          ) : null
         }
         toolbar={
           <>
@@ -102,7 +117,7 @@ function PersonalPermisos({ employees, loading, error, refetch }) {
         resetKey={`${query}|${status}`}
       />
 
-      {editing ? (
+      {isAdmin && editing ? (
         <EmployeeFormModal
           key={editing.employee?._id || "new"}
           employee={editing.employee}

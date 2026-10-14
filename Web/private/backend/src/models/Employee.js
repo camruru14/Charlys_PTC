@@ -66,6 +66,13 @@ const employeeSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    // Versión de las sesiones: el JWT lleva la suya (`tv`) y authMiddleware solo
+    // lo acepta si coincide. Subirla cierra todas las sesiones abiertas del
+    // empleado (cambio de contraseña o correo, desactivación).
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
     hireDate: {
       type: Date,
       default: Date.now,

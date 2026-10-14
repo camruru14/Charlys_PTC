@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useEmployees } from "../hooks/useEmployees";
+import { useAuth } from "../hooks/useAuth";
 import { useAutoSeen } from "../hooks/useActivity";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import AttendanceRow from "../components/employees/AttendanceRow";
@@ -36,6 +37,8 @@ export default function EmpleadoDetalleScreen({ navigation, route }) {
   // El empleado abierto no se vuelve a marcar como nuevo.
   useAutoSeen("empleados.personal", id);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
+  // Editar la cuenta de un empleado es solo de administradores (el backend lo exige).
+  const isAdmin = Boolean(useAuth().user?.isAdmin);
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
 
   useFocusEffect(
@@ -61,20 +64,22 @@ export default function EmpleadoDetalleScreen({ navigation, route }) {
       headerSubtitle: [roleLine(employee), employee.dui ? `DUI ${formatDui(employee.dui)}` : null].filter(Boolean).join(" · "),
       // Editar al empleado es de Configuración > Personal y permisos en la
       // web; aquí se deja a mano desde la ficha.
-      headerRight: () => (
-        <IconButton
-          icon="more"
-          accessibilityLabel="Más acciones del empleado"
-          onPress={() =>
-            Alert.alert(fullName(employee), undefined, [
-              { text: "Editar empleado", onPress: () => navigation.navigate("EmpleadoForm", { id: employee._id }) },
-              { text: "Cancelar", style: "cancel" },
-            ])
-          }
-        />
-      ),
+      headerRight: isAdmin
+        ? () => (
+            <IconButton
+              icon="more"
+              accessibilityLabel="Más acciones del empleado"
+              onPress={() =>
+                Alert.alert(fullName(employee), undefined, [
+                  { text: "Editar empleado", onPress: () => navigation.navigate("EmpleadoForm", { id: employee._id }) },
+                  { text: "Cancelar", style: "cancel" },
+                ])
+              }
+            />
+          )
+        : undefined,
     });
-  }, [navigation, employee]);
+  }, [navigation, employee, isAdmin]);
 
   if (!employee) {
     if (loading) return <LoadingState />;
