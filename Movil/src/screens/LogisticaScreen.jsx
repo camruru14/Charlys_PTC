@@ -41,7 +41,7 @@ import {
 } from "../lib/logistics";
 import { useBottomPad } from "../hooks/useBottomPad";
 import MarkAllSeen from "../components/ui/MarkAllSeen";
-import { useActivity } from "../hooks/useActivity";
+import { useActivity, useAutoSeen } from "../hooks/useActivity";
 
 // Mismas vistas que Web/private/frontend/src/pages/Logistica.jsx.
 const TABS = [
@@ -108,6 +108,8 @@ export default function LogisticaScreen({ navigation }) {
   const [routeQuery, setRouteQuery] = useState("");
   const range = useDateRange();
   const [buildingId, setBuildingId] = useState(null);
+  // La ruta elegida en «Para despacho» no se vuelve a marcar como nueva mientras está abierta.
+  useAutoSeen("logistica.despacho", buildingId);
   const [newOpen, setNewOpen] = useState(false);
   // Acciones en curso, por clave («order:<id>»): cada botón solo se bloquea
   // mientras corre SU acción, no todos a la vez.
@@ -182,7 +184,7 @@ export default function LogisticaScreen({ navigation }) {
   const movedRoutes = useMovedIds(routes, routeGroup);
 
   const reloadAll = () => Promise.all([refresh(), refreshOrders()]);
-  const openRoute = (id) => navigation.navigate("RutaDetalle", { id });
+  const openRoute = (id, activityKey) => navigation.navigate("RutaDetalle", { id, activityKey });
 
   // Acción directa: si hay `undo`, el Toast ofrece «Deshacer».
   async function act(run, message, undo, key = "global") {
@@ -304,7 +306,7 @@ export default function LogisticaScreen({ navigation }) {
                 unseen={isUnseen("logistica.transito", item._id)}
                 onPress={() => {
                   markSeen("logistica.transito", item._id);
-                  openRoute(item._id);
+                  openRoute(item._id, "logistica.transito");
                 }}
               />
             </MovedFlash>
@@ -376,7 +378,7 @@ export default function LogisticaScreen({ navigation }) {
             {formatNumber(buildingRoute.orders?.length || 0)}{" "}
             {buildingRoute.orders?.length === 1 ? "pedido" : "pedidos"}
           </Text>
-          <Pressable onPress={() => openRoute(buildingRoute._id)} hitSlop={8} accessibilityRole="link">
+          <Pressable onPress={() => openRoute(buildingRoute._id, "logistica.despacho")} hitSlop={8} accessibilityRole="link">
             <Text style={styles.noticeLink}>Ver ruta</Text>
           </Pressable>
         </View>
@@ -416,11 +418,11 @@ export default function LogisticaScreen({ navigation }) {
                 busy={isBusy(`order:${item._id}`)}
                 onAdd={add}
                 onRemove={removeFromRoute}
-                onOpenRoute={openRoute}
+                onOpenRoute={(id) => openRoute(id, "logistica.despacho")}
                 onNewRoute={() => setNewOpen(true)}
                 onPress={() => {
                   markSeen("logistica.despacho", item._id);
-                  navigation.navigate("PedidoDetalle", { id: item._id });
+                  navigation.navigate("PedidoDetalle", { id: item._id, activityKey: "logistica.despacho" });
                 }}
               />
             </MovedFlash>

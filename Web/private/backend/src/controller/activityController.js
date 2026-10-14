@@ -15,6 +15,8 @@ const FALLBACK_START = new Date();
 
 // Máximo de ids sin ver que se devuelven por pestaña (el conteo sí es completo).
 const MAX_UNSEEN_IDS = 200;
+// Máximo de registros que se pueden marcar vistos en una sola llamada (entityIds).
+const MAX_SEEN_BATCH = 200;
 
 // Pestañas a las que tiene acceso el empleado: las de sus módulos (lib/permissions.js).
 const accessibleKeys = (employee) => {
@@ -103,23 +105,56 @@ activityController.getCounts = async (req, res) => {
   }
 };
 
-// POST /activity/seen { key, entityId }: el empleado abrió ese registro en esa
-// pestaña (solo se limpia para él). { key, all: true }: marca TODO visto en la
-// pestaña (mueve su base a ahora). Responde los conteos actualizados.
+// El «visto» nunca queda antes de la última actividad que ya existe: la tienda
+// registra sus pedidos desde otro servidor (otro reloj), y si el suyo va
+// adelantado una actividad con `at` > ahora dejaría el registro sin ver aunque
+// el empleado lo acabe de abrir. Por eso seenAt = max(ahora, última actividad).
+const later = (now, at) => (at && at > now ? at : now);
+
+// Marca vistos los registros `ids` (ObjectId) de la pestaña `key`: una sola
+// consulta con la última actividad de cada uno y un solo bulkWrite.
+async function markRecordsSeen(employee, key, ids) {
+  const now = new Date();
+  const rows = await activityModel.aggregate([
+    { $match: { keys: key, entityId: { $in: ids } } },
+    { $group: { _id: "$entityId", last: { $max: "$at" } } },
+  ]);
+  const lastOf = new Map(rows.map((r) => [String(r._id), r.last]));
+  await activitySeenModel.bulkWrite(
+    ids.map((entityId) => ({
+      updateOne: {
+        filter: { employee, key, entityId },
+        update: { $set: { seenAt: later(now, lastOf.get(String(entityId))) } },
+        upsert: true,
+      },
+    })),
+    { ordered: false },
+  );
+}
+
+// POST /activity/seen: el empleado vio algo (solo se limpia para él).
+//   { key, entityId }    un registro que abrió en esa pestaña
+//   { key, entityIds }   varios registros a la vez (hasta 200), p. ej. las ventas de un día
+//   { key, all: true }   TODO lo de la pestaña (mueve su base a ahora)
+// Responde los conteos actualizados.
 activityController.markSeen = async (req, res) => {
   try {
     const employee = sessionEmployee(req);
-    const { key, entityId, all } = req.body || {};
+    const { key, entityId, entityIds, all } = req.body || {};
     if (!ACTIVITY_KEYS.includes(key)) throw new HttpError(400, "Pestaña inválida");
-    const now = new Date();
 
     if (all === true) {
-      await activitySeenModel.updateOne({ employee, key, entityId: null }, { $set: { seenAt: now } }, { upsert: true });
+      const now = new Date();
+      const newest = await activityModel.findOne({ keys: key }).sort({ at: -1 }).select("at").lean();
+      await activitySeenModel.updateOne({ employee, key, entityId: null }, { $set: { seenAt: later(now, newest?.at) } }, { upsert: true });
       // Lo anterior a la base ya está visto: los «vistos» por registro sobran.
       await activitySeenModel.deleteMany({ employee, key, entityId: { $ne: null } });
     } else {
-      if (!mongoose.isValidObjectId(entityId)) throw new HttpError(400, "Registro inválido");
-      await activitySeenModel.updateOne({ employee, key, entityId: new mongoose.Types.ObjectId(entityId) }, { $set: { seenAt: now } }, { upsert: true });
+      const raw = Array.isArray(entityIds) ? entityIds : [entityId];
+      if (!raw.length || !raw.every((id) => mongoose.isValidObjectId(id))) throw new HttpError(400, "Registro inválido");
+      const ids = [...new Set(raw.map(String))];
+      if (ids.length > MAX_SEEN_BATCH) throw new HttpError(400, `Máximo ${MAX_SEEN_BATCH} registros por llamada`);
+      await markRecordsSeen(employee, key, ids.map((id) => new mongoose.Types.ObjectId(id)));
     }
     res.json(await countsFor(employee));
   } catch (error) {

@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useEmployees } from "../hooks/useEmployees";
+import { useAutoSeen } from "../hooks/useActivity";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import AttendanceRow from "../components/employees/AttendanceRow";
 import { employeeStatus, roleLine } from "../components/employees/EmployeeRow";
@@ -32,6 +33,8 @@ import { statusTone } from "../lib/statusTones";
 // params: { id, month: "AAAA-MM" (el elegido en Empleados) }
 export default function EmpleadoDetalleScreen({ navigation, route }) {
   const id = route.params?.id;
+  // El empleado abierto no se vuelve a marcar como nuevo.
+  useAutoSeen("empleados.personal", id);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
 

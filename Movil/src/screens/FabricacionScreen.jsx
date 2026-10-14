@@ -468,7 +468,7 @@ export default function FabricacionScreen({ navigation }) {
               unseen={isUnseen("fabricacion.lotes", item._id)}
               onPress={() => {
                 markSeen("fabricacion.lotes", item._id);
-                navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes" });
+                navigation.navigate("LoteDetalle", { id: item._id, backLabel: "Lotes", activityKey: "fabricacion.lotes" });
               }}
             />
           )}
@@ -550,11 +550,11 @@ export default function FabricacionScreen({ navigation }) {
               busy={busy}
               onOpenLot={(lot) => {
                 markSeen("fabricacion.pedidos", g.order._id);
-                navigation.navigate("LoteDetalle", { id: lot.batch._id, backLabel: "Pedidos" });
+                navigation.navigate("LoteDetalle", { id: lot.batch._id, backLabel: "Pedidos", activityKey: "fabricacion.pedidos", activityId: g.order._id });
               }}
               onOpenOrder={() => {
                 markSeen("fabricacion.pedidos", g.order._id);
-                navigation.navigate("PedidoDetalle", { id: g.order._id });
+                navigation.navigate("PedidoDetalle", { id: g.order._id, activityKey: "fabricacion.pedidos" });
               }}
               onResume={resumeLots}
               onPackCompleted={(lots) => packLots(g, lots)}

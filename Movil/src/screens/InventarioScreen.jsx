@@ -378,7 +378,7 @@ export default function InventarioScreen({ navigation }) {
               unseen={isUnseen("inventario.pedidos", o._id)}
               onPress={() => {
                 markSeen("inventario.pedidos", o._id);
-                navigation.navigate("PedidoDetalle", { id: o._id });
+                navigation.navigate("PedidoDetalle", { id: o._id, activityKey: "inventario.pedidos" });
               }}
             />
           )}

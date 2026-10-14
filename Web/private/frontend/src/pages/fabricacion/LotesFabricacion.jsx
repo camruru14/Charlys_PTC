@@ -90,8 +90,9 @@ function BatchListRow({ batch, selected, unseen, onSelect }) {
 */
 function LotesFabricacion({ batches, list, loading, error, refetch, mutateBatches, operators, onEdit, onDelete }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("fabricacion.lotes");
   const [selectedId, setSelectedId] = useUrlState("id");
+  // El registro abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
+  const { isUnseen, markSeen } = useUnseen("fabricacion.lotes", { openId: selectedId });
   const [query, setQuery] = useState("");
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estadoLote", "todos", { allowed: STATE_KEYS });

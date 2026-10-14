@@ -196,11 +196,12 @@ function OrderDetail({ order, canDelete, onDelete }) {
 
 function Pedidos() {
   // Novedades: los pedidos nuevos o que cambiaron se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("pedidos");
   const { confirm, confirmProps } = useConfirm();
   const { user } = useAuth();
   const { data, loading, error, refetch } = useFetch("/orders");
   const [selectedId, setSelectedId] = useUrlState("id");
+  // El pedido abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
+  const { isUnseen, markSeen } = useUnseen("pedidos", { openId: selectedId });
   const [search, setSearch] = useState("");
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });

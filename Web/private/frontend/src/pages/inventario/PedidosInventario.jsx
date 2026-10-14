@@ -480,8 +480,9 @@ function OrderDetail({ order, stockMap, busy, openBox, setOpenBox, actions }) {
 
 function PedidosInventario({ orders, ordersLoading, ordersError, refetchOrders, mutateOrders, finishedItems, refetchInventory }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("inventario.pedidos");
   const [selectedId, setSelectedId] = useUrlState("id");
+  // El registro abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
+  const { isUnseen, markSeen } = useUnseen("inventario.pedidos", { openId: selectedId });
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estado", "todos", { allowed: STATE_KEYS });
   const [query, setQuery] = useState("");

@@ -102,7 +102,7 @@ export default function PedidosScreen({ navigation, route }) {
           unseen={isUnseen("pedidos", item._id)}
           onPress={() => {
             markSeen("pedidos", item._id);
-            navigation.navigate("PedidoDetalle", { id: item._id });
+            navigation.navigate("PedidoDetalle", { id: item._id, activityKey: "pedidos" });
           }}
         />
       )}

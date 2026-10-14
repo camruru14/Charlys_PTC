@@ -477,12 +477,13 @@ function RoutePanel({ route, ordersById, availability, isBusy, act, onRemove, on
   (maestro) y la ruta abierta que se está armando (panel derecho).
 */
 function ParaDespacho({ orders, ordersLoading, ordersError, routes, openRouteId, onOpenRoute, filter, onFilter, availability, isBusy, act, onRemove, onNewRoute }) {
-  // Novedades: pedidos listos para despachar y rutas por salir, marcados hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("logistica.despacho");
   const ordersById = useMemo(() => new Map(orders.map((o) => [String(o._id), o])), [orders]);
   const pendingRoutes = routes.filter((r) => !r.departedAt);
   const openRoute = routes.find((r) => r._id === openRouteId) || null;
   const buildingRoute = openRoute && !openRoute.departedAt ? openRoute : null;
+  // Novedades: pedidos listos para despachar y rutas por salir, marcados hasta que se abren.
+  // La ruta abierta en el panel no se marca como nueva (agregarle pedidos es actividad propia).
+  const { isUnseen, markSeen } = useUnseen("logistica.despacho", { openId: buildingRoute?._id });
   // Aquí «la lista» del detalle son las rutas por salir (el selector de arriba).
   useRememberedSelection("logistica/despacho", { selectedId: openRouteId, setSelectedId: onOpenRoute, ids: pendingRoutes.map((r) => r._id) });
 

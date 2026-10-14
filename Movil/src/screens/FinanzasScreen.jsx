@@ -65,7 +65,7 @@ export default function FinanzasScreen({ navigation }) {
   const { categories, refresh: refreshCategories } = useExpenseCategories();
 
   // Novedades: la burbuja va en Movimientos; los movimientos nuevos se marcan hasta que se abren.
-  const { counts, isUnseen, markSeen } = useActivity();
+  const { counts, isUnseen, markSeen, markSeenMany } = useActivity();
   const tabs = TABS.map((t) => (t.value === "movimientos" ? { ...t, badge: counts.finanzas } : t));
 
   const [tab, setTab] = useState("resumen");
@@ -309,7 +309,7 @@ export default function FinanzasScreen({ navigation }) {
                       unseen={row.sales.some((t) => isUnseen("finanzas", t._id))}
                       onPress={() => {
                         // Al abrir las ventas del día, se marcan vistas todas las de ese día.
-                        row.sales.forEach((t) => markSeen("finanzas", t._id));
+                        markSeenMany("finanzas", row.sales.map((t) => t._id));
                         navigation.navigate("VentasDia", { day: day.key });
                       }}
                     />

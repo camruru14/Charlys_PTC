@@ -259,7 +259,7 @@ function RouteDetail({ route, availability, isBusy, act, onRemove }) {
 */
 function EnTransito({ routes, loading, error, selectedId, onSelect, unassignedCount, onAssign, filter, onFilter, availability, isBusy, act, onRemove }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("logistica.transito");
+  const { isUnseen, markSeen } = useUnseen("logistica.transito", { openId: selectedId });
   const range = useDateRange();
   const [query, setQuery] = useState("");
   const selected = routes.find((r) => r._id === selectedId) || null;

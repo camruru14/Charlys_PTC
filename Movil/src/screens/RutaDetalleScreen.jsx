@@ -3,6 +3,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useOrders } from "../hooks/useOrders";
 import { useRoutes } from "../hooks/useRoutes";
+import { useAutoSeen } from "../hooks/useActivity";
 import CrewCard from "../components/logistics/CrewCard";
 import { CrewSheet } from "../components/logistics/RouteSheets";
 import BottomBar from "../components/ui/BottomBar";
@@ -66,6 +67,8 @@ function StopNumber({ n, state }) {
 export default function RutaDetalleScreen({ navigation, route: navRoute }) {
   const bottomPad = useBottomPad(24);
   const id = navRoute.params?.id;
+  // Pestaña de novedades desde la que se abrió: la ruta abierta no se vuelve a marcar como nueva.
+  useAutoSeen(navRoute.params?.activityKey, id);
   const toast = useToast();
   const {
     routes,

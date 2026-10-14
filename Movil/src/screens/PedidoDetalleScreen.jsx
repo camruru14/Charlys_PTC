@@ -4,6 +4,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 import { useOrders } from "../hooks/useOrders";
 import { useAuth } from "../hooks/useAuth";
 import { useInventory } from "../hooks/useInventory";
+import { useAutoSeen } from "../hooks/useActivity";
 import BottomBar from "../components/ui/BottomBar";
 import BottomSheet from "../components/ui/BottomSheet";
 import Button from "../components/ui/Button";
@@ -256,6 +257,8 @@ function deleteBlocker(order) {
 export default function PedidoDetalleScreen({ navigation, route }) {
   const bottomPad = useBottomPad(24);
   const id = route.params?.id;
+  // Pestaña de novedades desde la que se abrió: el pedido abierto no se vuelve a marcar como nuevo.
+  useAutoSeen(route.params?.activityKey, id);
   const toast = useToast();
   const { user } = useAuth();
   const { orders, loading, refreshing, error, refresh, eliminar } = useOrders();

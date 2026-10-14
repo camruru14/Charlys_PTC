@@ -4,6 +4,7 @@ import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react
 import { useBatches } from "../hooks/useBatches";
 import { useOrders } from "../hooks/useOrders";
 import { useInventory } from "../hooks/useInventory";
+import { useAutoSeen } from "../hooks/useActivity";
 import { useWarehouses } from "../hooks/useWarehouses";
 import { useEmployees } from "../hooks/useEmployees";
 import { useProductionLines } from "../hooks/useProductionLines";
@@ -70,6 +71,8 @@ function journey(labels, stage) {
 export default function LoteDetalleScreen({ navigation, route }) {
   const bottomPad = useBottomPad(24);
   const id = route.params?.id;
+  // Registro de novedades que se abrió (el lote en Lotes, o el pedido en Fabricación › Pedidos).
+  useAutoSeen(route.params?.activityKey, route.params?.activityId || id);
   const toast = useToast();
   const { batches, loading, refreshing, error, refresh, eliminar } = useBatches();
   const { orders, refresh: refreshOrders } = useOrders();

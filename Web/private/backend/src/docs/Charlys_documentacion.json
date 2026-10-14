@@ -2553,8 +2553,8 @@
     "/api/activity/seen": {
       "post": {
         "tags": ["Autenticación"],
-        "summary": "Marcar un registro (o toda una pestaña) como visto, solo para el empleado de la sesión",
-        "description": "Con `{ key, entityId }` hace upsert de `seenAt = ahora` para ese registro en esa pestaña. Con `{ key, all: true }` mueve la base del empleado en esa pestaña a ahora (todo lo anterior queda visto). Responde los conteos ya actualizados.",
+        "summary": "Marcar uno o varios registros (o toda una pestaña) como vistos, solo para el empleado de la sesión",
+        "description": "Con `{ key, entityId }` hace upsert del visto de ese registro en esa pestaña; con `{ key, entityIds: [...] }` lo hace para varios a la vez (máximo 200, sin duplicados, en un solo bulkWrite). El `seenAt` es el máximo entre ahora y la última actividad ya registrada del registro, para que un desfase de reloj entre backends (la tienda registra sus pedidos desde otro servidor) no lo deje sin ver. Con `{ key, all: true }` mueve la base del empleado en esa pestaña a ahora, o a la última actividad si es posterior (todo lo anterior queda visto). Responde los conteos ya actualizados.",
         "security": [{ "cookieAuth": [] }],
         "requestBody": {
           "required": true,
@@ -2564,7 +2564,8 @@
                 "type": "object",
                 "properties": {
                   "key": { "type": "string", "example": "fabricacion.pedidos" },
-                  "entityId": { "type": "string", "description": "Registro abierto (ObjectId); omitir con all", "example": "664b8a2f1b4e2c001f3a5b67" },
+                  "entityId": { "type": "string", "description": "Registro abierto (ObjectId); omitir con entityIds o all", "example": "664b8a2f1b4e2c001f3a5b67" },
+                  "entityIds": { "type": "array", "maxItems": 200, "items": { "type": "string" }, "description": "Varios registros (ObjectId) de la misma pestaña, en una sola llamada; omitir con entityId o all", "example": ["664b8a2f1b4e2c001f3a5b67", "664b8a2f1b4e2c001f3a5b68"] },
                   "all": { "type": "boolean", "description": "true: marcar toda la pestaña como vista" }
                 },
                 "required": ["key"]
@@ -2587,7 +2588,7 @@
             "$ref": "#/components/responses/UnauthorizedError"
           },
           "400": {
-            "description": "Clave de pestaña inválida",
+            "description": "Clave de pestaña inválida, registro inválido o más de 200 registros",
             "content": {
               "application/json": {
                 "schema": {

@@ -500,8 +500,9 @@ function OrderDetail({ group, operators, lines, busy, actions }) {
 */
 function PedidosFabricacion({ groups: allOrderGroups, loading, error, refetchAll, refetchOrders, refetchBatches, mutateOrders, mutateBatches, operators, lines }) {
   // Novedades: los registros nuevos o que cambiaron se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("fabricacion.pedidos");
   const [selectedId, setSelectedId] = useUrlState("id");
+  // El registro abierto en el detalle no se marca como nuevo y, si algo lo vuelve a marcar, se ve solo.
+  const { isUnseen, markSeen } = useUnseen("fabricacion.pedidos", { openId: selectedId });
   const [query, setQuery] = useState("");
   const range = useDateRange();
   const [estado, setEstado] = useUrlState("estadoPedido", "todos", { allowed: STATE_KEYS });

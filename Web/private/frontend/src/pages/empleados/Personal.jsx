@@ -162,7 +162,7 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
   const [query, setQuery] = useState("");
   const [area, setArea] = useState("all");
   // Novedades: los empleados nuevos se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("empleados.personal");
+  const { isUnseen, markSeen } = useUnseen("empleados.personal", { openId: selectedId });
 
   const areaOptions = useMemo(() => {
     const counts = new Map();

@@ -265,7 +265,7 @@ function Ledger({
   now = new Date(),
 }) {
   // Novedades: los movimientos nuevos (y las ventas de la tienda) se marcan hasta que se abren.
-  const { isUnseen, markSeen } = useUnseen("finanzas");
+  const { isUnseen, markSeen, markSeenMany } = useUnseen("finanzas");
   // Ventas abiertas ({ open, all }: días) y a qué página/filtros pertenecen: al cambiar de página,
   // rango, pestaña, categoría o búsqueda se cierran todas.
   const [expanded, setExpanded] = useState({ key: "", open: new Set(), all: new Set() });
@@ -331,7 +331,7 @@ function Ledger({
             unseen={row.sales.some((t) => isUnseen(t._id))}
             onToggle={() => {
               // Al abrir la fila agrupada, se marcan vistas todas las ventas de ese día.
-              if (!current.open.has(row.day)) row.sales.forEach((t) => markSeen(t._id));
+              if (!current.open.has(row.day)) markSeenMany(row.sales.map((t) => t._id));
               toggleDay(row.day);
             }}
             onShowAll={() => showAllOf(row.day)}
