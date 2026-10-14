@@ -132,6 +132,10 @@ async function markRecordsSeen(employee, key, ids) {
   );
 }
 
+// Clave duplicada (E11000), también dentro de un MongoBulkWriteError.
+const isDuplicateKey = (error) =>
+  error?.code === 11000 || (Array.isArray(error?.writeErrors) && error.writeErrors.length > 0 && error.writeErrors.every((e) => (e.code ?? e.err?.code) === 11000));
+
 // POST /activity/seen: el empleado vio algo (solo se limpia para él).
 //   { key, entityId }    un registro que abrió en esa pestaña
 //   { key, entityIds }   varios registros a la vez (hasta 200), p. ej. las ventas de un día
@@ -158,6 +162,8 @@ activityController.markSeen = async (req, res) => {
     }
     res.json(await countsFor(employee));
   } catch (error) {
+    // Un problema de índices (E11000) queda claro en los logs en vez de un 500 genérico.
+    if (isDuplicateKey(error)) console.log("[novedades] índice duplicado al marcar visto: " + error.message);
     sendError(res, error);
   }
 };
