@@ -1,3 +1,4 @@
+import { afterSheetClose } from "../../lib/afterSheetClose";
 import { useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet from "../ui/BottomSheet";
@@ -40,7 +41,7 @@ export default function ProductActionsSheet({ product, onClose, onAction }) {
     // Las acciones que abren un Alert o el selector de fotos esperan a que la
     // hoja termine de cerrarse (en iOS no se muestran sobre un Modal que se va).
     if (action === "edit") onAction(action, target);
-    else setTimeout(() => onAction(action, target), 260);
+    else afterSheetClose(() => onAction(action, target));
   };
 
   return (

@@ -1,3 +1,4 @@
+import { afterSheetClose } from "../lib/afterSheetClose";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -155,7 +156,7 @@ export default function FinanzasScreen({ navigation }) {
     const t = menuFor;
     setMenuFor(null);
     // La hoja se cierra con animación: la acción espera a que termine.
-    setTimeout(() => fn(t), 280);
+    afterSheetClose(() => fn(t));
   };
   const viewInvoice = (t) =>
     Linking.openURL(t.attachment.url).catch(() => Alert.alert("No se pudo abrir la factura", t.attachment.name || t.attachment.url));

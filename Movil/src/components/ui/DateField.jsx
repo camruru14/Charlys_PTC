@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { colors } from "../../lib/theme";
+import BottomSheet from "./BottomSheet";
+import Button from "./Button";
 import Icon from "./Icon";
 import { FieldLabel, fieldStyles } from "./fieldStyles";
 
@@ -56,6 +58,10 @@ function displayValue(value, mode) {
   return `${String(d).padStart(2, "0")} ${MONTHS_SHORT[m - 1]} ${y}`;
 }
 
+// Android: diálogo nativo (se cierra solo al elegir o cancelar). iOS: la rueda (spinner) no tiene
+// botón propio y solo avisa cuando se mueve, así que vive en una hoja con «Listo» / «Cancelar»:
+// «Listo» confirma lo que muestra la rueda aunque no se haya movido (con el campo vacío, hoy o la
+// hora actual) y «Cancelar» cierra sin cambiar nada.
 export default function DateField({
   label,
   value,
@@ -66,13 +72,30 @@ export default function DateField({
   style,
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  // iOS: valor que muestra la rueda mientras la hoja está abierta.
+  const [draft, setDraft] = useState(() => new Date());
   const placeholder = mode === "time" ? "Seleccionar hora" : "Seleccionar fecha";
 
   const handleChange = (event, selectedDate) => {
-    // Android cierra el picker solo al elegir/cancelar; iOS lo deja inline.
-    if (Platform.OS === "android") setShowPicker(false);
+    if (Platform.OS === "ios") {
+      // Solo se actualiza el borrador: el valor se confirma con «Listo».
+      if (selectedDate) setDraft(selectedDate);
+      return;
+    }
+    // Android cierra el diálogo solo al elegir/cancelar.
+    setShowPicker(false);
     if (event.type === "dismissed") return;
     if (selectedDate) onChange(toInputValue(selectedDate, mode));
+  };
+
+  const open = () => {
+    if (Platform.OS === "ios") setDraft(parseInputValue(value, mode));
+    setShowPicker(true);
+  };
+
+  const confirm = () => {
+    onChange(toInputValue(draft, mode));
+    setShowPicker(false);
   };
 
   return (
@@ -80,7 +103,7 @@ export default function DateField({
       <FieldLabel label={label} required={required} />
       <Pressable
         style={({ pressed }) => [fieldStyles.box, pressed && { backgroundColor: colors.surface2 }]}
-        onPress={() => setShowPicker(true)}
+        onPress={open}
         hitSlop={4}
         accessibilityRole="button"
         accessibilityLabel={`${label || placeholder}: ${value ? displayValue(value, mode) : "sin seleccionar"}`}
@@ -91,12 +114,34 @@ export default function DateField({
         <Icon name="calendar" size={18} color={colors.faint} />
       </Pressable>
 
-      {showPicker ? (
+      {Platform.OS === "ios" ? (
+        <BottomSheet
+          visible={showPicker}
+          onClose={() => setShowPicker(false)}
+          title={label || placeholder}
+          scroll={false}
+          footer={
+            <>
+              <Button title="Listo" onPress={confirm} />
+              <Button title="Cancelar" variant="secondary" onPress={() => setShowPicker(false)} />
+            </>
+          }
+        >
+          <DateTimePicker
+            value={draft}
+            mode={mode}
+            maximumDate={maximumDate}
+            display="spinner"
+            locale="es-SV"
+            onChange={handleChange}
+          />
+        </BottomSheet>
+      ) : showPicker ? (
         <DateTimePicker
           value={parseInputValue(value, mode)}
           mode={mode}
           maximumDate={maximumDate}
-          display={Platform.OS === "ios" ? "spinner" : "default"}
+          display="default"
           onChange={handleChange}
         />
       ) : null}

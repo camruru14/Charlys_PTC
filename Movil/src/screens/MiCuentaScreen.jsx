@@ -1,3 +1,4 @@
+import { afterSheetClose } from "../lib/afterSheetClose";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
@@ -153,8 +154,13 @@ export default function MiCuentaScreen({ navigation }) {
 
   // La foto se sube (o se quita) al momento y la sesión se actualiza para que
   // el menú lateral la muestre.
-  const changePhoto = async (source) => {
+  // Cámara, galería y Alert esperan a que la hoja termine de cerrarse (en iOS no se presentan encima).
+  const changePhoto = (source) => {
     setPhotoSheet(false);
+    afterSheetClose(() => uploadPhoto(source));
+  };
+
+  const uploadPhoto = async (source) => {
     const file = await pickProfilePhoto(source);
     if (!file) return;
     if (file.size && file.size > MAX_PHOTO_BYTES) return Alert.alert("Foto de perfil", "La foto no puede pesar más de 5 MB");
@@ -173,6 +179,10 @@ export default function MiCuentaScreen({ navigation }) {
 
   const removePhoto = () => {
     setPhotoSheet(false);
+    afterSheetClose(confirmRemovePhoto);
+  };
+
+  const confirmRemovePhoto = () => {
     Alert.alert("Quitar foto", "Se quitará tu foto de perfil y volverán tus iniciales.", [
       { text: "Cancelar", style: "cancel" },
       {

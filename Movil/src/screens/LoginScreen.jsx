@@ -36,7 +36,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    // La pantalla de login ocupa toda la ventana (sin cabecera): keyboardVerticalOffset 0. En Android,
+    // con edge-to-edge, el teclado no redimensiona la ventana sola: "height" achica el contenido y el
+    // ScrollView deja alcanzar el botón.
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}

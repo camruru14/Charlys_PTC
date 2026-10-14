@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -24,6 +25,22 @@ import { fonts } from "../../lib/typography";
 // false cuando el contenido ya es una lista (FlatList).
 const OFFSCREEN = 600;
 
+// ¿Hay teclado en pantalla? Con el teclado abierto la hoja ya no necesita el margen de la barra
+// de gestos (insets.bottom): el teclado la cubre y ese margen solo le quitaría espacio al contenido.
+function useKeyboardVisible() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const ios = Platform.OS === "ios";
+    const show = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", () => setVisible(true));
+    const hide = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", () => setVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return visible;
+}
+
 export default function BottomSheet({
   visible,
   onClose,
@@ -35,6 +52,7 @@ export default function BottomSheet({
   dismissable = true,
 }) {
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
   // Se mantiene montado mientras corre la animación de salida.
   const [mounted, setMounted] = useState(visible);
   const progress = useRef(new Animated.Value(0)).current;
@@ -75,9 +93,13 @@ export default function BottomSheet({
       navigationBarTranslucent
       onRequestClose={close}
     >
+      {/* Con edge-to-edge (SDK 57) Android ya no redimensiona la ventana con el teclado: el
+          KeyboardAvoidingView la achica ("height") y el contenido hace scroll, así el botón del
+          pie siempre se alcanza. La raíz ocupa toda la ventana, por eso el offset es 0. */}
       <KeyboardAvoidingView
         style={styles.root}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
       >
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}>
           <Pressable
@@ -89,7 +111,7 @@ export default function BottomSheet({
         </Animated.View>
 
         <Animated.View
-          style={[styles.sheet, { paddingBottom: insets.bottom + 16, transform: [{ translateY }] }]}
+          style={[styles.sheet, { paddingBottom: (keyboardVisible ? 0 : insets.bottom) + 16, transform: [{ translateY }] }]}
           accessibilityViewIsModal
         >
           <View style={styles.handle} />
