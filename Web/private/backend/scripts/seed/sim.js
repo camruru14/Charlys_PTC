@@ -26,6 +26,7 @@ const hashStr = (s) => {
   return h;
 };
 const MIN = 60000;
+const RECENT_DAYS = 9;
 
 class Queue {
   constructor() {
@@ -102,7 +103,7 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
   let ordSeq = 0;
   let routeSeq = 0;
 
-  const lines = ctx.productionLines.filter((l) => l.active !== false).map((l) => ({ name: l.name, freeAt: new Date(0) }));
+  const lines = ctx.productionLines.filter((l) => l.active !== false).map((l) => ({ name: l.name, busy: [] }));
   const drivers = employees
     .filter((e) => e.department === "Logística" && /motorista/i.test(e.position))
     .map((e) => ({ emp: e, busy: false }));
@@ -111,6 +112,9 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
 
   const comboKey = (product, color) => `${product}|${color || ""}`;
   const primaryWh = (product, color) => whNames[hashStr(comboKey(product, color)) % whNames.length];
+
+  const isRecent = (date) => now - date < RECENT_DAYS * 86400000;
+  const lag = () => 0; // (el atraso de lo reciente lo definen los roles de pedido, ver «Arranque»)
 
   const touch = (order, date) => {
     if (!order.updatedAt || date > order.updatedAt) order.updatedAt = date;
@@ -184,20 +188,32 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     return Math.max(60, Math.round((batch.targetQuantity / rate) * 60) + 30);
   }
 
-  // Reserva una línea de producción y programa inicio, (a veces) una parada, y fin del lote.
-  function scheduleProduction(batch, earliest, afterComplete) {
-    let best = null;
-    for (const line of lines) {
-      const start = T.nextOpenTime(new Date(Math.max(earliest.getTime(), line.freeAt.getTime())));
-      if (!best || start < best.start) best = { line, start };
+  // Primer hueco de la línea (en horas de trabajo) donde cabe un lote que dura `total` minutos.
+  function findSlot(line, earliest, total) {
+    let start = T.nextOpenTime(earliest);
+    for (let guard = 0; guard < 500; guard += 1) {
+      const end = T.addWorkMinutes(start, total);
+      const clash = line.busy.find((x) => x.start < end && start < x.end);
+      if (!clash) return { start, end };
+      start = T.nextOpenTime(clash.end);
     }
-    const { line, start } = best;
-    const work = productionMinutes(batch);
+    throw new Error("sin hueco en la línea");
+  }
+
+  // Reserva una línea de producción y programa inicio, (a veces) una parada, y fin del lote.
+  function scheduleProduction(batch, earliest, afterComplete, minWork = 0) {
+    const work = Math.max(minWork, productionMinutes(batch));
     const incident = rng.chance(0.07);
     const stopWork = incident ? Math.round(work * rng.range(0.2, 0.7)) : 0;
     const stopFor = incident ? rng.int(60, 180) : 0;
-    const end = T.addWorkMinutes(start, work + stopFor);
-    line.freeAt = end;
+    let best = null;
+    for (const line of lines) {
+      const slot = findSlot(line, earliest, work + stopFor);
+      if (!best || slot.start < best.slot.start) best = { line, slot };
+    }
+    const { line } = best;
+    const { start, end } = best.slot;
+    line.busy.push({ start, end });
 
     at(start, () => {
       batch.status = "En Proceso";
@@ -251,11 +267,30 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
   function createOrderBatch(order, item, target, date) {
     const batch = newBatch({ product: item.product, color: item.color, category: "Pedido", targetQuantity: target }, date);
     stats.orderBatches += 1;
-    const earliest = new Date(date.getTime() + rng.range(90, 600) * MIN);
-    scheduleProduction(batch, earliest, (end) => {
-      const packAt = T.nextOpenTime(new Date(end.getTime() + rng.range(20, 300) * MIN));
-      at(packAt, () => packManufactured(order, item, batch, packAt));
-    });
+    const role = oinfo.get(order)?.role;
+    let earliest = new Date(date.getTime() + rng.range(90, 600) * MIN);
+    let minWork = 0;
+    if (role === "fab") {
+      // Cola de fabricación: unos esperan su turno (Programado), otros están en la máquina (En Proceso) y otros
+      // ya se fabricaron y esperan que Fabricación los empaque.
+      const u = rng.float();
+      if (u < 0.55) earliest = new Date(now.getTime() + rng.range(60, 30 * 60) * MIN);
+      else if (u < 0.85) {
+        earliest = new Date(Math.max(date.getTime() + 60 * MIN, now.getTime() - rng.range(20, 90) * MIN));
+        minWork = 300;
+      } else earliest = new Date(Math.max(date.getTime() + 60 * MIN, now.getTime() - rng.range(5 * 60, 20 * 60) * MIN));
+    } else if (role === "partial") earliest = new Date(now.getTime() + rng.range(120, 40 * 60) * MIN);
+    else if (role === "wait" || role === "rec" || role === "transit") earliest = new Date(date.getTime() + rng.range(40, 120) * MIN);
+    scheduleProduction(
+      batch,
+      earliest,
+      (end) => {
+        let packAt = T.nextOpenTime(new Date(end.getTime() + rng.range(20, 300) * MIN));
+        if (role === "fab" || role === "partial") packAt = new Date(Math.max(packAt.getTime(), now.getTime() + rng.range(30, 600) * MIN));
+        at(packAt, () => packManufactured(order, item, batch, packAt));
+      },
+      minWork,
+    );
     return batch;
   }
 
@@ -345,20 +380,23 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
   }
 
   function verifyOrder(order, date) {
-    // Las compras de las últimas horas a veces no encuentran existencia y van a fabricación.
-    const recentStockOut = now - order.createdAt < 40 * 3600000;
-    for (const item of order.items) {
+    const role = oinfo.get(order).role;
+    const quickPack = ["wait", "rec", "transit", "partial"].includes(role);
+    const packDelay = () => (quickPack ? rng.range(60, 360) : rng.range(60, 26 * 60));
+    for (const [idx, item] of order.items.entries()) {
       const best = bestWarehouse(item.product, item.color);
-      const bestStock = recentStockOut && rng.chance(0.3) ? 0 : best?.stock || 0;
+      // «fab»: todo el pedido va a fabricación (sin existencia); «partial»: la 1.ª línea sale de bodega y las demás se fabrican.
+      const forceFab = role === "fab" || (role === "partial" && idx > 0);
+      const bestStock = forceFab ? 0 : best?.stock || 0;
       if (bestStock >= item.quantity) {
         takeStock(best, item.quantity, date);
         item.verified = true;
         item.verifiedWarehouse = best.location;
         item.verifiedAt = date;
         stats.linesStock += 1;
-        const packAt = T.nextOpenTime(new Date(date.getTime() + rng.range(60, 26 * 60) * MIN));
+        const packAt = T.nextOpenTime(new Date(date.getTime() + packDelay() * MIN));
         at(packAt, () => packStockLine(order, item, packAt));
-      } else if (item.quantity >= 200 && bestStock >= 100 && rng.chance(0.55)) {
+      } else if (!forceFab && item.quantity >= 200 && bestStock >= 100 && rng.chance(0.55)) {
         // «Tomar X y fabricar Y»: existencia parcial.
         const take = Math.max(50, floorTo(Math.min(bestStock, item.quantity * 0.9), 50));
         const rest = item.quantity - take;
@@ -374,7 +412,7 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
         item.manufacturingBatch = batch._id;
         item.manufacturedAt = date;
         stats.linesSplit += 1;
-        const packAt = T.nextOpenTime(new Date(date.getTime() + rng.range(60, 26 * 60) * MIN));
+        const packAt = T.nextOpenTime(new Date(date.getTime() + packDelay() * MIN));
         at(packAt, () => packStockLine(order, item, packAt));
       } else {
         const batch = createOrderBatch(order, item, item.quantity, date);
@@ -416,7 +454,7 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     };
     orders.push(order);
     orderById.set(String(order._id), order);
-    oinfo.set(order, { zone: c._s.zone, customer: c, firstPackedAt: null, partialUsed: false });
+    oinfo.set(order, { zone: c._s.zone, customer: c, firstPackedAt: null, partialUsed: false, role: it.role, hold: ["wait", "rec", "transit"].includes(it.role), partialForce: it.role === "partial" });
 
     const stamp = new Date(t0.getTime() + rng.int(2, 18));
     customerOrders.push({ _id: newId(stamp), customer: c._id, order: order._id, createdAt: stamp, updatedAt: stamp });
@@ -442,7 +480,8 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
       if (!demand.has(k)) demand.set(k, []);
       demand.get(k).push({ t: t0.getTime(), q: item.quantity });
     }
-    const verifyAt = T.nextOpenTime(new Date(t0.getTime() + rng.range(20, rng.chance(0.25) ? 900 : 300) * MIN));
+    // «proc»: pedidos que todavía no pasan por Almacén (la verificación queda para después de «ahora»).
+    const verifyAt = it.role === "proc" ? new Date(now.getTime() + rng.range(20, 400) * MIN) : T.nextOpenTime(new Date(t0.getTime() + rng.range(20, rng.chance(0.25) ? 900 : 300) * MIN));
     at(verifyAt, () => verifyOrder(order, verifyAt));
   }
 
@@ -540,19 +579,25 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     }
   }
 
-  function planRoutes(date) {
+  function planRoutes(date, extra = null) {
     const key = T.dayKeyOf(date);
     const dow = T.dowOf(key);
-    const zonesToday = Object.keys(D.ZONE_ROUTE_DAYS).filter((z) => D.ZONE_ROUTE_DAYS[z].includes(dow));
+    let zonesToday = extra ? Object.keys(D.ZONE_ROUTE_DAYS) : Object.keys(D.ZONE_ROUTE_DAYS).filter((z) => D.ZONE_ROUTE_DAYS[z].includes(dow));
     const waiting = [];
     for (const order of orders) {
       if (order.status === "Entregado" || order.delivery?.route) continue;
       if (!order.items.some(carriable)) continue;
       const info = oinfo.get(order);
-      if (!zonesToday.includes(info.zone)) continue;
+      if (extra) {
+        // Las rutas extra solo llevan los pedidos reservados para ellas (rol «transit» o «rec»).
+        if (info.role !== extra.role || !info.hold) continue;
+      } else {
+        if (info.hold) continue;
+        if (!zonesToday.includes(info.zone)) continue;
+      }
       if (order.status === "Empacado") {
         waiting.push(order);
-      } else if (!info.partialUsed && info.firstPackedAt && date - info.firstPackedAt > 30 * 3600000 && rng.chance(0.4)) {
+      } else if (!extra && !info.partialUsed && info.firstPackedAt && (info.partialForce ? date - info.firstPackedAt > 16 * 3600000 : date - info.firstPackedAt > 30 * 3600000 && rng.chance(isRecent(order.createdAt) ? 0.08 : 0.4))) {
         // «Llevar lo que hay»: la parte lista sale sin esperar el resto.
         info.partialUsed = true;
         waiting.push(order);
@@ -560,10 +605,18 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     }
     waiting.sort((a, b) => (oinfo.get(a).firstPackedAt || 0) - (oinfo.get(b).firstPackedAt || 0));
     let slot = 0;
+    if (extra) {
+      // Ruta extra: la zona con más pedidos esperando.
+      const counts = new Map();
+      for (const o of waiting) counts.set(oinfo.get(o).zone, (counts.get(oinfo.get(o).zone) || 0) + 1);
+      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      zonesToday = best ? [best[0]] : [];
+    }
     for (const zone of zonesToday) {
       const list = waiting.filter((o) => oinfo.get(o).zone === zone);
-      const cap = zone === "Zona Metropolitana" ? 9 : 8;
+      const cap = extra ? extra.maxOrders : zone === "Zona Metropolitana" ? 9 : 8;
       for (let i = 0; i < list.length; i += cap) {
+        if (extra && i > 0) break;
         const driverPool = drivers.filter((d) => !d.busy && employedOn(d.emp, key));
         const vehiclePool = vehicles.filter((v) => !v.busy);
         if (!driverPool.length || !vehiclePool.length) return;
@@ -572,7 +625,7 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
         driver.busy = true;
         vehicle.busy = true;
         const chunk = list.slice(i, i + cap);
-        const t0 = new Date(date.getTime() + slot * 4 * MIN + rng.int(0, 120000));
+        const t0 = new Date(Math.min(now.getTime(), date.getTime() + slot * 4 * MIN + rng.int(0, 120000)));
         slot += 1;
         routeSeq += 1;
         const route = {
@@ -592,9 +645,11 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
           updatedAt: t0,
         };
         routes.push(route);
+        route.endEst = new Date(t0.getTime() + (60 + chunk.length * 42) * MIN);
         chunk.forEach((order, k) => {
-          const added = new Date(t0.getTime() + (k + 1) * 45000);
+          const added = new Date(Math.min(now.getTime(), t0.getTime() + (k + 1) * 45000));
           route.orders.push(order._id);
+          oinfo.get(order).hold = false;
           setDelivery(order, { route: route._id, driver: route.driver, vehicle: route.vehicle, dispatchStatus: "Saliendo", address: order.customer.address });
           touch(order, added);
           route.updatedAt = added;
@@ -609,6 +664,7 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
           cursor = new Date(cursor.getTime() + rng.range(15, 35) * MIN);
         }
         const departAt = new Date(cursor.getTime() + rng.range(5, 20) * MIN);
+        route.departPlanned = departAt;
         at(departAt, () => {
           if (route.cancelled) return;
           const stops = depart(route, departAt);
@@ -645,6 +701,32 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     const plan = T.svTime(key, 8, 0);
     if (plan <= now) at(plan, () => planRoutes(plan));
   }
+  // Roles de los pedidos de los últimos días: reparten lo abierto entre los estados del panel.
+  {
+    const age = (it) => (now - it.t0) / 86400000;
+    const recentIts = intents.filter((it) => age(it) < RECENT_DAYS);
+    const assigned = new Set();
+    const metro = (it) => it.customer._s.zone === "Zona Metropolitana";
+    const take = (pool, n, role) => {
+      for (const it of rng.shuffle(pool.filter((x) => !assigned.has(x))).slice(0, n)) {
+        it.role = role;
+        assigned.add(it);
+      }
+    };
+    take(recentIts.filter((it) => metro(it) && age(it) >= 1 && age(it) < 5), 7, "transit");
+    take(recentIts.filter((it) => metro(it) && age(it) >= 1 && age(it) < 6.5), 5, "rec");
+    take(recentIts.filter((it) => metro(it) && it.lines.length >= 2 && age(it) >= 3 && age(it) <= 8), 3, "partial");
+    take(recentIts.slice(-16), 8, "proc");
+    take(recentIts.filter((it) => age(it) >= 1 && age(it) < 7), 7, "wait");
+    take(recentIts.filter((it) => age(it) >= 0.5 && age(it) < 9), 10, "fab");
+  }
+  // Dos rutas reservadas cerca de «ahora» (en horario de trabajo): una que ya salió y otra recolectando.
+  const onRoad = new Date(now.getTime() - 150 * MIN);
+  const gathering = new Date(now.getTime() - 25 * MIN);
+  for (const [when, role] of [[onRoad, "transit"], [gathering, "rec"]]) {
+    if (T.nextOpenTime(when).getTime() !== when.getTime()) continue;
+    at(when, () => planRoutes(when, { maxOrders: 12, role }));
+  }
   for (const it of intents) at(it.t0, () => handleIntent(it));
 
   for (;;) {
@@ -653,6 +735,9 @@ export function simulate({ rng, newId, ctx, employees, intents, now, todayKey, s
     clock = new Date(e.t);
     e.fn();
   }
+
+  stats.roles = {};
+  for (const o of orders) { const r = oinfo.get(o).role; if (r) { const k = r + " → " + o.status + (o.delivery && o.delivery.route ? "*" : ""); stats.roles[k] = (stats.roles[k] || 0) + 1; } }
 
   return { orders, oinfo, payments, customerOrders, sales, batches, routes, inventory: [...inv.values()], pending, stats, lines, drivers, operators, pickOperator, newBatch, scheduleLines: lines };
 }

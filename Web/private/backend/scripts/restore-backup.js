@@ -12,8 +12,25 @@
 */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
 import mongoose from "mongoose";
-import { config } from "../config.js";
+
+// El .env se carga por ruta absoluta antes de importar config.js: funciona desde cualquier carpeta.
+const ENV_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".env");
+loadEnv({ path: ENV_FILE, quiet: true });
+// El .env de esta máquina trae EMPLOYEE_PASSWORD_KEY con comillas mal puestas (dotenv la lee vacía). Sin tocar el
+// archivo, se toma la llave de 64 hex de esa línea solo para este proceso (nunca se imprime).
+{
+  const valid = (v) => /^[0-9a-fA-F]{64}$/.test(v || "");
+  if (!valid(process.env.EMPLOYEE_PASSWORD_KEY)) {
+    const raw = fs.readFileSync(ENV_FILE, "utf8").match(/^s*EMPLOYEE_PASSWORD_KEYs*=(.*)$/m)?.[1] || "";
+    const runs = raw.match(/[0-9a-fA-F]{64}/g) || [];
+    if (runs.length === 1 && !/[0-9a-fA-F]{65}/.test(raw)) process.env.EMPLOYEE_PASSWORD_KEY = runs[0];
+  }
+}
+
+const { config } = await import("../config.js");
 
 const out = (line = "") => console.log(line);
 const safe = (error) => String(error?.message || error).replace(/mongodb(\+srv)?:\/\/\S+/gi, "<URI>");

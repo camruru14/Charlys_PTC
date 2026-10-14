@@ -27,12 +27,27 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as parseEnv } from "dotenv";
+import { parse as parseEnv, config as loadEnv } from "dotenv";
 import mongoose from "mongoose";
-import { config } from "../config.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(here, "..");
+// El .env se carga por ruta absoluta ANTES de importar config.js (que hace dotenv.config() relativo a la
+// carpeta actual): así el script funciona corrido desde cualquier carpeta.
+const ENV_FILE = path.join(backendRoot, ".env");
+loadEnv({ path: ENV_FILE, quiet: true });
+// El .env de esta máquina trae EMPLOYEE_PASSWORD_KEY con comillas mal puestas (dotenv la lee vacía). Sin tocar el
+// archivo, se toma la llave de 64 hex de esa línea solo para este proceso (nunca se imprime).
+{
+  const valid = (v) => /^[0-9a-fA-F]{64}$/.test(v || "");
+  if (!valid(process.env.EMPLOYEE_PASSWORD_KEY)) {
+    const raw = fs.readFileSync(ENV_FILE, "utf8").match(/^s*EMPLOYEE_PASSWORD_KEYs*=(.*)$/m)?.[1] || "";
+    const runs = raw.match(/[0-9a-fA-F]{64}/g) || [];
+    if (runs.length === 1 && !/[0-9a-fA-F]{65}/.test(raw)) process.env.EMPLOYEE_PASSWORD_KEY = runs[0];
+  }
+}
+
+const { config } = await import("../config.js");
 
 // ---- Argumentos -------------------------------------------------------------------------------
 const argv = process.argv.slice(2);
@@ -40,9 +55,9 @@ const flag = (name) => argv.includes(`--${name}`);
 const option = (name) => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const DRY = flag("dry-run");
 const BACKUP = flag("backup");
+const VERIFY = flag("verify"); // solo vuelve a correr los chequeos leyendo la base (no escribe nada)
 const APPLY = flag("apply");
 const SEED = Number(option("seed") ?? 2026);
-const EMPLOYEES_BCRYPT = flag("employees-bcrypt"); // solo si el .env no tiene EMPLOYEE_PASSWORD_KEY
 const NOW = option("now") ? new Date(option("now")) : new Date();
 
 const out = (line = "") => console.log(line);
@@ -54,6 +69,7 @@ function help() {
   out(`Respaldo, reinicio y datos de prueba (desde el 1 de enero de 2026)
 
   node scripts/reset-and-seed.js --dry-run     Genera todo en memoria y muestra el resumen. No escribe nada.
+  node scripts/reset-and-seed.js --verify      Repite los chequeos de coherencia leyendo la base. No escribe nada.
   node scripts/reset-and-seed.js --backup      Solo respalda todas las colecciones (scripts/backups/<fecha-hora>/).
   CONFIRM_RESET=BORRAR-TODO node scripts/reset-and-seed.js --backup --apply
                                                Respalda, verifica, borra y siembra (PowerShell:
@@ -66,7 +82,7 @@ function help() {
   Para restaurar: CONFIRM_RESTORE=RESTAURAR node scripts/restore-backup.js scripts/backups/<carpeta>`);
 }
 
-if (!DRY && !BACKUP && !APPLY) {
+if (!DRY && !BACKUP && !APPLY && !VERIFY) {
   help();
   process.exit(0);
 }
@@ -226,6 +242,23 @@ function printSummary({ dbName, ctx, existing, ds, rep, mb }) {
   title("Resultados de la simulación");
   const count = (list, f) => list.reduce((acc, x) => ((acc[f(x)] = (acc[f(x)] || 0) + 1), acc), {});
   out(`Estados de pedidos: ${JSON.stringify(count(docs.orders, (o) => o.status))}`);
+  {
+    const recent = docs.orders.filter((o) => NOW - o.createdAt < 10 * 86400000);
+    const routeOf = new Map(docs.routes.map((r) => [String(r._id), r]));
+    const bucket = (o) => {
+      if (o.status === "Entregado") return "Entregado";
+      const r = o.delivery?.route && routeOf.get(String(o.delivery.route));
+      if (o.status === "Empacado") return r ? `Empacado, ruta ${r.status}` : "Empacado esperando ruta";
+      if (o.status === "En Tránsito") return "En Tránsito";
+      return o.status;
+    };
+    const dist = count(recent, bucket);
+    out(`Pedidos de los últimos 10 días (${recent.length}):`);
+    for (const [k, v] of Object.entries(dist).sort((a, b) => b[1] - a[1])) out(`    ${k.padEnd(30)}${String(v).padStart(4)}`);
+    const lastPartials = docs.routes.flatMap((r) => r.deliveries.filter((d) => d.partial && NOW - d.at < 10 * 86400000));
+    out(`    entregas parciales recientes: ${lastPartials.length}`);
+  }
+  if (process.env.SEED_DEBUG) out(`DEBUG roles: ${JSON.stringify(meta.stats.roles)}`);
   out(`Lotes: ${JSON.stringify(count(docs.productionbatches, (b) => `${b.category}/${b.status}`))}`);
   out(`Rutas: ${JSON.stringify(count(docs.routes, (r) => r.status))}`);
   out(`Líneas surtidas de existencias: ${meta.stats.linesStock} · enviadas a fabricar: ${meta.stats.linesManufactured} · divididas: ${meta.stats.linesSplit} · entregas parciales: ${meta.stats.partialRoutes}`);
@@ -259,24 +292,10 @@ async function applyCredentials(ds, { hashCustomers }) {
   const byId = (list) => new Map(list.map((c) => [c.id, c.password]));
   const empPw = byId(ds.credentials.employees);
   const cusPw = byId(ds.credentials.customers);
-  let keyMissing = false;
   for (const e of ds.docs.employees) {
     const plain = empPw.get(String(e._id));
     checkPassword(plain);
-    try {
-      if (EMPLOYEES_BCRYPT) throw Object.assign(new Error("bcrypt solicitado"), { name: "PasswordKeyError" });
-      e.password = encryptPassword(plain);
-    } catch (error) {
-      if (error?.name !== "PasswordKeyError") throw error;
-      keyMissing = true;
-      // Sin la llave AES no se puede usar encryptPassword. El login también acepta hash bcrypt (el panel
-      // solo dirá que esa contraseña no se puede mostrar). Solo con --employees-bcrypt se escribe así.
-      e.password = hashCustomers ? await bcryptjs.hash(plain, 10) : "$2b$10$dry-run-placeholder-not-a-real-hash";
-    }
-  }
-  if (keyMissing && !EMPLOYEES_BCRYPT) {
-    if (hashCustomers) throw new Error("Falta EMPLOYEE_PASSWORD_KEY en el .env: no se puede encriptar la contraseña de los empleados con encryptPassword. No se tocó nada. Configura la llave o repite con --employees-bcrypt (guarda hashes bcrypt).");
-    out("AVISO: falta EMPLOYEE_PASSWORD_KEY en el .env; --apply se negará a seguir a menos que uses --employees-bcrypt.");
+    e.password = encryptPassword(plain);
   }
   for (const c of ds.docs.customers) {
     const plain = cusPw.get(String(c._id));
@@ -287,6 +306,10 @@ async function applyCredentials(ds, { hashCustomers }) {
 // ---- Principal ----------------------------------------------------------------------------------
 const startedAt = Date.now();
 try {
+  // La llave de contraseñas de empleados tiene que funcionar (sin imprimirla).
+  const { decryptPassword } = await import("../src/lib/passwordCrypto.js");
+  if (decryptPassword(encryptPassword("prueba")) !== "prueba") throw new Error("EMPLOYEE_PASSWORD_KEY no permite encriptar y desencriptar.");
+  out("Llave de contraseñas de empleados: OK (encryptPassword/decryptPassword funcionan).");
   await mongoose.connect(config.db.URI, { serverSelectionTimeoutMS: 30000 });
   const db = mongoose.connection.db;
   const dbName = assertSameDatabaseAsStore();
@@ -296,6 +319,19 @@ try {
   const ctx = await loadContext(db);
   if (!ctx.admins.length) throw new Error("No hay empleados administradores: no se hace nada.");
   const existing = await collectionCounts(db);
+
+  if (VERIFY) {
+    const docsNow = {};
+    for (const name of ["employees", "customers", "orders", "customerorders", "paymenttransactions", "transactions", "inventoryitems", "productionbatches", "dailybatches", "routes", "counters"]) docsNow[name] = await db.collection(name).find({}).toArray();
+    const repNow = runChecks({ docs: docsNow, ctx, now: NOW, startKey: START_KEY, meta: {}, mode: "base" });
+    title("Chequeos leyendo la base");
+    for (const r of repNow.results) {
+      out(`${r.errors.length ? "✗" : "✓"} ${r.name}: ${r.errors.length} error(es)`);
+      r.errors.slice(0, repNow.examples).forEach((e) => out(`      · ${e}`));
+    }
+    out("Documentos: " + Object.entries(docsNow).map(([n, l]) => `${n}=${l.length}`).join(", "));
+    process.exit(repNow.totalErrors ? 1 : 0);
+  }
 
   if (BACKUP && !APPLY) {
     const backup = await makeBackup(db);

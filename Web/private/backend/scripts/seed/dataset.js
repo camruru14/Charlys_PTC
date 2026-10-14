@@ -97,6 +97,14 @@ export async function generateDataset({ ctx, M, seed = 2026, now, startKey = STA
   const sim = simulate({ rng: rngSim, newId, ctx, employees, intents, now, todayKey, startKey, prior });
   ensureVariety({ sim, rng: rngMisc, now, todayKey, ctx, newId, activeProducts });
 
+  // Códigos de ruta correlativos por fecha de creación.
+  [...sim.routes]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .forEach((r, i) => {
+      r.code = formatSequence("R-2026", i + 1);
+      r.number = i + 1;
+    });
+
   // Números de lote correlativos por fecha de creación.
   const sorted = sim.batches.map((b, i) => [b, i]).sort((a, b) => a[0].createdAt - b[0].createdAt || a[1] - b[1]);
   sorted.forEach(([batch], i) => {

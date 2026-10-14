@@ -340,7 +340,10 @@ export function runChecks({ docs, ctx, now, startKey, meta = {}, mode = "memoria
 
   check("Asistencia calculada como el sistema", (fail) => {
     const workday = ctx.workSchedule.workdayHours;
+    // Los administradores conservados no se tocan: su asistencia es la que ya tenían.
+    const untouched = new Set(ctx.admins.map((a) => String(a._id)));
     for (const e of docs.employees) {
+      if (untouched.has(String(e._id))) continue;
       const seen = new Set();
       for (const a of e.attendance || []) {
         const key = a.date.toISOString().slice(0, 10);
