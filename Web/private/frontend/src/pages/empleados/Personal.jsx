@@ -87,7 +87,7 @@ function DataItem({ label, children }) {
   );
 }
 
-function EmployeeDetail({ emp, days, month, schedule, onRegister }) {
+function EmployeeDetail({ emp, days, month, schedule, onRegister, canRegister = true }) {
   const rows = useMemo(() => employeeMonthRows(emp, days), [emp, days]);
   const columns = useMemo(() => attendanceColumns(schedule), [schedule]);
   const role = roleLine(emp);
@@ -117,9 +117,11 @@ function EmployeeDetail({ emp, days, month, schedule, onRegister }) {
             </div>
           </div>
           {/* Editar al empleado: Configuración > Personal y permisos. */}
-          <Button variant="soft" size="detail" onClick={() => onRegister(emp)}>
-            Registrar asistencia
-          </Button>
+          {canRegister ? (
+            <Button variant="soft" size="detail" onClick={() => onRegister(emp)}>
+              Registrar asistencia
+            </Button>
+          ) : null}
         </div>
       }
     >
@@ -158,7 +160,7 @@ function EmployeeDetail({ emp, days, month, schedule, onRegister }) {
   Personal: lista de empleados (392px) con búsqueda y chips por área, y la
   ficha del seleccionado (?id=) con su asistencia del mes y sus datos.
 */
-function Personal({ employees, days, month, schedule, loading, error, selectedId, onSelect, onRegister }) {
+function Personal({ employees, days, month, schedule, loading, error, selectedId, onSelect, onRegister, canRegisterFor = () => true }) {
   const [query, setQuery] = useState("");
   const [area, setArea] = useState("all");
   // Novedades: los empleados nuevos se marcan hasta que se abren.
@@ -213,7 +215,7 @@ function Personal({ employees, days, month, schedule, loading, error, selectedId
         {list}
       </ListPanel>
       {selected ? (
-        <EmployeeDetail emp={selected} days={days} month={month} schedule={schedule} onRegister={onRegister} />
+        <EmployeeDetail emp={selected} days={days} month={month} schedule={schedule} onRegister={onRegister} canRegister={canRegisterFor(selected)} />
       ) : (
         <section className="flex items-center justify-center rounded-[14px] border border-line bg-surface">
           <EmptyState icon={IconUsers} title="Selecciona un empleado" />

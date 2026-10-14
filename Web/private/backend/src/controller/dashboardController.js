@@ -234,10 +234,12 @@ dashboardController.getSummary = async (req, res) => {
     let unitsProduced = 0;
     let unitsTarget = 0;
     for (const row of batchRows) {
-      unitsProduced += row.produced;
-      // La meta solo cuenta lo que ya tocaba producir: los lotes programados para días que aún no
-      // llegan no bajan el «% de la meta» a mitad de semana.
-      if (row._id <= todayKey) unitsTarget += row.target;
+      // Meta y producido cuentan lo mismo: solo hasta hoy. Los lotes programados para días que aún no
+      // llegan no bajan el «% de la meta» a mitad de semana (ni suman producido de un día futuro).
+      if (row._id <= todayKey) {
+        unitsProduced += row.produced;
+        unitsTarget += row.target;
+      }
       const index = buckets.indexOf(row._id);
       if (index >= 0) sparks.units[index] += row.produced;
     }

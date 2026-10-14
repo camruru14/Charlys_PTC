@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useApi } from "./useApi";
 import { api } from "../lib/api";
 import { useAuth } from "./useAuth";
@@ -9,18 +9,30 @@ import { useAuth } from "./useAuth";
 // Configuracion.jsx de la web.
 //
 // storedPassword: la contraseña propia para «Contraseña actual» (GET
-// /auth/me/password -> { password, legacy }). Vive solo en el estado de la
-// pantalla que usa el hook (memoria): no se guarda en disco ni se reutiliza
-// entre sesiones.
+// /auth/me/password -> { password, legacy }). NO se pide al abrir la pantalla: solo al
+// pulsar el ojo (loadStoredPassword), como la web, para que la contraseña no viaje sin que
+// nadie la pida. Vive solo en el estado de la pantalla que usa el hook (memoria): no se guarda en
+// disco ni se reutiliza entre sesiones.
 export function useAccount() {
-  const { updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const { data, loading, refreshing, error, refresh } = useApi("/auth/me");
-  const {
-    data: passwordData,
-    loading: passwordLoading,
-    error: passwordError,
-    refresh: refreshPassword,
-  } = useApi("/auth/me/password");
+  const [passwordData, setPasswordData] = useState(null);
+
+  // /auth/me trae el isAdmin actual: se guarda en la sesión (botones de admin de la app).
+  useEffect(() => {
+    if (typeof data?.isAdmin === "boolean" && data.isAdmin !== user?.isAdmin) updateUser({ isAdmin: data.isAdmin });
+  }, [data?.isAdmin, user?.isAdmin, updateUser]);
+
+  // Pide la contraseña (solo al pulsar el ojo) y la deja en memoria.
+  const loadStoredPassword = useCallback(async () => {
+    const result = await api.get("/auth/me/password");
+    setPasswordData(result);
+    return result;
+  }, []);
+
+  // Tras cambiar la contraseña o al refrescar, lo que había en memoria ya no sirve: el próximo
+  // pulso del ojo la vuelve a pedir.
+  const clearStoredPassword = useCallback(() => setPasswordData(null), []);
 
   // { name?, lastName?, phone?, dui? }
   const guardarPerfil = useCallback(
@@ -76,10 +88,9 @@ export function useAccount() {
     subirFoto,
     quitarFoto,
     cambiarAcceso,
-    storedPassword: passwordData || null,
-    storedPasswordLoading: passwordLoading,
-    storedPasswordError: passwordError,
-    refreshStoredPassword: refreshPassword,
+    storedPassword: passwordData,
+    loadStoredPassword,
+    refreshStoredPassword: clearStoredPassword,
   };
 }
 

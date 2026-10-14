@@ -45,6 +45,14 @@ function compareAtError(value, price) {
   return null;
 }
 
+// Un precio con más de 2 decimales (centavos): el carrito y el backend redondean cada subtotal a
+// centavos y con 3 decimales el total que ve el cliente no coincidiría con el que se cobra.
+const hasMoreThanCents = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) > 1e-6;
+};
+const DECIMALS_MESSAGE = "Los precios no pueden tener más de 2 decimales.";
+
 const duplicateMessage = (name) => `Ya existe un producto llamado «${name}»`;
 const IN_USE_SUFFIX = "ya se usa en pedidos, lotes o inventario";
 
@@ -123,6 +131,7 @@ productsController.createProduct = async (req, res) => {
     }
     const invalid = nameAndCategoryError(name, category);
     if (invalid) return res.status(400).json({ message: invalid });
+    if (hasMoreThanCents(price) || hasMoreThanCents(compareAtPrice)) return res.status(400).json({ message: DECIMALS_MESSAGE });
     const compareError = compareAtError(compareAtPrice, price);
     if (compareError) return res.status(400).json({ message: compareError });
     if (await nameTaken(name)) return res.status(409).json({ message: duplicateMessage(name) });
@@ -196,8 +205,15 @@ productsController.updateProduct = async (req, res) => {
     // mayor que el precio (el nuevo, si también cambia). Si no viene, no se toca.
     const removeCompareAt = fields.compareAtPrice === null || fields.compareAtPrice === "";
     if (removeCompareAt) delete fields.compareAtPrice;
-    else {
-      const compareError = compareAtError(fields.compareAtPrice, fields.price ?? existing.price);
+    // Precio y «precio antes» se validan solo si cambia alguno de los dos: un producto guardado antes
+    // de estas reglas (precio con 3 decimales, o «precio antes» ≤ precio) se sigue pudiendo editar.
+    const priceChanged = fields.price !== undefined && Number(fields.price) !== existing.price;
+    const compareChanged = !removeCompareAt && fields.compareAtPrice !== undefined && Number(fields.compareAtPrice) !== existing.compareAtPrice;
+    if (priceChanged || compareChanged) {
+      if ((priceChanged && hasMoreThanCents(fields.price)) || (compareChanged && hasMoreThanCents(fields.compareAtPrice))) {
+        return res.status(400).json({ message: DECIMALS_MESSAGE });
+      }
+      const compareError = removeCompareAt ? null : compareAtError(fields.compareAtPrice ?? existing.compareAtPrice, fields.price ?? existing.price);
       if (compareError) return res.status(400).json({ message: compareError });
     }
     const updated = await productModel.findByIdAndUpdate(

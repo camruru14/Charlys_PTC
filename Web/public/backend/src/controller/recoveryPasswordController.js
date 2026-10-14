@@ -81,10 +81,14 @@ recoveryPasswordController.requestCode = async (req, res) => {
       });
       resetId = String(reset._id);
       reset.codeHash = hashCode(code, resetId);
-      // Un código nuevo invalida los anteriores sin usar de esa cuenta.
-      await passwordResetModel.deleteMany({ customer: userFound._id, usedAt: null });
-      await reset.save();
-      sendRecoveryMail(userFound.email, code);
+      // Las escrituras y el correo NO se esperan: si se esperaran, la respuesta tardaría más cuando la
+      // cuenta existe y el tiempo de respuesta revelaría si el correo está registrado. Un código nuevo
+      // invalida los anteriores sin usar de esa cuenta; el correo sale solo si el código se guardó.
+      passwordResetModel
+        .deleteMany({ customer: userFound._id, usedAt: null })
+        .then(() => reset.save())
+        .then(() => sendRecoveryMail(userFound.email, code))
+        .catch((error) => console.error("error al guardar el código de recuperación: " + error));
     }
 
     return res.status(200).json({ message: "Si el correo está registrado, te enviamos un código", resetId });

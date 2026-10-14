@@ -114,6 +114,7 @@ export default function MiCuentaScreen({ navigation }) {
     quitarFoto,
     cambiarAcceso,
     storedPassword,
+    loadStoredPassword,
     refreshStoredPassword,
   } = useAccount();
   const [draft, setDraft] = useState(null);
@@ -376,6 +377,11 @@ export default function MiCuentaScreen({ navigation }) {
         <CurrentPasswordField
           password={storedPassword?.password || (storedPassword?.legacy ? sessionPassword : "") || ""}
           legacy={Boolean(storedPassword?.legacy)}
+          // La contraseña se pide solo al pulsar el ojo (no al abrir la pantalla).
+          onReveal={async () => {
+            const result = await loadStoredPassword();
+            return { password: result?.password || (result?.legacy ? sessionPassword : "") || "", legacy: Boolean(result?.legacy) };
+          }}
         />
         <PasswordField
           label="Cambiar contraseña"

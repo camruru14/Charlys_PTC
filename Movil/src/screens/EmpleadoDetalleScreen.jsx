@@ -3,6 +3,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useEmployees } from "../hooks/useEmployees";
 import { useAuth } from "../hooks/useAuth";
+import { canManageAttendance } from "../lib/permissions";
 import { useAutoSeen } from "../hooks/useActivity";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
 import AttendanceRow from "../components/employees/AttendanceRow";
@@ -38,7 +39,8 @@ export default function EmpleadoDetalleScreen({ navigation, route }) {
   useAutoSeen("empleados.personal", id);
   const { employees, loading, refreshing, error, refresh } = useEmployees();
   // Editar la cuenta de un empleado es solo de administradores (el backend lo exige).
-  const isAdmin = Boolean(useAuth().user?.isAdmin);
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.isAdmin);
   const { schedule, refresh: refreshSchedule } = useWorkSchedule();
 
   useFocusEffect(
@@ -49,6 +51,8 @@ export default function EmpleadoDetalleScreen({ navigation, route }) {
   );
 
   const employee = employees.find((e) => String(e._id) === String(id)) || null;
+  // Registrar asistencia de este empleado: admins y quien tiene el módulo Empleados; los demás, solo la propia.
+  const canRegister = canManageAttendance(user) || String(employee?._id) === String(user?.id);
   const month = route.params?.month || defaultMonth(employees);
   const days = useMemo(() => attendanceDays(employees, month), [employees, month]);
   const rows = useMemo(() => (employee ? employeeMonthRows(employee, days) : []), [employee, days]);
@@ -137,15 +141,17 @@ export default function EmpleadoDetalleScreen({ navigation, route }) {
         ) : null}
       </ScrollView>
 
-      <BottomBar
-        actions={[
-          {
-            title: "Registrar asistencia",
-            icon: "clock",
-            onPress: () => navigation.navigate("RegistrarMarcacionForm", { employeeId: employee._id }),
-          },
-        ]}
-      />
+      {canRegister ? (
+        <BottomBar
+          actions={[
+            {
+              title: "Registrar asistencia",
+              icon: "clock",
+              onPress: () => navigation.navigate("RegistrarMarcacionForm", { employeeId: employee._id }),
+            },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }

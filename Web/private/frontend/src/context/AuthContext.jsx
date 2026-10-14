@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { API_URL, setAuthToken } from "../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { API_URL, api, setAuthToken } from "../lib/api";
 import { AuthContext } from "./authContextValue";
 
 // Provider de la sesión: evita "prop drilling" al compartirla entre todas las vistas.
@@ -104,6 +104,23 @@ export function AuthProvider({ children }) {
     },
     [persistSession],
   );
+
+  // Al abrir con una sesión guardada, `isAdmin` se vuelve a leer de /auth/me: el guardado es el del
+  // último login y los permisos pudieron cambiar desde entonces (botones de admin que sobran o faltan).
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return undefined;
+    let ignore = false;
+    api
+      .get("/auth/me")
+      .then((me) => {
+        if (!ignore && typeof me?.isAdmin === "boolean" && me.isAdmin !== readStoredSession()?.user?.isAdmin) updateUser({ isAdmin: me.isAdmin });
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [userId, updateUser]);
 
   const value = {
     user,

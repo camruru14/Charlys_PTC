@@ -140,8 +140,10 @@ export function CartProvider({ children }) {
   // Hay un producto del carrito sin existencias (según el último refresco).
   const hasSoldOut = items.some((i) => i.stock != null && i.stock <= 0);
 
+  // Igual que el backend: cada subtotal se redondea a centavos y se suma en centavos enteros
+  // (con precios de hasta 2 decimales, price × cantidad ya es un número exacto de centavos).
   const total = useMemo(
-    () => items.reduce((sum, i) => sum + i.price * i.quantity, 0),
+    () => items.reduce((sum, i) => sum + Math.round(i.price * 100) * i.quantity, 0) / 100,
     [items],
   );
 

@@ -61,6 +61,16 @@ export function employeeModules({ department, position } = {}) {
   return rule ? rule.modules : area.modules;
 }
 
+// ¿Puede registrar la asistencia de OTROS empleados? Administradores y quien tiene el módulo
+// «Empleados» (misma regla que requireSelfOrModule("Empleados") del backend). Los demás solo
+// registran la propia.
+export function canManageAttendance(user) {
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  const modules = employeeModules(user);
+  return modules === "all" || modules.includes("Empleados");
+}
+
 // Texto para mostrar junto al empleado:
 //   { scope: "global" | "exclusivo" | "parcial" | "ninguno", text }
 export function permissionSummary(employee) {

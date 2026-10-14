@@ -19,7 +19,8 @@ const routeName = (route) => route.code || `Ruta ${route.number}`;
 // Busca el vehículo de :id (404 si el id no es válido o no existe). Devuelve
 // null después de responder.
 async function findVehicle(req, res) {
-  const vehicle = mongoose.isValidObjectId(req.params.id) ? await vehicleModel.findById(req.params.id) : null;
+  if (!mongoose.isValidObjectId(req.params.id)) { res.status(400).json({ message: "Identificador inválido" }); return null; }
+  const vehicle = await vehicleModel.findById(req.params.id);
   if (!vehicle) {
     res.status(404).json({ message: "Vehículo no encontrado" });
     return null;

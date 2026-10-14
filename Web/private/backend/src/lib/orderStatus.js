@@ -38,7 +38,11 @@ export function setOrderStatus(order, status, at = new Date()) {
 //      devuelve a «Pendiente»); "Pendiente" solo si todavía no se manda a Inventario.
 export function computeOrderStatus(order) {
   if (order.status === "Entregado" || order.delivery?.deliveredAt) return order.status;
-  if ((order.delivery?.dispatchedAt || order.status === "En Tránsito") && order.delivery?.route) return order.status;
+  // Ya salió: «En Tránsito» con ruta, motorista o marca de salida (los pedidos viejos pueden no tener
+  // delivery.route), o la marca de salida de la ruta. Una entrega parcial vacía order.delivery y se recalcula.
+  const delivery = order.delivery;
+  if (order.status === "En Tránsito" && (delivery?.route || delivery?.driver || delivery?.dispatchedAt)) return order.status;
+  if (delivery?.dispatchedAt && delivery?.route) return order.status;
 
   const items = order.items || [];
   const anyPack = items.some((i) => i.packed || i.stockPackedAt || i.manufacturePackedAt);

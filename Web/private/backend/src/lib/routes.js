@@ -4,6 +4,7 @@ import orderModel from "../models/Order.js";
 import employeeModel from "../models/Employee.js";
 import vehicleModel from "../models/Vehicle.js";
 import { HttpError } from "./stock.js";
+import { assertId } from "./ids.js";
 import { setOrderStatus, computeOrderStatus } from "./orderStatus.js";
 
 /*
@@ -82,7 +83,7 @@ function routeRef(route) {
 }
 
 export async function loadRoute(id, session) {
-  if (!mongoose.isValidObjectId(id)) throw new HttpError(404, "Ruta no encontrada");
+  assertId(id);
   const route = await routeModel.findById(id).session(session);
   if (!route) throw new HttpError(404, "Ruta no encontrada");
   return route;
@@ -96,7 +97,7 @@ async function loadRouteOrders(route, session) {
 }
 
 async function loadOrder(id, session) {
-  if (!mongoose.isValidObjectId(id)) throw new HttpError(404, "Pedido no encontrado");
+  assertId(id);
   const order = await orderModel.findById(id).session(session);
   if (!order) throw new HttpError(404, "Pedido no encontrado");
   return order;

@@ -74,16 +74,18 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  // Guarda o limpia la sesión en estado + SecureStore.
-  const persistSession = useCallback(async (nextToken, nextUser) => {
+  // Guarda o limpia la sesión en estado + SecureStore. Al cerrar sesión se borra también la entrada de
+  // asistencia sin salida (es de quien tenía la sesión); `keepCheckIn` la conserva: una sesión que
+  // vence sola no debe perder la entrada marcada (se vuelve a entrar y se marca la salida; la entrada
+  // es de ese usuario y readCheckIn la descarta si entra otro).
+  const persistSession = useCallback(async (nextToken, nextUser, { keepCheckIn = false } = {}) => {
     if (!nextToken) {
       tokenRef.current = null;
       setSessionPassword(null);
-      // También la entrada de asistencia sin salida: es de quien tenía la sesión.
       await Promise.all([
         SecureStore.deleteItemAsync(TOKEN_KEY),
         SecureStore.deleteItemAsync(USER_KEY),
-        clearCheckIn(),
+        keepCheckIn ? null : clearCheckIn(),
       ]);
       setToken(null);
       setUser(null);
@@ -107,7 +109,7 @@ export function AuthProvider({ children }) {
   // criterio que window.location.assign("/login") en el panel web.
   useEffect(() => {
     return onUnauthorized(() => {
-      persistSession(null, null);
+      persistSession(null, null, { keepCheckIn: true });
     });
   }, [persistSession]);
 
@@ -176,6 +178,22 @@ export function AuthProvider({ children }) {
     },
     [],
   );
+
+  // Al abrir con una sesión guardada (o al entrar), `isAdmin` se vuelve a leer de /auth/me: el guardado
+  // es el del último login y los permisos pudieron cambiar desde entonces.
+  useEffect(() => {
+    if (loading || !token) return undefined;
+    let ignore = false;
+    api
+      .get("/auth/me")
+      .then((me) => {
+        if (!ignore && typeof me?.isAdmin === "boolean" && me.isAdmin !== userRef.current?.isAdmin) updateUser({ isAdmin: me.isAdmin });
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [loading, token, updateUser]);
 
   const value = {
     user,

@@ -3,6 +3,8 @@ import { Alert, StyleSheet, Text, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useEmployees } from "../hooks/useEmployees";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
+import { useAuth } from "../hooks/useAuth";
+import { canManageAttendance } from "../lib/permissions";
 import BottomBar from "../components/ui/BottomBar";
 import DateField from "../components/ui/DateField";
 import SelectField from "../components/ui/SelectField";
@@ -28,7 +30,10 @@ export default function RegistrarMarcacionFormScreen({ navigation, route }) {
   const toast = useToast();
   const { employees } = useEmployees();
   const { schedule } = useWorkSchedule();
-  const [employeeId, setEmployeeId] = useState(route.params?.employeeId || null);
+  const { user } = useAuth();
+  // Registrar la asistencia de otros: administradores y quien tiene el módulo Empleados; el resto, solo la propia.
+  const canManage = canManageAttendance(user);
+  const [employeeId, setEmployeeId] = useState(canManage ? route.params?.employeeId || null : user?.id || null);
   const [date, setDate] = useState(todayInput());
   const [checkInTime, setCheckInTime] = useState(null);
   const [checkOutTime, setCheckOutTime] = useState(null);
@@ -37,9 +42,10 @@ export default function RegistrarMarcacionFormScreen({ navigation, route }) {
   const options = useMemo(
     () =>
       [...employees]
+        .filter((e) => canManage || e._id === user?.id)
         .sort((a, b) => fullName(a).localeCompare(fullName(b), "es"))
         .map((e) => ({ label: fullName(e), value: e._id })),
-    [employees],
+    [employees, canManage, user?.id],
   );
 
   useLayoutEffect(() => {

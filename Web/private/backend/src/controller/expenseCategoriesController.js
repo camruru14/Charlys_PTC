@@ -134,7 +134,7 @@ expenseCategoriesController.insertCategory = async (req, res) => {
 // PUT /:id { name?, icon?, color?, archived?, order? }. Si cambia el nombre,
 // los gastos que tenían el nombre anterior pasan al nuevo (todo o nada).
 expenseCategoriesController.updateCategory = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: "Categoría no encontrada" });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: "Identificador inválido" });
   const { error, values } = parseFields(req.body);
   if (error) return res.status(400).json({ message: error });
   if (values.name && (await findByName(values.name, req.params.id))) return duplicateName(res);

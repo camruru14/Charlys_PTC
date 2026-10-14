@@ -15,6 +15,23 @@ const TARJETA_DEMO = { number: "4573 6900 0199 0693", cvv: "835", month: "12", y
 // o la variable ausente, se trata como producción.
 const WOMPI_SANDBOX = import.meta.env.VITE_WOMPI_SANDBOX === "true";
 
+// Cobro sin confirmar (502 con `unconfirmed`): el cobro pudo hacerse, así que no se permite pagar este
+// mismo carrito otra vez durante la sesión del navegador. Se guarda la referencia y la «firma» del
+// carrito (productos, colores, tamaños y cantidades): si el cliente cambia el carrito, es otra compra.
+const UNCONFIRMED_KEY = "charly:unconfirmed-payment";
+const cartSignature = (items) =>
+  items
+    .map((i) => `${i.productId}:${i.color || ""}:${i.size || ""}:${i.quantity}`)
+    .sort()
+    .join("|");
+const readUnconfirmed = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(UNCONFIRMED_KEY) || "null");
+  } catch {
+    return null;
+  }
+};
+
 export default function CheckoutPage() {
   const { items, total, clearCart, syncWithCatalog, applyPrices, hasSoldOut } = useCart();
   const { customer } = useAuth();
@@ -27,6 +44,7 @@ export default function CheckoutPage() {
   const [notes, setNotes] = useState("");
   const [card, setCard] = useState({ number: "", month: "", year: "", cvv: "", holderName: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(readUnconfirmed);
   // El pago aprobado vacía el carrito (clearCart) justo antes de navegar a la
   // confirmación: sin esta bandera, ese vaciado dispara el mismo efecto de
   // "carrito vacío" de abajo y manda al cliente a /carrito en vez de a su
@@ -46,6 +64,9 @@ export default function CheckoutPage() {
   if (items.length === 0 && !justOrdered) {
     return null;
   }
+
+  // Hay un cobro sin confirmar de ESTE carrito: no se vuelve a cobrar.
+  const paymentBlocked = Boolean(unconfirmed && unconfirmed.signature === cartSignature(items));
 
   const updateCard = (field) => (e) => setCard((c) => ({ ...c, [field]: e.target.value }));
 
@@ -67,6 +88,10 @@ export default function CheckoutPage() {
     }
     if (hasSoldOut) {
       toast.error("Quita del carrito los productos agotados para continuar.");
+      return;
+    }
+    if (paymentBlocked) {
+      toast.error(`Tu pago anterior está en revisión (referencia ${unconfirmed.reference}). No intentes de nuevo.`, { duration: 8000 });
       return;
     }
 
@@ -105,6 +130,16 @@ export default function CheckoutPage() {
         // Cambiaron precios: se actualiza el carrito, se avisa y NO se navega ni se cobra.
         applyPrices(error.payload.products);
         toast.error(`${error.message} El total ahora es distinto: revísalo antes de pagar.`, { duration: 7000 });
+      } else if (error.status === 502 && error.payload?.unconfirmed) {
+        // No sabemos si se cobró: se bloquea el botón para este carrito y se explica qué pasa.
+        const blocked = { reference: error.payload.reference, signature: cartSignature(items) };
+        try {
+          sessionStorage.setItem(UNCONFIRMED_KEY, JSON.stringify(blocked));
+        } catch {
+          // Sin almacenamiento de sesión: el bloqueo vale mientras la página siga abierta.
+        }
+        setUnconfirmed(blocked);
+        toast.error(error.message, { duration: 15000 });
       } else {
         // 402: el mensaje de la tarjeta (rechazada, inválida o vencida) tal cual.
         toast.error(error.message || "No se pudo procesar el pago.", { duration: error.status === 500 ? 12000 : 5000 });
@@ -189,12 +224,19 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {paymentBlocked && (
+            <p className="rounded-2xl border border-border bg-secondary/60 px-4 py-3 text-sm text-muted-foreground" role="alert">
+              No pudimos confirmar tu pago. No intentes de nuevo: revisaremos tu cobro con la referencia{" "}
+              <span className="font-semibold text-foreground">{unconfirmed.reference}</span> y te contactaremos.
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || paymentBlocked}
             className="inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
           >
-            {submitting ? "Procesando pago…" : `Pagar $${total.toFixed(2)}`}
+            {submitting ? "Procesando pago…" : paymentBlocked ? "Pago en revisión" : `Pagar $${total.toFixed(2)}`}
           </button>
         </form>
 

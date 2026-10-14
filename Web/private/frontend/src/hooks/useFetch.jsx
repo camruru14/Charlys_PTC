@@ -16,6 +16,10 @@ import { api } from "../lib/api";
   - mutate(updater) cambia los datos locales sin pedir nada al servidor, p. ej.
     para reemplazar un registro con la respuesta de una acción
     (ver replaceById).
+  Un mutate() mientras hay una lectura en curso (p. ej. de una ruta nueva) la invalida, así que al
+  terminar esa lectura se lanza una lectura silenciosa para no quedarse con datos de la ruta anterior.
+  Un mutate(fn) durante la carga inicial (aún no hay datos) no aplica fn a null: la lectura posterior
+  trae todo.
   Lecturas fuera de orden: toda lectura (la inicial, la de un cambio de ruta,
   refetch() y refetch({ silent: true })) toma un número al empezar y su
   respuesta solo se aplica si sigue siendo la última lectura y no hubo un
@@ -32,6 +36,9 @@ export function useFetch(path, { client = api } = {}) {
   const generation = useRef(0);
   const pending = useRef(0);
   const visible = useRef(0);
+  // Un mutate() invalidó una lectura en curso: al terminar, se vuelve a leer en silencio.
+  const reloadAfter = useRef(false);
+  const loadRef = useRef(null);
 
   const load = useCallback(
     async (options) => {
@@ -58,14 +65,33 @@ export function useFetch(path, { client = api } = {}) {
           visible.current -= 1;
           if (visible.current === 0) setLoading(false);
         }
+        // Un mutate() descartó la respuesta de esta lectura: se vuelve a pedir lo actual (de la ruta actual).
+        if (pending.current === 0 && reloadAfter.current) {
+          reloadAfter.current = false;
+          loadRef.current?.({ silent: true });
+        }
       }
     },
     [path, client],
   );
 
+  // La `load` más reciente (la de la ruta actual) para la lectura de arriba.
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
   const mutate = useCallback((updater) => {
     generation.current += 1;
-    setData((prev) => (typeof updater === "function" ? updater(prev) : updater));
+    // Había una lectura en curso: su respuesta ya no se aplicará (generación vieja), hay que repetirla.
+    if (pending.current > 0) reloadAfter.current = true;
+    if (typeof updater === "function") {
+      // Sin datos todavía (carga inicial): no hay nada que transformar; no se deja updater(null).
+      if (!hasData.current) return;
+      setData((prev) => updater(prev));
+      return;
+    }
+    hasData.current = true;
+    setData(updater);
   }, []);
 
   // Carga inicial y cada vez que cambia la ruta (ej. el rango de fechas del

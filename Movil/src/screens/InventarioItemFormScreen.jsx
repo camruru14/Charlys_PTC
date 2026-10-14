@@ -27,12 +27,15 @@ const onlyDecimal = (v) => v.replace(",", ".").replace(/[^\d.]/g, "").replace(/(
 export default function InventarioItemFormScreen({ navigation, route }) {
   const id = route.params?.id;
   const toast = useToast();
-  const { items, loading: itemsLoading, actualizar, eliminar } = useInventory();
+  const { items, loading: itemsLoading, refresh, actualizar, eliminar } = useInventory();
   const { warehouses } = useWarehouses();
 
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Existencia que se vio al abrir el artículo: el backend solo aplica un cambio de existencia si
+  // sigue siendo esa (así editar no pisa lo que entró o salió mientras tanto).
+  const [openedStock, setOpenedStock] = useState(null);
 
   const item = items.find((i) => i._id === id);
   const isFinished = form?.category === "Producto Terminado";
@@ -40,6 +43,7 @@ export default function InventarioItemFormScreen({ navigation, route }) {
   useEffect(() => {
     if (form) return;
     if (item) {
+      setOpenedStock(Number(item.stock) || 0);
       setForm({
         name: item.name || "",
         category: item.category || "Materia Prima",
@@ -87,10 +91,14 @@ export default function InventarioItemFormScreen({ navigation, route }) {
     const payload = {
       name: form.name,
       category: form.category,
-      stock: Number(form.stock) || 0,
       unit: form.unit,
       location: form.location,
     };
+    // La existencia solo se manda si el usuario la cambió, junto con la que vio al abrir.
+    if ((Number(form.stock) || 0) !== openedStock) {
+      payload.stock = Number(form.stock) || 0;
+      payload.expectedStock = openedStock;
+    }
     if (isFinished) {
       payload.unitCost = Number(form.unitCost) || 0;
       payload.type = form.type.trim();
@@ -103,6 +111,12 @@ export default function InventarioItemFormScreen({ navigation, route }) {
       navigation.goBack();
     } catch (error) {
       Alert.alert("No se pudo guardar", error.message || "Intenta de nuevo");
+      // 409 de existencia: cambió mientras editabas. Se actualiza la lista y se sale: al volver a
+      // abrir el artículo se ven los datos nuevos. Otros 409 (p. ej. duplicado) dejan el formulario.
+      if (error.status === 409 && /^La existencia cambió/.test(error.message)) {
+        refresh();
+        navigation.goBack();
+      }
     } finally {
       setSaving(false);
     }

@@ -124,6 +124,8 @@ export function useDailyBatchForm(list, refetch, onScheduled) {
     } catch (err) {
       // El backend explica por qué no se pudo (p. ej. el lote no tiene meta).
       toast.error(err.message, { duration: 6000 });
+      // 409 «ya se programó»: otro clic u otro usuario lo programó; la lista se actualiza para que desaparezca.
+      if (err.status === 409) refetch();
     }
   }
 

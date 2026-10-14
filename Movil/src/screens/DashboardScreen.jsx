@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDashboard } from "../hooks/useDashboard";
@@ -87,11 +87,22 @@ export default function DashboardScreen({ navigation }) {
     useDashboard(range);
 
   // Al volver a la pantalla se recarga (como Finanzas y Pedidos): los números no se quedan con lo
-  // de la última vez que se abrió.
+  // de la última vez que se abrió. El primer foco no recarga (useApi ya está pidiendo los datos al
+  // montar) y `refresh` va en un ref: cambia con cada rango de fechas y, como dependencia del foco,
+  // pediría los datos dos veces cada vez que se cambia el rango.
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+  const firstFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh]),
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      refreshRef.current();
+    }, []),
   );
 
   // Globo de las gráficas: una sola activa a la vez ({ chart, index }). Tocar fuera de ella (o

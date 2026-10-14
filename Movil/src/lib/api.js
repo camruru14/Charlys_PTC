@@ -70,7 +70,8 @@ export function setTokenGetter(fn) {
 // FormData (Catálogo, subir imágenes): se manda tal cual como
 // multipart/form-data, sin header Content-Type, para que fetch le agregue el
 // boundary correcto solo.
-async function request(path, { method = "GET", body } = {}) {
+// `retried`: esta petición ya se reintentó una vez con un token renovado (ver el 401 más abajo).
+async function request(path, { method = "GET", body, retried = false } = {}) {
   const token = await getToken();
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
 
@@ -114,6 +115,13 @@ async function request(path, { method = "GET", body } = {}) {
   // intentos…») y se muestran tal cual.
   const isLogin = path === "/auth/login";
   if (!isLogin && (response.status === 401 || (response.status === 403 && !payload?.code))) {
+    // Una petición vieja (enviada con el token anterior) recibió el 401 de esa sesión, pero el token ya
+    // se renovó (p. ej. cambió la contraseña o el correo): se reintenta UNA vez con el actual en lugar
+    // de cerrar la sesión nueva.
+    if (!retried) {
+      const current = await getToken();
+      if (current && current !== token) return request(path, { method, body, retried: true });
+    }
     const error = new Error("Sesión expirada. Inicia sesión nuevamente.");
     error.status = response.status;
     emitUnauthorized();

@@ -12,24 +12,44 @@ import { useToast } from "./Toast";
 // que se puede mostrar (la del backend o, si es un hash viejo, la de esta
 // sesión); `legacy` indica ese hash viejo. Nunca se guarda: solo se pinta.
 // Al salir de la pantalla vuelve a quedar oculta.
-export default function CurrentPasswordField({ password, legacy = false, style }) {
+// `onReveal` (opcional): función async que pide la contraseña al pulsar el ojo cuando todavía no
+// está cargada y devuelve { password, legacy }: así no se pide hasta que alguien la quiere ver.
+export default function CurrentPasswordField({ password, legacy = false, onReveal, style }) {
   const toast = useToast();
   const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useFocusEffect(useCallback(() => () => setVisible(false), []));
 
   const shown = visible && password ? password : "•".repeat(password ? Math.min(password.length, 16) : 8);
 
-  const toggle = () => {
-    if (!password) {
+  const toggle = async () => {
+    if (visible) {
+      setVisible(false);
+      return;
+    }
+    if (busy) return;
+    let current = { password, legacy };
+    if (!password && onReveal) {
+      setBusy(true);
+      try {
+        current = (await onReveal()) || current;
+      } catch (err) {
+        toast.show(err.message || "No se pudo cargar tu contraseña. Intenta de nuevo en un momento.");
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    if (!current.password) {
       toast.show(
-        legacy
+        current.legacy
           ? "Tu contraseña no se puede mostrar hasta que se actualice: escribe una nueva en «Cambiar contraseña» para reemplazarla."
           : "Todavía no se pudo cargar tu contraseña. Intenta de nuevo en un momento.",
       );
       return;
     }
-    setVisible((v) => !v);
+    setVisible(true);
   };
 
   return (

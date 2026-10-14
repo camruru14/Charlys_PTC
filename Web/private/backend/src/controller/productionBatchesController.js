@@ -108,7 +108,7 @@ productionBatchesController.insertBatch = async (req, res) => {
 //  - `operator: null` quita el operario.
 productionBatchesController.updateBatch = async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, "Lote no encontrado");
+    assertId(req.params.id);
     const batch = await batchModel.findById(req.params.id);
     if (!batch) throw new HttpError(404, "Lote no encontrado");
 
@@ -252,7 +252,7 @@ productionBatchesController.packCompleted = async (req, res) => {
 // Eliminar. Solo un lote Programado que no sea de un pedido ni esté en bodega.
 productionBatchesController.deleteBatch = async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, "Lote no encontrado");
+    assertId(req.params.id);
     const batch = await batchModel.findById(req.params.id);
     if (!batch) throw new HttpError(404, "Lote no encontrado");
 

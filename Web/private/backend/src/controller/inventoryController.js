@@ -112,14 +112,43 @@ inventoryController.updateItem = async (req, res) => {
     if (minStock !== undefined) changes.minStock = parseAmount(minStock, "El mínimo");
     if (unitCost !== undefined) changes.unitCost = parseAmount(unitCost, "El costo");
 
+    // Un solo «Producto Terminado» por producto, color y bodega (sin batchNumber), igual que al crear:
+    // solo se revisa si cambia alguno de esos datos (así un artículo ya duplicado de antes se sigue
+    // pudiendo editar en lo demás). Excluye al propio artículo.
+    if (finalCategory === "Producto Terminado" && !existing.batchNumber) {
+      const finalName = itemName ?? existing.name;
+      const finalColor = color !== undefined ? color : existing.color;
+      const finalLocation = location !== undefined ? location : existing.location;
+      const identityChanged =
+        existing.category !== "Producto Terminado" ||
+        finalName !== existing.name ||
+        (finalColor || "") !== (existing.color || "") ||
+        (finalLocation || "") !== (existing.location || "");
+      if (identityChanged) {
+        const duplicate = await inventoryModel.exists({
+          _id: { $ne: id },
+          category: "Producto Terminado",
+          name: finalName,
+          color: finalColor || { $in: [null, ""] },
+          location: finalLocation || { $in: [null, ""] },
+          batchNumber: { $exists: false },
+        });
+        if (duplicate) throw new HttpError(409, "Ya existe ese producto en esa bodega; edita su existencia");
+      }
+    }
+
     const filter = { _id: id };
     if (stock !== undefined) {
       const wanted = parseAmount(stock, "La existencia");
-      if (expectedStock === undefined || expectedStock === null || !Number.isFinite(Number(expectedStock))) {
-        throw new HttpError(400, "Falta la existencia que viste al abrir el artículo (expectedStock)");
-      }
-      // Sin cambio de existencia no hay nada que proteger ni que pisar.
-      if (wanted !== Number(expectedStock)) {
+      const hasExpected = expectedStock !== undefined && expectedStock !== null && Number.isFinite(Number(expectedStock));
+      if (!hasExpected) {
+        // Sin expectedStock solo se acepta la existencia que ya está guardada («sin cambio»); un valor
+        // distinto podría pisar unidades que entraron o salieron mientras se editaba.
+        if (wanted !== Number(existing.stock)) {
+          throw new HttpError(400, "Falta la existencia que viste al abrir el artículo (expectedStock)");
+        }
+      } else if (wanted !== Number(expectedStock)) {
+        // Sin cambio de existencia no hay nada que proteger ni que pisar.
         changes.stock = wanted;
         filter.stock = Number(expectedStock);
       }

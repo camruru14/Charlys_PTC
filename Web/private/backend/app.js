@@ -3,7 +3,6 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import fs from "node:fs";
 import swaggerUi from "swagger-ui-express";
-import swaggerDocument from "./src/docs/Charlys_documentacion.json" with {type: "json"};
 import limiter from "./src/middlewares/limiter.js";
 import { requireAdministrator, validateAuthCookie } from "./src/middlewares/authMiddleware.js";
 
@@ -47,12 +46,13 @@ const allowedOrigins = [
   "https://charly-private-frontend.vercel.app",
 ];
 
-// Además, las URLs que Vercel genera para cada deployment/preview del frontend
-// PRIVADO desde el equipo propio (sufijo -ptc4), ej.
-// charly-private-frontend-ghi92n8y8-ptc4.vercel.app, para no tener que
-// actualizar CORS_ORIGINS en cada deploy. El frontend público (la tienda) no
-// llama a este backend, y un proyecto con el mismo nombre de otro equipo no
-// coincide con el sufijo, así que no se aceptan.
+// Las URLs de preview que Vercel genera para cada deployment del frontend PRIVADO (sufijo -ptc4),
+// ej. charly-private-frontend-ghi92n8y8-ptc4.vercel.app, solo se aceptan en desarrollo/staging y
+// con ALLOW_VERCEL_PREVIEWS="true". NO en producción: cualquiera puede crear en su propia cuenta de
+// Vercel un proyecto con un nombre que coincida con este patrón, y con credentials: true le daría
+// acceso a las sesiones del panel. En producción solo cuenta la lista exacta de arriba
+// (CORS_ORIGINS + el dominio de producción del panel).
+const previewsAllowed = process.env.ALLOW_VERCEL_PREVIEWS === "true" && process.env.NODE_ENV !== "production";
 const vercelPreviewPattern = /^https:\/\/charly-private-frontend(-[a-z0-9]+)*-ptc4\.vercel\.app$/;
 
 app.use(
@@ -60,7 +60,7 @@ app.use(
     origin: (origin, callback) => {
       // Peticiones sin header Origin (ej. Postman, servidor a servidor) -> permitir
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+      if (allowedOrigins.includes(origin) || (previewsAllowed && vercelPreviewPattern.test(origin))) {
         return callback(null, true);
       }
       return callback(new Error("Origen no permitido por CORS: " + origin));
@@ -143,11 +143,6 @@ app.use("/api/expense-categories", validateAuthCookie(), expenseCategoriesRoutes
 
 // Resumen del Dashboard
 app.use("/api/dashboard", validateAuthCookie(), dashboardRoutes);
-
-// Documentación de la API (también solo fuera de producción)
-if (process.env.NODE_ENV !== "production") {
-  app.use("/apiDocs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-}
 
 // Manejador de errores global (igual que en public/backend): un error lanzado
 // antes del controlador (p. ej. multer rechazando el logo por tamaño o tipo)

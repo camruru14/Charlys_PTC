@@ -163,6 +163,37 @@ async function recordForReconciliation({ cobro, cardLast4, customer, total, payl
   }
 }
 
+// Cobro CUYO RESULTADO SE DESCONOCE (Wompi no respondió a tiempo o falló con un 5xx al cobrar): la
+// tarjeta pudo cobrarse. Se deja para conciliar a mano contra Wompi (con el número de pedido que ya
+// se reservó) y no se reembolsa solo; el cliente NO debe intentarlo de nuevo.
+async function recordUnconfirmedCharge(reserved, error) {
+  const data = {
+    needsReconciliation: true,
+    status: "pendiente_conciliacion",
+    customer: reserved.customer._id,
+    monto: reserved.total,
+    esAprobada: false,
+    mensaje: "Cobro sin confirmar: Wompi no respondió o falló al cobrar",
+    cardLast4: reserved.cardLast4,
+    payload: {
+      orderNumber: reserved.orderNumber,
+      items: reserved.items,
+      total: reserved.total,
+      address: reserved.address,
+      phone: reserved.phone,
+      notes: reserved.notes,
+      customerEmail: reserved.customer.email,
+    },
+    failureReason: String(error?.message || error).slice(0, 500),
+  };
+  try {
+    await paymentTransactionModel.create(data);
+  } catch (saveError) {
+    // Último recurso: que al menos el log tenga todo para conciliar a mano.
+    console.error(`NO SE PUDO GUARDAR EL REGISTRO DE COBRO SIN CONFIRMAR (${saveError}). Datos: ${JSON.stringify(data)}`);
+  }
+}
+
 // POST /api/orders/checkout  (requiere sesión de cliente)
 // Orden del flujo (nada puede fallar por validación después de cobrar):
 //   1) validar y normalizar TODO lo que manda el navegador;
@@ -175,6 +206,8 @@ async function recordForReconciliation({ cobro, cardLast4, customer, total, payl
 // Solo existe un pedido si Wompi aprobó el cobro; si rechaza, no se guarda nada y el
 // cliente reintenta desde el mismo checkout con otra tarjeta (su carrito sigue intacto).
 ordersController.checkout = async (req, res) => {
+  // Lo que ya se reservó/validó antes de cobrar: si el cobro queda sin confirmar, el catch lo necesita.
+  let reserved = null;
   try {
     const body = req.body ?? {};
 
@@ -225,6 +258,7 @@ ordersController.checkout = async (req, res) => {
 
     // ---- 3) Reservar el número de pedido
     const orderNumber = await generateOrderNumber();
+    reserved = { orderNumber, customer, total, items, address, phone, notes };
 
     // ---- 4) Cobrar. La tarjeta completa nunca se guarda ni se vuelve a usar.
     const tokenizada = await wompiClient.tokenizeCard({
@@ -235,6 +269,7 @@ ordersController.checkout = async (req, res) => {
       nombreTarjetaHabiente: card.holderName,
     });
     const cardLast4 = tokenizada.tarjetaEnmascarada?.trim().slice(-4);
+    reserved.cardLast4 = cardLast4;
 
     // La respuesta de Wompi (no lo que diga el navegador) es la única fuente de
     // verdad sobre si el pago se aprobó.
@@ -312,6 +347,17 @@ ordersController.checkout = async (req, res) => {
 
     res.status(201).json({ order });
   } catch (error) {
+    // El cobro pudo haberse hecho aunque no lo sepamos: se guarda para conciliar y se le dice al cliente
+    // que NO reintente (un segundo intento podría cobrarle dos veces).
+    if (error?.unconfirmed && reserved) {
+      await recordUnconfirmedCharge(reserved, error);
+      console.error(`COBRO SIN CONFIRMAR: ${reserved.orderNumber} por $${reserved.total} (${reserved.customer.email}): ${error.message}`);
+      return res.status(502).json({
+        message: `No pudimos confirmar tu pago. No intentes de nuevo: revisaremos tu cobro con la referencia ${reserved.orderNumber} y te contactaremos.`,
+        unconfirmed: true,
+        reference: reserved.orderNumber,
+      });
+    }
     if (error?.status) {
       return res.status(error.status).json({ message: error.message, ...(error.body || {}) });
     }

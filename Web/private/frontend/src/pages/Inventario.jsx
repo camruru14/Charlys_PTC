@@ -43,6 +43,9 @@ const emptyForm = {
   materialType: MATERIAL_TYPES[0],
 };
 
+// Mensaje del 409 de existencia de PUT /inventory/:id (la existencia cambió mientras se editaba).
+const STOCK_CHANGED = /^La existencia cambió/;
+
 function Inventario() {
   const { confirm, confirmProps } = useConfirm();
   const { data, loading, error, refetch } = useFetch("/inventory");
@@ -166,9 +169,10 @@ function Inventario() {
       refetch();
     } catch (err) {
       toast.error(err.message);
-      // 409: la existencia cambió mientras editaba (u otro conflicto): se muestra el mensaje y
-      // se actualiza la lista; el artículo se vuelve a abrir con los datos nuevos.
-      if (err.status === 409) {
+      // 409 de existencia (cambió mientras editaba): se actualiza la lista y se cierra el modal; el
+      // artículo se vuelve a abrir con los datos nuevos. Cualquier otro 409 (p. ej. «Ya existe ese
+      // producto en esa bodega») deja el modal abierto para corregir sin perder lo escrito.
+      if (err.status === 409 && editingId && STOCK_CHANGED.test(err.message)) {
         setModalOpen(false);
         refetch();
       }

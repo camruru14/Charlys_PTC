@@ -6,6 +6,8 @@ import { useFetch } from "../hooks/useFetch";
 import { todayInput } from "../hooks/useBatchForm";
 import { useUrlState } from "../hooks/useUrlState";
 import { useWorkSchedule } from "../hooks/useWorkSchedule";
+import { useAuth } from "../hooks/useAuth";
+import { canManageAttendance } from "../lib/permissions";
 import Modal from "../components/ui/Modal";
 import PageHeader from "../components/ui/PageHeader";
 import Tabs from "../components/ui/Tabs";
@@ -36,6 +38,9 @@ const emptyAttendanceForm = { employee: "", date: "", checkIn: "", checkOut: "" 
 function Empleados() {
   const { data, loading, error, refetch } = useFetch("/employees");
   const { schedule } = useWorkSchedule();
+  const { user } = useAuth();
+  // Registrar la asistencia de otros: administradores y quien tiene el módulo Empleados; el resto, solo la propia.
+  const canManage = canManageAttendance(user);
   const [activeTab, setActiveTab] = useUrlState("tab", "personal", { allowed: TABS.map((t) => t.key) });
   // Novedades: la burbuja de cada pestaña (abrirla no la limpia; se limpia registro por registro).
   const { counts } = useActivity();
@@ -54,7 +59,7 @@ function Empleados() {
   const [savingAttendance, setSavingAttendance] = useState(false);
 
   function openAttendance(emp) {
-    setAttendanceForm({ ...emptyAttendanceForm, employee: emp?._id || "", date: todayInput() });
+    setAttendanceForm({ ...emptyAttendanceForm, employee: canManage ? emp?._id || "" : user?.id || "", date: todayInput() });
     setAttendanceModalOpen(true);
   }
 
@@ -128,6 +133,7 @@ function Empleados() {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onRegister={openAttendance}
+          canRegisterFor={(emp) => canManage || emp._id === user?.id}
         />
       ) : (
         <Asistencia
@@ -160,7 +166,7 @@ function Empleados() {
             onChange={handleAttendanceChange}
             required
             placeholder="Selecciona un empleado"
-            options={list.map((e) => ({ value: e._id, label: `${e.name} ${e.lastName}` }))}
+            options={(canManage ? list : list.filter((e) => e._id === user?.id)).map((e) => ({ value: e._id, label: `${e.name} ${e.lastName}` }))}
           />
           <DateField label="Fecha" name="date" value={attendanceForm.date} onChange={handleAttendanceChange} max={todayInput()} required />
           <div className="grid grid-cols-2 gap-4">

@@ -24,7 +24,11 @@ export function setAuthToken(token) {
   authToken = token || null;
 }
 
-async function request(path, { method = "GET", body } = {}) {
+// `retried`: esta petición ya se reintentó una vez con un token renovado (ver el 401 más abajo).
+async function request(path, { method = "GET", body, retried = false } = {}) {
+  // Token con el que sale ESTA petición: si al volver un 401 el token ya es otro (se renovó la sesión
+  // mientras la petición viajaba), el 401 era de la sesión vieja y no hay que cerrar la nueva.
+  const sentToken = authToken;
   // FormData (subida de archivos): el navegador pone el Content-Type con su boundary.
   const isForm = body instanceof FormData;
   const headers = {};
@@ -47,6 +51,9 @@ async function request(path, { method = "GET", body } = {}) {
   // ACCOUNT_FORBIDDEN, MODULE_FORBIDDEN: falta de permiso para esa acción) no es
   // una sesión inválida: se muestra su mensaje y la sesión sigue abierta.
   if (response.status === 401 || (response.status === 403 && !payload?.code)) {
+    // Una petición vieja (enviada con el token anterior) recibió el 401 de esa sesión, pero el token ya
+    // se renovó: se reintenta UNA vez con el actual en lugar de cerrar la sesión nueva.
+    if (!retried && authToken && authToken !== sentToken) return request(path, { method, body, retried: true });
     localStorage.removeItem(SESSION_STORAGE_KEY);
     if (!window.location.pathname.startsWith("/login")) {
       // Se guarda a dónde volver (ruta completa, con ?tab=… y demás) para que el login regrese ahí.

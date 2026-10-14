@@ -240,6 +240,10 @@ function Configuracion() {
   // Sube al guardar una contraseña nueva: reinicia el ojo de Mi cuenta (que pide la contraseña solo al pulsarlo).
   const [passwordVersion, setPasswordVersion] = useState(0);
   const { user, updateUser } = useAuth();
+  // /auth/me trae el isAdmin actual: se guarda en la sesión para los botones de admin de todo el panel.
+  useEffect(() => {
+    if (typeof account?.isAdmin === "boolean" && account.isAdmin !== user?.isAdmin) updateUser({ isAdmin: account.isAdmin });
+  }, [account?.isAdmin, user?.isAdmin, updateUser]);
 
   const warehouses = useMemo(() => (Array.isArray(warehousesData) ? warehousesData : []), [warehousesData]);
   const vehicles = useMemo(() => (Array.isArray(vehiclesData) ? vehiclesData : []), [vehiclesData]);

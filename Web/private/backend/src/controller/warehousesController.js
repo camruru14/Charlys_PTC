@@ -7,6 +7,7 @@ import orderModel from "../models/Order.js";
 import batchModel from "../models/ProductionBatch.js";
 import { NAME_COLLATION } from "../models/Product.js";
 import { HttpError, sendError, withTransaction } from "../lib/stock.js";
+import { assertId } from "../lib/ids.js";
 
 // Nombre de bodega normalizado: sin espacios de más y obligatorio.
 function cleanName(value) {
@@ -51,7 +52,7 @@ warehousesController.insertWarehouse = async (req, res) => {
 warehousesController.updateWarehouse = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.isValidObjectId(id)) throw new HttpError(404, "Bodega no encontrada");
+    assertId(id);
     const name = cleanName(req.body?.name);
 
     await withTransaction(async (session) => {
@@ -81,12 +82,15 @@ warehousesController.updateWarehouse = async (req, res) => {
 };
 
 // Eliminar. No se permite si la bodega todavía tiene existencia (artículos con esa ubicación y
-// stock > 0), si hay líneas de pedido verificadas con unidades tomadas de ella que todavía no se
-// entregan (deshacer esa verificación les devolvería el stock aquí), ni si hay lotes con esa bodega
-// como destino que aún no terminaron de enviarse.
+// stock > 0) ni si hay líneas de pedido verificadas con unidades tomadas de ella que todavía no se
+// entregan (deshacer esa verificación les devolvería el stock aquí).
+// Los lotes enviados a esta bodega (destinationWarehouse) no necesitan su propia regla: deshacer ese
+// envío exige que sus unidades sigan en la bodega (undoBatchSend → takeStock), o sea existencia > 0, y
+// con existencia la bodega no se elimina. (La condición «destino pendiente» con sentToWarehouseAt vacío
+// nunca se cumple: al enviar se llenan los dos campos y al deshacer se borran los dos.)
 warehousesController.deleteWarehouse = async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, "Bodega no encontrada");
+    assertId(req.params.id);
     const warehouse = await warehouseModel.findById(req.params.id);
     if (!warehouse) throw new HttpError(404, "Bodega no encontrada");
 
@@ -100,11 +104,6 @@ warehousesController.deleteWarehouse = async (req, res) => {
     });
     if (pendingLines > 0) {
       throw new HttpError(409, `No se puede eliminar «${warehouse.name}»: hay pedidos verificados con existencia de esta bodega que todavía no se entregan`);
-    }
-
-    const pendingBatches = await batchModel.countDocuments({ destinationWarehouse: warehouse.name, sentToWarehouseAt: null });
-    if (pendingBatches > 0) {
-      throw new HttpError(409, `No se puede eliminar «${warehouse.name}»: hay lotes con esta bodega como destino pendiente`);
     }
 
     await warehouse.deleteOne();

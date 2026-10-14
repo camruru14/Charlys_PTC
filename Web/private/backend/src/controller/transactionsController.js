@@ -26,7 +26,8 @@ export async function generateReference() {
 // Busca la transacción de :id (404 si el id no es válido o no existe).
 // Devuelve null después de responder.
 async function findTransaction(req, res) {
-  const transaction = mongoose.isValidObjectId(req.params.id) ? await transactionModel.findById(req.params.id) : null;
+  if (!mongoose.isValidObjectId(req.params.id)) { res.status(400).json({ message: "Identificador inválido" }); return null; }
+  const transaction = await transactionModel.findById(req.params.id);
   if (!transaction) {
     res.status(404).json({ message: "Transacción no encontrada" });
     return null;
