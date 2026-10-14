@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { TONE_SOFT } from "../../lib/tones";
 
 /*
-  Avatar con las iniciales de una persona.
+  Avatar de una persona: su foto de perfil si tiene (person.photo.url del backend o
+  person.photoUrl de la sesión) y, si no, o si la imagen no carga, sus iniciales.
     size: 26 (filas) | 32 (listas maestro) | 40 (tarjetas) | 48 (fichas)
     tone: "soft" (primary-soft) | "solid" (primary, texto blanco) |
-          "color" (fondo suave de un tono fijo por persona)
+          "color" (fondo suave de un tono fijo por persona) |
+          "rail" (sobre el menú lateral oscuro)
 */
 function initials(person) {
   if (!person) return "—";
@@ -23,22 +26,33 @@ function personTone(person) {
 }
 
 function fontSize(size) {
+  if (size >= 64) return 22;
   if (size >= 48) return 16;
   if (size >= 40) return 14;
   if (size >= 32) return 12;
   return 10.5;
 }
 
+const TONES = { solid: "bg-primary text-white", rail: "bg-rail-active text-white" };
+
 function Avatar({ person, size = 26, tone = "soft" }) {
-  const toneClass =
-    tone === "solid" ? "bg-primary text-white" : tone === "color" ? personTone(person) : "bg-primary-soft text-primary-soft-text";
+  const toneClass = TONES[tone] || (tone === "color" ? personTone(person) : "bg-primary-soft text-primary-soft-text");
+  const photo = person?.photo?.url || person?.photoUrl || null;
+  // Una foto que no carga se recuerda por su URL: al cambiarla se vuelve a intentar.
+  const [failed, setFailed] = useState(null);
+  const showPhoto = Boolean(photo) && failed !== photo;
+  const fullName = [person?.name, person?.lastName].filter(Boolean).join(" ");
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full font-bold ${toneClass}`}
+      className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${showPhoto ? "bg-surface-2" : toneClass}`}
       style={{ width: size, height: size, fontSize: fontSize(size) }}
-      aria-hidden="true"
+      aria-hidden={showPhoto ? undefined : "true"}
     >
-      {initials(person)}
+      {showPhoto ? (
+        <img src={photo} alt={fullName} className="h-full w-full rounded-full object-cover" onError={() => setFailed(photo)} />
+      ) : (
+        initials(person)
+      )}
     </span>
   );
 }

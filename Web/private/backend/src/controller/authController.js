@@ -5,7 +5,8 @@ import jsonwebtoken from "jsonwebtoken";
 import { encryptPassword, readablePassword, verifyPassword } from "../lib/passwordCrypto.js";
 import { config } from "../../config.js";
 import { isAdministratorId } from "../lib/permissions.js";
-import { checkPassword, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
+import { checkPassword, normalizeDui, normalizeEmail, normalizeName, sendEmployeeError } from "../lib/employeeFields.js";
+import cloudinary, { uploadEmployeePhotoBuffer } from "../lib/cloudinary.js";
 
 // LOGIN del panel administrativo (empleados)
 authController.login = async (req, res) => {
@@ -60,6 +61,7 @@ authController.login = async (req, res) => {
             email: employeeFound.email,
             position: employeeFound.position,
             department: employeeFound.department,
+            photoUrl: employeeFound.photo?.url || null,
             // Quien puede hacer acciones delicadas (eliminar pedidos): ver lib/permissions.js
             isAdmin,
           },
@@ -85,6 +87,7 @@ const toAccount = (e, isAdmin) => ({
   dui: e.dui || "",
   position: e.position || "",
   department: e.department || "",
+  photoUrl: e.photo?.url || null,
   isAdmin: Boolean(isAdmin),
 });
 
@@ -119,14 +122,58 @@ authController.getMyPassword = async (req, res) => {
   }
 };
 
-// PUT /auth/me { phone, dui }: datos que no piden contraseña.
+// PUT /auth/me { name?, lastName?, phone?, dui? }: datos que no piden contraseña.
 authController.updateMe = async (req, res) => {
   try {
     const employee = await findSessionEmployee(req, res);
     if (!employee) return;
+    if (req.body.name !== undefined) employee.name = normalizeName(req.body.name, "tu nombre");
+    if (req.body.lastName !== undefined) employee.lastName = normalizeName(req.body.lastName, "tu apellido");
     employee.phone = typeof req.body.phone === "string" ? req.body.phone.trim() : employee.phone;
     if (req.body.dui !== undefined) employee.dui = normalizeDui(req.body.dui);
     await employee.save();
+    res.json(toAccount(employee, await isAdministratorId(employee._id)));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
+// Borra la foto de Cloudinary sin fallar si ya no existe.
+const destroyPhoto = (photo) => (photo?.publicId ? cloudinary.uploader.destroy(photo.publicId).catch(() => null) : null);
+
+// POST /auth/me/photo (multipart, campo "photo"): sube la foto nueva, la guarda
+// y borra la anterior; si no se pudo guardar, borra la recién subida.
+authController.setPhoto = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "Selecciona una imagen" });
+    const employee = await findSessionEmployee(req, res);
+    if (!employee) return;
+
+    const uploaded = await uploadEmployeePhotoBuffer(req.file.buffer);
+    const previous = employee.photo;
+    try {
+      employee.photo = { url: uploaded.secure_url, publicId: uploaded.public_id };
+      await employee.save();
+    } catch (error) {
+      await destroyPhoto({ publicId: uploaded.public_id });
+      throw error;
+    }
+    if (previous?.publicId && previous.publicId !== uploaded.public_id) await destroyPhoto(previous);
+    res.json(toAccount(employee, await isAdministratorId(employee._id)));
+  } catch (error) {
+    sendEmployeeError(res, error);
+  }
+};
+
+// DELETE /auth/me/photo: quita la foto de perfil (vuelven las iniciales).
+authController.removePhoto = async (req, res) => {
+  try {
+    const employee = await findSessionEmployee(req, res);
+    if (!employee) return;
+    const previous = employee.photo;
+    employee.photo = undefined;
+    await employee.save();
+    await destroyPhoto(previous);
     res.json(toAccount(employee, await isAdministratorId(employee._id)));
   } catch (error) {
     sendEmployeeError(res, error);

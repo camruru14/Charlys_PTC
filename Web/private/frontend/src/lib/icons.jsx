@@ -223,6 +223,13 @@ export const IconImage = (p) => (
   </svg>
 );
 
+export const IconCamera = (p) => (
+  <svg {...base} {...p}>
+    <path d="M14.5 4h-5L7.5 6.5H5a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-2.5L14.5 4Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
+
 export const IconMore = (p) => (
   <svg {...base} {...p}>
     <circle cx="5" cy="12" r="1.2" fill="currentColor" />

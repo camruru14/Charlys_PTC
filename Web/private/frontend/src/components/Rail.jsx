@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { NAV_ITEMS, BOTTOM_ITEMS } from "../lib/nav";
 import { IconClose, IconLogout } from "../lib/icons";
 import { useAuth } from "../hooks/useAuth";
+import Avatar from "./ui/Avatar";
 
 /*
   Navegación del panel.
@@ -28,14 +29,7 @@ function useUserInfo() {
   const { user, logout } = useAuth();
   const name = user ? `${user.name || ""} ${user.lastName || ""}`.trim() || user.email : "Usuario";
   const role = user?.position || user?.department || "";
-  const initials =
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0].toUpperCase())
-      .join("") || "IC";
-  return { name, role, initials, logout };
+  return { user, name, role, logout };
 }
 
 function RailLink({ to, label, icon: Icon }) {
@@ -69,7 +63,7 @@ function RailLink({ to, label, icon: Icon }) {
 }
 
 function AvatarMenu() {
-  const { name, role, initials, logout } = useUserInfo();
+  const { user, name, role, logout } = useUserInfo();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -97,9 +91,7 @@ function AvatarMenu() {
         aria-expanded={open}
         className="flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1 text-left transition hover:bg-surface-2"
       >
-        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11.5px] font-extrabold text-primary-soft-text">
-          {initials}
-        </span>
+        <Avatar person={user} size={30} />
         <span className="min-w-0 truncate whitespace-nowrap text-[12.5px] font-bold text-ink">{name}</span>
       </button>
       {open ? (
@@ -150,7 +142,7 @@ export function Rail() {
 }
 
 export function Drawer({ open, onClose }) {
-  const { name, role, initials, logout } = useUserInfo();
+  const { user, name, role, logout } = useUserInfo();
 
   const linkClass = ({ isActive }) =>
     `flex h-10 items-center gap-3 rounded-[10px] px-3 text-[13.5px] font-semibold transition ${
@@ -189,9 +181,7 @@ export function Drawer({ open, onClose }) {
 
         <div className="mt-4 border-t border-white/16 pt-4">
           <div className="flex items-center gap-3 px-1">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rail-active text-[12.5px] font-bold text-white">
-              {initials}
-            </span>
+            <Avatar person={user} size={36} tone="rail" />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-white">{name}</p>
               {role ? <p className="truncate text-[11.5px] text-rail-icon">{role}</p> : null}

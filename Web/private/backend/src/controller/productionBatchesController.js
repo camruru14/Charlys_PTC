@@ -28,7 +28,7 @@ export async function generateBatchNumber() {
   return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
-const populateOperator = (query) => query.populate("operator", "name lastName");
+const populateOperator = (query) => query.populate("operator", "name lastName photo");
 
 // SELECT - todos los lotes
 productionBatchesController.getBatches = async (req, res) => {

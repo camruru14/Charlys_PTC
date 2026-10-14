@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import Avatar, { personTone } from "../ui/Avatar";
+import Avatar, { personTone, photoOf } from "../ui/Avatar";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import VehiclePhoto from "../ui/VehiclePhoto";
@@ -57,7 +57,7 @@ export default function CrewCard({ route, unit, onEdit }) {
         <Text style={type.overline}>Motorista</Text>
         {driver ? (
           <View style={styles.driver}>
-            <Avatar name={personName(driver)} tone={personTone(driver)} size={40} />
+            <Avatar name={personName(driver)} photoUrl={photoOf(driver)} tone={personTone(driver)} size={40} />
             <View style={styles.driverTexts}>
               <Text style={styles.driverName} numberOfLines={1}>
                 {personName(driver)}

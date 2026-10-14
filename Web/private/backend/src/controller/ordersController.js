@@ -57,7 +57,7 @@ function lineAction(fn, okMessage) {
 // panel pueda reemplazarlo en su lista sin volver a pedirla completa.
 const populateOrder = (query) =>
   query
-    .populate("delivery.driver", "name lastName phone")
+    .populate("delivery.driver", "name lastName phone photo")
     .populate("items.manufacturingBatch", BATCH_FIELDS)
     .populate("delivery.route", ROUTE_FIELDS);
 

@@ -18,7 +18,7 @@ import {
 
 // Pedidos completos (en orden de entrega) y motorista.
 const populateRoute = (query) =>
-  query.populate("driver", "name lastName phone").populate("orders").populate("deliveries.order", "orderNumber customer total items");
+  query.populate("driver", "name lastName phone photo").populate("orders").populate("deliveries.order", "orderNumber customer total items");
 
 async function sendRoute(res, id) {
   res.json(await populateRoute(routeModel.findById(id)));

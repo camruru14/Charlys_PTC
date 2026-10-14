@@ -102,7 +102,7 @@ function CustomDrawerContent({ state, navigation }) {
       </ScrollView>
 
       <View style={[styles.profile, { paddingBottom: insets.bottom + 14 }]}>
-        <Avatar name={displayName} tone="blue" size={38} />
+        <Avatar name={displayName} photoUrl={user?.photoUrl} tone="blue" size={38} />
         <View style={styles.profileInfo}>
           <Text style={styles.profileName} numberOfLines={1}>
             {displayName}

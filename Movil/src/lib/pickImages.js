@@ -44,6 +44,31 @@ export async function pickFromLibrary(limit = MAX_IMAGES_PER_UPLOAD) {
   return toFiles(result.assets.slice(0, Math.max(limit, 1)));
 }
 
+// Foto de perfil (Mi cuenta): una sola imagen con recorte cuadrado (el sistema
+// de edición de la cámara o la galería). source: "camera" | "library". Devuelve
+// { uri, name, type, size } o null si se canceló o no hay permiso.
+export async function pickProfilePhoto(source) {
+  const options = { mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.8 };
+  let result;
+  if (source === "camera") {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permiso necesario", "Se necesita acceso a la cámara para tomar tu foto de perfil.");
+      return null;
+    }
+    result = await ImagePicker.launchCameraAsync(options);
+  } else {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permiso necesario", "Se necesita acceso a la galería para elegir tu foto de perfil.");
+      return null;
+    }
+    result = await ImagePicker.launchImageLibraryAsync(options);
+  }
+  if (result.canceled || !result.assets?.length) return null;
+  return toFiles(result.assets)[0];
+}
+
 // Pregunta «Cámara o galería» y devuelve los archivos elegidos (o null).
 export function pickPhotoSource(limit = MAX_IMAGES_PER_UPLOAD) {
   return new Promise((resolve) => {

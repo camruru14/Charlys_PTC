@@ -2,6 +2,7 @@ const employeesController = {};
 
 import employeeModel from "../models/Employee.js";
 import { FieldError, normalizeDui, normalizeEmail, sendEmployeeError } from "../lib/employeeFields.js";
+import cloudinary from "../lib/cloudinary.js";
 import { decryptPassword, encryptPassword, isEncryptedPassword, readablePassword } from "../lib/passwordCrypto.js";
 
 // SELECT - todos los empleados (sin exponer la contraseña)
@@ -138,7 +139,9 @@ employeesController.updateEmployee = async (req, res) => {
 //Eliminar
 employeesController.deleteEmployee = async (req, res) => {
   try {
-    await employeeModel.findByIdAndDelete(req.params.id);
+    const deleted = await employeeModel.findByIdAndDelete(req.params.id);
+    // Su foto de perfil no debe quedar huérfana en Cloudinary.
+    if (deleted?.photo?.publicId) await cloudinary.uploader.destroy(deleted.photo.publicId).catch(() => null);
     res.json({ message: "Employee deleted" });
   } catch (error) {
     console.log("error " + error);

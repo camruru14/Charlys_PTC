@@ -75,7 +75,7 @@ function clearLegacyCompany() {
 const SECTIONS = ["empresa", "bodegas", "vehiculos", "lineas", "categorias", "personal", "cuenta"];
 
 // Mi cuenta: teléfono y DUI, más el cambio de correo o contraseña (que pide la actual).
-const emptyAccountForm = { phone: "", dui: "", newEmail: "", newPassword: "" };
+const emptyAccountForm = { name: "", lastName: "", phone: "", dui: "", newEmail: "", newPassword: "" };
 const MIN_PASSWORD_LENGTH = 6;
 
 // Abreviatura de cada unidad de inventario en el resumen de una bodega.
@@ -249,7 +249,7 @@ function Configuracion() {
   const [legacyCompany, setLegacyCompany] = useState(loadLegacyCompany);
   const [companyDraft, setCompanyDraft] = useState(null);
   const [scheduleDraft, setScheduleDraft] = useState(null);
-  // Mi cuenta: borrador de teléfono y DUI (correo y contraseña van aparte, con la contraseña actual).
+  // Mi cuenta: borrador de nombre, apellido, teléfono y DUI (correo y contraseña van aparte, con la contraseña actual).
   const [accountDraft, setAccountDraft] = useState(null);
   // Modal que pide la contraseña actual al guardar un cambio de correo o contraseña: { value, error } | null.
   const [passwordPrompt, setPasswordPrompt] = useState(null);
@@ -275,9 +275,14 @@ function Configuracion() {
   const scheduleDirty =
     Boolean(scheduleDraft) &&
     (scheduleDraft.startTime !== schedule.startTime || Number(scheduleDraft.workdayHours) !== schedule.workdayHours);
-  const savedAccountForm = account ? { ...emptyAccountForm, phone: account.phone || "", dui: formatDui(account.dui) } : emptyAccountForm;
+  const savedAccountForm = account ? { ...emptyAccountForm, name: account.name || "", lastName: account.lastName || "", phone: account.phone || "", dui: formatDui(account.dui) } : emptyAccountForm;
   const accountForm = accountDraft ?? savedAccountForm;
-  const profileDirty = Boolean(account) && (accountForm.phone.trim() !== savedAccountForm.phone || accountForm.dui !== savedAccountForm.dui);
+  const profileDirty =
+    Boolean(account) &&
+    (accountForm.name.trim() !== savedAccountForm.name ||
+      accountForm.lastName.trim() !== savedAccountForm.lastName ||
+      accountForm.phone.trim() !== savedAccountForm.phone ||
+      accountForm.dui !== savedAccountForm.dui);
   // Escribir en «Nuevo correo» o «Nueva contraseña» ya cuenta como cambio.
   const credentialsTouched = Boolean(accountForm.newEmail.trim() || accountForm.newPassword);
   const accountDirty = Boolean(account && accountDraft) && (profileDirty || credentialsTouched);
@@ -369,6 +374,8 @@ function Configuracion() {
     if (!company.name?.trim()) return toast.error("Escribe el nombre de la empresa");
     const hours = Number(scheduleForm.workdayHours);
     if (scheduleDirty && !(hours > 0 && hours <= 24)) return toast.error("Las horas de jornada deben ser mayores que 0 y hasta 24");
+    if (profileDirty && !accountForm.name.trim()) return toast.error("Escribe tu nombre");
+    if (profileDirty && !accountForm.lastName.trim()) return toast.error("Escribe tu apellido");
     if (profileDirty && accountForm.dui && !/^\d{8}-\d$/.test(accountForm.dui)) return toast.error("El DUI debe tener 9 números (ej. 12345678-9)");
     const credentials = accountDirty ? credentialsRequest() : null;
     if (credentials === false) return;
@@ -405,7 +412,10 @@ function Configuracion() {
         setAccountDraft((d) => (d ? { ...d, newEmail: "", newPassword: "" } : d));
       }
       if (profileDirty) {
-        mutateAccount(await api.put("/auth/me", { phone: accountForm.phone.trim(), dui: accountForm.dui }));
+        const saved = await api.put("/auth/me", { name: accountForm.name.trim(), lastName: accountForm.lastName.trim(), phone: accountForm.phone.trim(), dui: accountForm.dui });
+        mutateAccount(saved);
+        // El nombre del usuario en sesión (pie del menú lateral).
+        updateUser({ name: saved.name, lastName: saved.lastName });
       }
       setAccountDraft(null);
       if (scheduleDirty) {
@@ -671,6 +681,7 @@ function Configuracion() {
               error={accountError}
               form={accountForm}
               onChange={handleAccountChange}
+              onAccount={mutateAccount}
               storedPassword={myPassword}
             />
           )}

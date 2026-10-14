@@ -3,7 +3,7 @@ import { useApi } from "./useApi";
 import { api } from "../lib/api";
 
 // Mi cuenta: datos de quien tiene la sesión abierta (GET/PUT /auth/me:
-// teléfono y DUI) y el cambio de correo o contraseña (PUT
+// nombre, apellido, teléfono y DUI) y su foto (POST/DELETE /auth/me/photo) y el cambio de correo o contraseña (PUT
 // /auth/me/credentials, que exige la contraseña actual), como Mi cuenta en
 // Configuracion.jsx de la web.
 //
@@ -20,7 +20,7 @@ export function useAccount() {
     refresh: refreshPassword,
   } = useApi("/auth/me/password");
 
-  // { phone, dui }
+  // { name?, lastName?, phone?, dui? }
   const guardarPerfil = useCallback(
     async (fields) => {
       const result = await api.put("/auth/me", fields);
@@ -29,6 +29,25 @@ export function useAccount() {
     },
     [refresh],
   );
+
+  // Foto de perfil, al momento. file: { uri, name, type } de expo-image-picker;
+  // las dos responden la cuenta con el photoUrl nuevo.
+  const subirFoto = useCallback(
+    async (file) => {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const result = await api.post("/auth/me/photo", formData);
+      await refresh();
+      return result;
+    },
+    [refresh],
+  );
+
+  const quitarFoto = useCallback(async () => {
+    const result = await api.del("/auth/me/photo");
+    await refresh();
+    return result;
+  }, [refresh]);
 
   // { email?, newPassword?, currentPassword }
   const cambiarAcceso = useCallback(
@@ -47,6 +66,8 @@ export function useAccount() {
     error,
     refresh,
     guardarPerfil,
+    subirFoto,
+    quitarFoto,
     cambiarAcceso,
     storedPassword: passwordData || null,
     storedPasswordLoading: passwordLoading,

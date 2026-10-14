@@ -53,6 +53,11 @@ const employeeSchema = new Schema(
         "Finanzas",
       ],
     },
+    // Foto de perfil (Mi cuenta): URL de Cloudinary y su id para poder borrarla.
+    photo: {
+      url: { type: String },
+      publicId: { type: String },
+    },
     hourlyRate: {
       type: Number,
       default: 0,

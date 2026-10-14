@@ -19,6 +19,17 @@ export function normalizeDui(value) {
   return digits;
 }
 
+export const MAX_NAME_LENGTH = 60;
+
+// Nombre o apellido: sin espacios de más, obligatorio y de hasta 60 caracteres.
+// `label` es cómo se nombra en el mensaje («tu nombre», «tu apellido»).
+export function normalizeName(value, label) {
+  const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  if (!name) throw new FieldError(`Escribe ${label}`);
+  if (name.length > MAX_NAME_LENGTH) throw new FieldError(`${label.charAt(0).toUpperCase()}${label.slice(1)} no puede pasar de ${MAX_NAME_LENGTH} caracteres`);
+  return name;
+}
+
 export function normalizeEmail(value) {
   const email = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!EMAIL_PATTERN.test(email)) throw new FieldError("Escribe un correo válido");

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { getTone } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
 
@@ -22,9 +23,29 @@ export function personTone(person) {
   return PERSON_TONES[hash % PERSON_TONES.length];
 }
 
-// Círculo con las iniciales, con el fondo y el texto del tono.
-export default function Avatar({ name, tone = "blue", size = 36, style }) {
+// Foto de perfil de una persona: person.photo.url (lo que devuelve /employees y
+// las rutas) o person.photoUrl (la sesión y /auth/me); null si no tiene.
+export function photoOf(person) {
+  return person?.photo?.url || person?.photoUrl || null;
+}
+
+// Círculo con la foto de perfil si hay (`photoUrl`) y, si no, o si la imagen no
+// carga, con las iniciales sobre el fondo y el texto del tono.
+export default function Avatar({ name, photoUrl, tone = "blue", size = 36, style }) {
   const palette = getTone(tone);
+  // Una foto que no carga se recuerda por su URL: al cambiarla se vuelve a intentar.
+  const [failed, setFailed] = useState(null);
+
+  if (photoUrl && failed !== photoUrl) {
+    return (
+      <Image
+        source={{ uri: photoUrl }}
+        onError={() => setFailed(photoUrl)}
+        accessibilityLabel={name}
+        style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: palette.bg }, style]}
+      />
+    );
+  }
 
   return (
     <View

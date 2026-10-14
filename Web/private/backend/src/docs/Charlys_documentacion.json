@@ -231,12 +231,33 @@
               "position": {
                 "type": "string",
                 "example": "Administrador General"
+              },
+              "photoUrl": {
+                "type": ["string", "null"],
+                "description": "Foto de perfil (Cloudinary) o null si no tiene",
+                "example": "https://res.cloudinary.com/demo/image/upload/v1/industrias-charly/empleados/abc.jpg"
               }
             },
             "required": ["id", "name", "lastName", "email", "role"]
           }
         },
         "required": ["message", "user"]
+      },
+      "Account": {
+        "type": "object",
+        "description": "Datos del empleado con la sesión abierta (Mi cuenta)",
+        "properties": {
+          "id": { "type": "string", "example": "664b8a2f1b4e2c001f3a5b67" },
+          "name": { "type": "string", "example": "Carlos" },
+          "lastName": { "type": "string", "example": "Pérez" },
+          "email": { "type": "string", "format": "email", "example": "carlos@charlys.com" },
+          "phone": { "type": "string", "example": "7788-9900" },
+          "dui": { "type": "string", "example": "012345678" },
+          "position": { "type": "string", "example": "Administrador General" },
+          "department": { "type": "string", "example": "Administración" },
+          "photoUrl": { "type": ["string", "null"], "description": "Foto de perfil o null si no tiene" },
+          "isAdmin": { "type": "boolean" }
+        }
       },
       "AttendanceRecord": {
         "type": "object",
@@ -339,6 +360,14 @@
             "type": "string",
             "enum": ["Fabricación", "Logística", "Administración", "Almacén", "Finanzas"],
             "example": "Fabricación"
+          },
+          "photo": {
+            "type": "object",
+            "description": "Foto de perfil (se cambia desde Mi cuenta)",
+            "properties": {
+              "url": { "type": "string", "example": "https://res.cloudinary.com/demo/image/upload/v1/industrias-charly/empleados/abc.jpg" },
+              "publicId": { "type": "string", "example": "industrias-charly/empleados/abc" }
+            }
           },
           "hourlyRate": {
             "type": "number",
@@ -2245,6 +2274,215 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Autenticación"],
+        "summary": "Mi cuenta: datos del empleado con la sesión abierta",
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Datos de la cuenta (incluye photoUrl)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (mensaje en español)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Autenticación"],
+        "summary": "Mi cuenta: cambiar nombre, apellido, teléfono o DUI",
+        "description": "Todos los campos son opcionales. `name` y `lastName` se guardan sin espacios de más; no pueden quedar vacíos ni pasar de 60 caracteres (400 con mensaje en español, p. ej. «Escribe tu nombre»). El DUI se normaliza a 9 dígitos.",
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "maxLength": 60, "example": "Carlos" },
+                  "lastName": { "type": "string", "maxLength": 60, "example": "Pérez" },
+                  "phone": { "type": "string", "example": "7788-9900" },
+                  "dui": { "type": "string", "example": "01234567-8" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cuenta actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (mensaje en español)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/api/auth/me/photo": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "Mi cuenta: subir o cambiar la foto de perfil",
+        "description": "Sube la imagen (hasta 5 MB) a Cloudinary (`industrias-charly/empleados`), recortada cuadrada a 400×400 centrada en la cara y re-codificada a JPEG. Si ya había una foto, se borra de Cloudinary al guardar la nueva.",
+        "security": [{ "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "photo": { "type": "string", "format": "binary", "description": "Imagen de la foto de perfil (máx. 5 MB)" }
+                },
+                "required": ["photo"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cuenta con la foto nueva en photoUrl",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (mensaje en español)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Autenticación"],
+        "summary": "Mi cuenta: quitar la foto de perfil",
+        "description": "Borra la foto de Cloudinary; el avatar vuelve a mostrar las iniciales.",
+        "security": [{ "cookieAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Cuenta sin foto (photoUrl: null)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos (mensaje en español)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "404": {
+            "description": "No se encontró la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

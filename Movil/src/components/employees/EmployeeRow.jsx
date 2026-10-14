@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Avatar, { personTone } from "../ui/Avatar";
+import Avatar, { personTone, photoOf } from "../ui/Avatar";
 import Pill from "../ui/Pill";
 import { colors } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
@@ -23,7 +23,7 @@ export default function EmployeeRow({ employee, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <Avatar name={fullName(employee)} tone={personTone(employee)} size={36} />
+      <Avatar name={fullName(employee)} photoUrl={photoOf(employee)} tone={personTone(employee)} size={36} />
       <View style={styles.texts}>
         <Text style={[styles.name, inactive && styles.muted]} numberOfLines={1}>
           {fullName(employee) || "—"}

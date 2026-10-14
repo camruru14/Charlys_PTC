@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import KeyboardScreen from "../components/ui/KeyboardScreen";
 import { useAccount } from "../hooks/useAccount";
 import { useAuth } from "../hooks/useAuth";
 import PermissionChip from "../components/employees/PermissionChip";
 import { roleLine } from "../components/employees/EmployeeRow";
-import Avatar, { personTone } from "../components/ui/Avatar";
+import Avatar, { personTone, photoOf } from "../components/ui/Avatar";
 import BottomBar from "../components/ui/BottomBar";
 import BottomSheet from "../components/ui/BottomSheet";
 import Button from "../components/ui/Button";
@@ -13,16 +13,46 @@ import Card from "../components/ui/Card";
 import CurrentPasswordField from "../components/ui/CurrentPasswordField";
 import ErrorState from "../components/ui/ErrorState";
 import FormField from "../components/ui/FormField";
+import Icon from "../components/ui/Icon";
 import LoadingState from "../components/ui/LoadingState";
 import PasswordField from "../components/ui/PasswordField";
 import { useToast } from "../components/ui/Toast";
 import { colors, tones } from "../lib/theme";
 import { fonts, type } from "../lib/typography";
 import { formatDui, isValidDui, maskDui } from "../lib/dui";
+import { pickProfilePhoto } from "../lib/pickImages";
 import { fullName } from "../lib/attendance";
 
-const emptyForm = { phone: "", dui: "", newEmail: "", newPassword: "" };
+const emptyForm = { name: "", lastName: "", phone: "", dui: "", newEmail: "", newPassword: "" };
 const MIN_PASSWORD_LENGTH = 6;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+// Hoja con lo que se puede hacer con la foto de perfil.
+//   hasPhoto: «Quitar foto» solo aparece si ya tiene una.
+function PhotoSheet({ visible, hasPhoto, onClose, onCamera, onLibrary, onRemove }) {
+  const options = [
+    { key: "camera", title: "Tomar foto", icon: "camera", onPress: onCamera },
+    { key: "library", title: "Elegir de la galería", icon: "image", onPress: onLibrary },
+    ...(hasPhoto ? [{ key: "remove", title: "Quitar foto", icon: "trash", danger: true, onPress: onRemove }] : []),
+  ];
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title="Foto de perfil">
+      <View style={styles.options}>
+        {options.map((o) => (
+          <Pressable
+            key={o.key}
+            onPress={o.onPress}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+          >
+            <Icon name={o.icon} size={20} color={o.danger ? tones.rose.text : colors.ink} />
+            <Text style={[styles.optionText, o.danger && { color: tones.rose.text }]}>{o.title}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </BottomSheet>
+  );
+}
 
 // Hoja que pide la contraseña actual antes de aplicar un cambio de correo o
 // de contraseña (ConfirmPasswordModal de la web). El error de una contraseña
@@ -64,7 +94,8 @@ function ConfirmPasswordSheet({ state, busy, onChange, onClose, onConfirm }) {
 }
 
 // Configuración > Mi cuenta (MiCuenta.jsx y la parte de Mi cuenta de
-// Configuracion.jsx en la web): teléfono y DUI (PUT /auth/me) y el cambio de
+// Configuracion.jsx en la web): foto de perfil (se sube al momento, sin
+// «Guardar cambios»), nombre, apellido, teléfono y DUI (PUT /auth/me) y el cambio de
 // correo o contraseña (PUT /auth/me/credentials), que pide la contraseña
 // actual al guardar. Los datos de OTRO empleado se editan en Personal y
 // permisos.
@@ -78,6 +109,8 @@ export default function MiCuentaScreen({ navigation }) {
     error,
     refresh,
     guardarPerfil,
+    subirFoto,
+    quitarFoto,
     cambiarAcceso,
     storedPassword,
     refreshStoredPassword,
@@ -85,10 +118,19 @@ export default function MiCuentaScreen({ navigation }) {
   const [draft, setDraft] = useState(null);
   const [prompt, setPrompt] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [photoSheet, setPhotoSheet] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
-  const savedForm = account ? { ...emptyForm, phone: account.phone || "", dui: formatDui(account.dui) } : emptyForm;
+  const savedForm = account
+    ? { ...emptyForm, name: account.name || "", lastName: account.lastName || "", phone: account.phone || "", dui: formatDui(account.dui) }
+    : emptyForm;
   const form = draft ?? savedForm;
-  const profileDirty = Boolean(account) && (form.phone.trim() !== savedForm.phone || form.dui !== savedForm.dui);
+  const profileDirty =
+    Boolean(account) &&
+    (form.name.trim() !== savedForm.name ||
+      form.lastName.trim() !== savedForm.lastName ||
+      form.phone.trim() !== savedForm.phone ||
+      form.dui !== savedForm.dui);
   // Escribir en «Cambiar correo» o «Cambiar contraseña» ya cuenta como cambio.
   const credentialsTouched = Boolean(form.newEmail.trim() || form.newPassword);
   const dirty = Boolean(account && draft) && (profileDirty || credentialsTouched);
@@ -108,6 +150,49 @@ export default function MiCuentaScreen({ navigation }) {
   );
 
   const setField = (field, value) => setDraft({ ...form, [field]: field === "dui" ? maskDui(value) : value });
+
+  // La foto se sube (o se quita) al momento y la sesión se actualiza para que
+  // el menú lateral la muestre.
+  const changePhoto = async (source) => {
+    setPhotoSheet(false);
+    const file = await pickProfilePhoto(source);
+    if (!file) return;
+    if (file.size && file.size > MAX_PHOTO_BYTES) return Alert.alert("Foto de perfil", "La foto no puede pesar más de 5 MB");
+    setPhotoBusy(true);
+    try {
+      const saved = await subirFoto({ uri: file.uri, name: file.name, type: file.type });
+      updateUser({ photoUrl: saved?.photoUrl ?? null });
+      toast.show("Foto actualizada");
+    } catch (err) {
+      Alert.alert("No se pudo subir la foto", err.message);
+    } finally {
+      setPhotoBusy(false);
+    }
+    return undefined;
+  };
+
+  const removePhoto = () => {
+    setPhotoSheet(false);
+    Alert.alert("Quitar foto", "Se quitará tu foto de perfil y volverán tus iniciales.", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Quitar foto",
+        style: "destructive",
+        onPress: async () => {
+          setPhotoBusy(true);
+          try {
+            await quitarFoto();
+            updateUser({ photoUrl: null });
+            toast.show("Foto quitada");
+          } catch (err) {
+            Alert.alert("No se pudo quitar la foto", err.message);
+          } finally {
+            setPhotoBusy(false);
+          }
+        },
+      },
+    ]);
+  };
 
   // Valida el cambio de correo o contraseña. Devuelve { email?, newPassword? },
   // null si no hay cambio de acceso, o false si hay que corregir algo (ya avisado).
@@ -135,6 +220,14 @@ export default function MiCuentaScreen({ navigation }) {
   // de correo o contraseña).
   const handleSave = async (currentPassword) => {
     if (!dirty) return;
+    if (profileDirty && !form.name.trim()) {
+      Alert.alert("Revisa tu nombre", "Escribe tu nombre");
+      return;
+    }
+    if (profileDirty && !form.lastName.trim()) {
+      Alert.alert("Revisa tu apellido", "Escribe tu apellido");
+      return;
+    }
     if (profileDirty && form.dui && !isValidDui(form.dui)) {
       Alert.alert("DUI inválido", "El DUI debe tener 9 números (ej. 12345678-9)");
       return;
@@ -169,7 +262,11 @@ export default function MiCuentaScreen({ navigation }) {
         // Ya aplicado: si falla algo después, reintentar no lo repite.
         setDraft((d) => (d ? { ...d, newEmail: "", newPassword: "" } : d));
       }
-      if (profileDirty) await guardarPerfil({ phone: form.phone.trim(), dui: form.dui });
+      if (profileDirty) {
+        const saved = await guardarPerfil({ name: form.name.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), dui: form.dui });
+        // El nombre del usuario en sesión (cabecera del menú lateral).
+        if (saved?.name) updateUser({ name: saved.name, lastName: saved.lastName });
+      }
       setDraft(null);
       toast.show("Cambios guardados");
     } catch (err) {
@@ -202,7 +299,22 @@ export default function MiCuentaScreen({ navigation }) {
         }
       >
         <View style={styles.profile}>
-          <Avatar name={fullName(account)} tone={personTone(account)} size={56} />
+          <Pressable
+            onPress={() => setPhotoSheet(true)}
+            disabled={photoBusy}
+            accessibilityRole="button"
+            accessibilityLabel={photoOf(account) ? "Cambiar foto de perfil" : "Subir foto de perfil"}
+          >
+            <Avatar name={fullName(account)} photoUrl={photoOf(account)} tone={personTone(account)} size={80} />
+            {photoBusy ? (
+              <View style={styles.photoBusy}>
+                <ActivityIndicator color={colors.white} />
+              </View>
+            ) : null}
+            <View style={styles.cameraBadge}>
+              <Icon name="camera" size={14} color={colors.white} />
+            </View>
+          </Pressable>
           <View style={styles.flex}>
             <Text style={styles.name} numberOfLines={1}>
               {fullName(account)}
@@ -220,6 +332,25 @@ export default function MiCuentaScreen({ navigation }) {
             {account.email}
           </Text>
         </Card>
+
+        <View style={styles.columns}>
+          <FormField
+            label="Nombre"
+            value={form.name}
+            onChangeText={(v) => setField("name", v)}
+            autoComplete="given-name"
+            maxLength={60}
+            style={styles.flex}
+          />
+          <FormField
+            label="Apellido"
+            value={form.lastName}
+            onChangeText={(v) => setField("lastName", v)}
+            autoComplete="family-name"
+            maxLength={60}
+            style={styles.flex}
+          />
+        </View>
 
         <FormField
           label="Cambiar correo"
@@ -277,6 +408,15 @@ export default function MiCuentaScreen({ navigation }) {
         }
       />
 
+      <PhotoSheet
+        visible={photoSheet}
+        hasPhoto={Boolean(photoOf(account))}
+        onClose={() => setPhotoSheet(false)}
+        onCamera={() => changePhoto("camera")}
+        onLibrary={() => changePhoto("library")}
+        onRemove={removePhoto}
+      />
+
       <ConfirmPasswordSheet
         state={prompt}
         busy={saving}
@@ -299,4 +439,28 @@ const styles = StyleSheet.create({
   email: { marginTop: 4, fontFamily: fonts.bold, fontSize: 14.5, color: colors.ink },
   columns: { flexDirection: "row", gap: 10 },
   sheetFooter: { flexDirection: "row", gap: 10 },
+  photoBusy: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+  },
+  cameraBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.canvas,
+  },
+  options: { gap: 4, paddingBottom: 8 },
+  option: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 8, borderRadius: 12 },
+  optionPressed: { backgroundColor: colors.surface2 },
+  optionText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.ink },
 });

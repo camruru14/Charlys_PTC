@@ -4,7 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { useEmployees } from "../hooks/useEmployees";
 import PermissionChip from "../components/employees/PermissionChip";
 import { roleLine } from "../components/employees/EmployeeRow";
-import Avatar, { personTone } from "../components/ui/Avatar";
+import Avatar, { personTone, photoOf } from "../components/ui/Avatar";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import FilterChips from "../components/ui/FilterChips";
@@ -33,7 +33,7 @@ function PersonRow({ employee, onPress }) {
       accessibilityRole="button"
       style={({ pressed }) => [styles.row, inactive && styles.rowInactive, pressed && styles.pressed]}
     >
-      <Avatar name={fullName(employee)} tone={inactive ? "gray" : personTone(employee)} size={36} />
+      <Avatar name={fullName(employee)} photoUrl={photoOf(employee)} tone={inactive ? "gray" : personTone(employee)} size={36} />
       <View style={styles.texts}>
         <Text style={[styles.name, inactive && styles.muted]} numberOfLines={1}>
           {fullName(employee) || "—"}

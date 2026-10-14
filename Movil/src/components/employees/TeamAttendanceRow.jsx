@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import Avatar, { personTone } from "../ui/Avatar";
+import Avatar, { personTone, photoOf } from "../ui/Avatar";
 import Pill from "../ui/Pill";
 import { colors, tones } from "../../lib/theme";
 import { fonts } from "../../lib/typography";
@@ -16,7 +16,7 @@ export default function TeamAttendanceRow({ employee, record, schedule }) {
 
   return (
     <View style={[styles.row, !record && styles.absent]}>
-      <Avatar name={name} tone={personTone(employee)} size={28} />
+      <Avatar name={name} photoUrl={photoOf(employee)} tone={personTone(employee)} size={28} />
       <View style={styles.body}>
         <View style={styles.top}>
           <Text style={styles.name} numberOfLines={1}>

@@ -35,6 +35,13 @@ export function AuthProvider({ children }) {
   // Copia en memoria del token que lee src/lib/api.js en cada request, para
   // no golpear SecureStore (I/O nativo) en cada llamada a la API.
   const tokenRef = useRef(null);
+  // Último usuario conocido: updateUser puede llamarse varias veces seguidas
+  // (correo, nombre, foto) antes de que React renderice, y cada llamada debe
+  // sumar sobre la anterior.
+  const userRef = useRef(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     setTokenGetter(() => tokenRef.current);
@@ -143,7 +150,8 @@ export function AuthProvider({ children }) {
   // cuenta), igual que updateUser de la web; el token no cambia.
   const updateUser = useCallback(
     async (partial) => {
-      const next = { ...(user || {}), ...partial };
+      const next = { ...(userRef.current || {}), ...partial };
+      userRef.current = next;
       setUser(next);
       try {
         await SecureStore.setItemAsync(USER_KEY, JSON.stringify(next));
@@ -151,7 +159,7 @@ export function AuthProvider({ children }) {
         // Si no se puede guardar, igual queda en memoria hasta cerrar la app.
       }
     },
-    [user],
+    [],
   );
 
   const value = {
