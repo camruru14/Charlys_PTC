@@ -88,10 +88,11 @@ inventoryController.insertItem = async (req, res) => {
   }
 };
 
-// ACTUALIZAR. Los campos que no llegan no se tocan. Si llega `stock` hay que mandar también
-// `expectedStock` (la existencia que el usuario vio al abrir el artículo): el cambio solo se
-// aplica si la existencia sigue siendo esa, así editar un artículo nunca pisa las unidades que
-// entraron (lote enviado a bodega) o salieron (pedido verificado) mientras tanto.
+// ACTUALIZAR. Los campos que no llegan no se tocan. Si llega `stock` y cambia la existencia hay que
+// mandar también `expectedStock` (la existencia que el usuario vio al abrir el artículo): el cambio
+// solo se aplica si la existencia sigue siendo esa, así editar un artículo nunca pisa las unidades
+// que entraron (lote enviado a bodega) o salieron (pedido verificado) mientras tanto. Un `stock`
+// sin `expectedStock` se acepta solo si es igual al guardado («sin cambio»); si no, 400.
 inventoryController.updateItem = async (req, res) => {
   try {
     const { id } = req.params;
@@ -179,6 +180,7 @@ inventoryController.updateItem = async (req, res) => {
 // se desmarca "sentToWarehouse" en lugar de borrarlo.
 inventoryController.deleteItem = async (req, res) => {
   try {
+    assertId(req.params.id);
     const item = await inventoryModel.findById(req.params.id);
 
     if (!item) {
@@ -195,8 +197,7 @@ inventoryController.deleteItem = async (req, res) => {
 
     res.json({ message: "Inventory item deleted" });
   } catch (error) {
-    console.log("error " + error);
-    res.status(500).json({ message: "Error interno del servidor." });
+    sendError(res, error);
   }
 };
 

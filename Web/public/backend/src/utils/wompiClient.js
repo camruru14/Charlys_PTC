@@ -127,7 +127,14 @@ async function chargeTokenizedCard({ tokenTarjeta, monto, nombreCliente, emailCl
     throw await failure("cobro", response, "Tu tarjeta fue rechazada. Intenta con otra.");
   }
 
-  return response.json(); // { esAprobada, idTransaccion, formaPago, codigoAutorizacion, mensaje, ... }
+  // 2xx: Wompi pudo haber cobrado. Si el cuerpo no se puede leer no sabemos el resultado, así que
+  // es un cobro sin confirmar (se guarda para conciliar y el cliente no reintenta), no un 500.
+  try {
+    return await response.json(); // { esAprobada, idTransaccion, formaPago, codigoAutorizacion, mensaje, ... }
+  } catch (error) {
+    console.error(`Wompi cobro: respuesta ${response.status} ilegible: ${error}`);
+    throw paymentError(502, "No pudimos confirmar el resultado de tu pago.", { unconfirmed: true });
+  }
 }
 
 export const wompiClient = {

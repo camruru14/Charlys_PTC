@@ -68,7 +68,9 @@ export function useFetch(path, { client = api } = {}) {
         // Un mutate() descartó la respuesta de esta lectura: se vuelve a pedir lo actual (de la ruta actual).
         if (pending.current === 0 && reloadAfter.current) {
           reloadAfter.current = false;
-          loadRef.current?.({ silent: true });
+          // Sin datos todavía (carga inicial) la recarga no es silenciosa: así se ve «Cargando…»
+          // en vez de la lista vacía y, si falla, se muestra el error.
+          loadRef.current?.(hasData.current ? { silent: true } : undefined);
         }
       }
     },

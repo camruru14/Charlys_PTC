@@ -240,10 +240,17 @@ function Configuracion() {
   // Sube al guardar una contraseña nueva: reinicia el ojo de Mi cuenta (que pide la contraseña solo al pulsarlo).
   const [passwordVersion, setPasswordVersion] = useState(0);
   const { user, updateUser } = useAuth();
-  // /auth/me trae el isAdmin actual: se guarda en la sesión para los botones de admin de todo el panel.
+  // /auth/me trae el isAdmin, el área y el puesto actuales: se guardan en la sesión para los botones
+  // de admin y los permisos por puesto de todo el panel.
+  const { isAdmin: meIsAdmin, department: meDepartment, position: mePosition } = account || {};
+  const { isAdmin: userIsAdmin, department: userDepartment, position: userPosition } = user || {};
   useEffect(() => {
-    if (typeof account?.isAdmin === "boolean" && account.isAdmin !== user?.isAdmin) updateUser({ isAdmin: account.isAdmin });
-  }, [account?.isAdmin, user?.isAdmin, updateUser]);
+    const changes = {};
+    if (typeof meIsAdmin === "boolean" && meIsAdmin !== userIsAdmin) changes.isAdmin = meIsAdmin;
+    if (typeof meDepartment === "string" && meDepartment !== (userDepartment ?? "")) changes.department = meDepartment;
+    if (typeof mePosition === "string" && mePosition !== (userPosition ?? "")) changes.position = mePosition;
+    if (Object.keys(changes).length) updateUser(changes);
+  }, [meIsAdmin, meDepartment, mePosition, userIsAdmin, userDepartment, userPosition, updateUser]);
 
   const warehouses = useMemo(() => (Array.isArray(warehousesData) ? warehousesData : []), [warehousesData]);
   const vehicles = useMemo(() => (Array.isArray(vehiclesData) ? vehiclesData : []), [vehiclesData]);

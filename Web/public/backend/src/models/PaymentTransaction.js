@@ -11,6 +11,12 @@ import { Schema, model } from "mongoose";
 // Excepción: si el cobro SE APROBÓ pero no se pudo guardar el pedido, se guarda aquí
 // un registro con needsReconciliation: true (sin `order`, con el pedido que se iba a
 // crear en `payload`) para conciliarlo a mano contra Wompi. No se reembolsa solo.
+//
+// Otra excepción: un cobro SIN CONFIRMAR (Wompi no respondió, respondió 5xx o su respuesta 2xx
+// no se pudo leer; wompiClient marca el error con `unconfirmed`). No sabemos si se cobró, así que
+// se guarda con status "pendiente_conciliacion" y needsReconciliation: true (sin `order`, con el
+// pedido reservado y su número en `payload` y el motivo en `failureReason`) para
+// revisarlo a mano contra Wompi; el cliente recibe un 502 y no reintenta.
 const paymentTransactionSchema = new Schema(
   {
     order: { type: Schema.Types.ObjectId, ref: "Order", required: function requiresOrder() { return !this.needsReconciliation; }, index: true },

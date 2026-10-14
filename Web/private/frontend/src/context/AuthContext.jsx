@@ -105,8 +105,9 @@ export function AuthProvider({ children }) {
     [persistSession],
   );
 
-  // Al abrir con una sesión guardada, `isAdmin` se vuelve a leer de /auth/me: el guardado es el del
-  // último login y los permisos pudieron cambiar desde entonces (botones de admin que sobran o faltan).
+  // Al abrir con una sesión guardada, `isAdmin`, `department` y `position` se vuelven a leer de /auth/me:
+  // lo guardado es del último login y pudo cambiar desde entonces (botones de admin que sobran o
+  // faltan, y los módulos que da el puesto: canManageAttendance).
   const userId = user?.id;
   useEffect(() => {
     if (!userId) return undefined;
@@ -114,7 +115,14 @@ export function AuthProvider({ children }) {
     api
       .get("/auth/me")
       .then((me) => {
-        if (!ignore && typeof me?.isAdmin === "boolean" && me.isAdmin !== readStoredSession()?.user?.isAdmin) updateUser({ isAdmin: me.isAdmin });
+        if (ignore || !me) return;
+        const saved = readStoredSession()?.user;
+        const changes = {};
+        if (typeof me.isAdmin === "boolean" && me.isAdmin !== saved?.isAdmin) changes.isAdmin = me.isAdmin;
+        for (const field of ["department", "position"]) {
+          if (typeof me[field] === "string" && me[field] !== (saved?.[field] ?? "")) changes[field] = me[field];
+        }
+        if (Object.keys(changes).length) updateUser(changes);
       })
       .catch(() => {});
     return () => {

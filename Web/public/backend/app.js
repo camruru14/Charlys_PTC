@@ -16,12 +16,14 @@ const app = express();
 app.set("trust proxy", 1);
 
 // Orígenes que pueden llamar a este backend desde el navegador: las URLs exactas
-// de CORS_ORIGINS (o, si no está definida, los localhost de desarrollo) y la URL
+// de CORS_ORIGINS (o, si no está definida y no es producción, los localhost de desarrollo) y la URL
 // de producción de la tienda.
 const allowedOrigins = [
   ...(process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
-    : ["http://localhost:5175", "http://localhost:5176"]),
+    : process.env.NODE_ENV !== "production"
+      ? ["http://localhost:5175", "http://localhost:5176"]
+      : []),
   "https://charly-public-frontend.vercel.app",
 ];
 

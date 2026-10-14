@@ -18,10 +18,16 @@ export function useAccount() {
   const { data, loading, refreshing, error, refresh } = useApi("/auth/me");
   const [passwordData, setPasswordData] = useState(null);
 
-  // /auth/me trae el isAdmin actual: se guarda en la sesión (botones de admin de la app).
+  // /auth/me trae el isAdmin, el área y el puesto actuales: se guardan en la sesión (botones de admin
+  // y permisos por puesto de la app: canManageAttendance).
   useEffect(() => {
-    if (typeof data?.isAdmin === "boolean" && data.isAdmin !== user?.isAdmin) updateUser({ isAdmin: data.isAdmin });
-  }, [data?.isAdmin, user?.isAdmin, updateUser]);
+    const changes = {};
+    if (typeof data?.isAdmin === "boolean" && data.isAdmin !== user?.isAdmin) changes.isAdmin = data.isAdmin;
+    for (const field of ["department", "position"]) {
+      if (typeof data?.[field] === "string" && data[field] !== (user?.[field] ?? "")) changes[field] = data[field];
+    }
+    if (Object.keys(changes).length) updateUser(changes);
+  }, [data?.isAdmin, data?.department, data?.position, user?.isAdmin, user?.department, user?.position, updateUser]);
 
   // Pide la contraseña (solo al pulsar el ojo) y la deja en memoria.
   const loadStoredPassword = useCallback(async () => {

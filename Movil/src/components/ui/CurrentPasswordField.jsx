@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../../lib/theme";
@@ -20,6 +20,12 @@ export default function CurrentPasswordField({ password, legacy = false, onRevea
   const [busy, setBusy] = useState(false);
 
   useFocusEffect(useCallback(() => () => setVisible(false), []));
+
+  // Sin contraseña cargada (tras cambiarla o refrescar) no hay nada que mostrar: el ojo vuelve a
+  // «oculto» y el siguiente toque la pide de nuevo, en vez de gastarse en «ocultar» algo que no se ve.
+  useEffect(() => {
+    if (!password) setVisible(false);
+  }, [password]);
 
   const shown = visible && password ? password : "•".repeat(password ? Math.min(password.length, 16) : 8);
 

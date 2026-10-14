@@ -77,7 +77,7 @@ export default function AsistenciaScreen() {
 
   // Al abrir la pantalla, recupera una entrada marcada previamente (incluso
   // si la app se cerró por completo mientras tanto). Solo vale la de este mismo
-  // usuario y de hoy: cualquier otra se descarta (lib/checkInStorage.js).
+  // usuario y de menos de 16 h: cualquier otra se descarta (lib/checkInStorage.js).
   const userId = user?.id;
   useEffect(() => {
     let ignore = false;

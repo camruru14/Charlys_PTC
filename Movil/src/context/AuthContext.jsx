@@ -179,15 +179,22 @@ export function AuthProvider({ children }) {
     [],
   );
 
-  // Al abrir con una sesión guardada (o al entrar), `isAdmin` se vuelve a leer de /auth/me: el guardado
-  // es el del último login y los permisos pudieron cambiar desde entonces.
+  // Al abrir con una sesión guardada (o al entrar), `isAdmin`, `department` y `position` se vuelven a
+  // leer de /auth/me: lo guardado es del último login y los permisos pudieron cambiar desde entonces.
   useEffect(() => {
     if (loading || !token) return undefined;
     let ignore = false;
     api
       .get("/auth/me")
       .then((me) => {
-        if (!ignore && typeof me?.isAdmin === "boolean" && me.isAdmin !== userRef.current?.isAdmin) updateUser({ isAdmin: me.isAdmin });
+        if (ignore || !me) return;
+        const saved = userRef.current;
+        const changes = {};
+        if (typeof me.isAdmin === "boolean" && me.isAdmin !== saved?.isAdmin) changes.isAdmin = me.isAdmin;
+        for (const field of ["department", "position"]) {
+          if (typeof me[field] === "string" && me[field] !== (saved?.[field] ?? "")) changes[field] = me[field];
+        }
+        if (Object.keys(changes).length) updateUser(changes);
       })
       .catch(() => {});
     return () => {
