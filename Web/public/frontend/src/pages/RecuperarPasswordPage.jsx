@@ -7,15 +7,16 @@ import api from "../lib/api";
 /*
   Recuperación de contraseña en 3 pasos (correo -> código -> nueva
   contraseña), todo en una sola pantalla que lleva el paso con un simple
-  useState. Quien realmente controla si el paso es válido es la cookie
-  temporal del backend (recoveryCookie, 15 min) — este componente solo
-  decide qué formulario mostrar.
+  useState. Quien controla si el paso es válido es el backend (PasswordReset): el
+  código nunca viaja al navegador, solo se manda por correo. Este componente guarda
+  el `resetId` que responde el paso 1 y lo manda en los pasos 2 y 3.
 */
 export default function RecuperarPasswordPage() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
+  const [resetId, setResetId] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -26,6 +27,7 @@ export default function RecuperarPasswordPage() {
     setSubmitting(true);
     try {
       const res = await api.post("/auth/recovery/request-code", { email });
+      setResetId(res.resetId);
       toast.success(res.message);
       setStep(2);
     } catch (error) {
@@ -39,7 +41,7 @@ export default function RecuperarPasswordPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await api.post("/auth/recovery/verify-code", { codeRequest: code.trim() });
+      const res = await api.post("/auth/recovery/verify-code", { resetId, code: code.trim() });
       toast.success(res.message);
       setStep(3);
     } catch (error) {
@@ -57,7 +59,7 @@ export default function RecuperarPasswordPage() {
     }
     setSubmitting(true);
     try {
-      await api.post("/auth/recovery/new-password", { newPassword, confirmNewPassword });
+      await api.post("/auth/recovery/new-password", { resetId, newPassword, confirmNewPassword });
       toast.success("Contraseña actualizada, ya puedes iniciar sesión");
       navigate("/cuenta/login", { replace: true });
     } catch (error) {
@@ -93,7 +95,7 @@ export default function RecuperarPasswordPage() {
         <>
           <h1 className="font-display text-3xl font-bold tracking-tight">Revisa tu correo</h1>
           <p className="mt-2 text-muted-foreground">
-            Enviamos un código de 6 caracteres a <strong>{email}</strong>
+            Si el correo está registrado, enviamos un código de 6 dígitos a <strong>{email}</strong>
           </p>
 
           <form onSubmit={handleVerifyCode} className="mt-8 space-y-5 rounded-3xl border border-border bg-card p-8">
@@ -101,9 +103,11 @@ export default function RecuperarPasswordPage() {
               label="Código"
               required
               maxLength={6}
+              inputMode="numeric"
+              autoComplete="one-time-code"
               autoFocus
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               style={{ textAlign: "center", fontSize: "1.4rem", fontWeight: 700, letterSpacing: "0.5em" }}
             />
             <button

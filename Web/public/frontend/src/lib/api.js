@@ -12,7 +12,12 @@ async function request(path, { method = "GET", body, isForm = false } = {}) {
   const payload = isJson ? await response.json().catch(() => ({})) : null;
 
   if (!response.ok) {
-    throw new Error(payload?.message || `Error ${response.status}`);
+    // El status y el cuerpo viajan en el error: el checkout necesita el 409 con los
+    // precios nuevos (payload.products) y distingue el 402 de la tarjeta.
+    const error = new Error(payload?.message || `Error ${response.status}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   return payload;

@@ -5,6 +5,7 @@ import transactionModel, { isStoreSale } from "../models/Transaction.js";
 import expenseCategoryModel, { NAME_COLLATION, normalizeName } from "../models/ExpenseCategory.js";
 import cloudinary, { uploadTransactionFileBuffer } from "../lib/cloudinary.js";
 import { recordFor } from "../lib/activity.js";
+import { nextCode } from "../lib/counters.js";
 
 // Categoría de todo ingreso manual (las «Ventas» solo las crea la tienda).
 export const OTHER_INCOME = "Otros ingresos";
@@ -15,17 +16,11 @@ const MANUAL_PAYMENT_METHODS = ["Efectivo", "Transferencia", "Cheque"];
 
 const STORE_SALE_MESSAGE = "Las ventas de la tienda no se editan";
 
-// Genera el siguiente N° de transacción correlativo del año (TRAN-2026-0001, TRAN-2026-0002, ...)
+// Siguiente N° de transacción correlativo del año (TRAN-2026-0001, TRAN-2026-0002, ...):
+// contador atómico compartido con la tienda, que registra sus ventas en la misma
+// secuencia (lib/counters.js).
 export async function generateReference() {
-  const prefix = `TRAN-${new Date().getFullYear()}-`;
-  const last = await transactionModel
-    .findOne({ reference: { $regex: `^${prefix}` } })
-    .sort({ reference: -1 });
-
-  const lastNumber = last ? parseInt(last.reference.slice(prefix.length), 10) : 0;
-  const next = (Number.isNaN(lastNumber) ? 0 : lastNumber) + 1;
-
-  return `${prefix}${String(next).padStart(4, "0")}`;
+  return nextCode("TRAN", transactionModel, "reference");
 }
 
 // Busca la transacción de :id (404 si el id no es válido o no existe).

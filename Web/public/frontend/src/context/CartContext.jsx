@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import api from "../lib/api";
 import { MAX_QUANTITY } from "../lib/quantity";
 
 const CartContext = createContext(null);
@@ -15,11 +16,15 @@ function loadInitialCart() {
 }
 
 // Un item de carrito: { productId, slug, name, image, price, color, size,
-// minOrderQuantity, quantity }
+// minOrderQuantity, quantity, stock }. Lo guardado en el navegador puede quedar viejo:
+// syncWithCatalog() lo refresca desde el backend al abrir el carrito o el checkout.
 export function CartProvider({ children }) {
   const [items, setItems] = useState(loadInitialCart);
 
+  // Copia para leer los items actuales dentro de funciones async.
+  const itemsRef = useRef(items);
   useEffect(() => {
+    itemsRef.current = items;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
@@ -54,6 +59,7 @@ export function CartProvider({ children }) {
           image: product.images?.[0]?.url,
           price: product.price,
           minOrderQuantity: product.minOrderQuantity || 1,
+          stock: product.stock,
           color,
           size,
           quantity: qty,
@@ -82,6 +88,58 @@ export function CartProvider({ children }) {
 
   const clearCart = () => setItems([]);
 
+  // Refresca precio, nombre, imagen, mínimo y disponibilidad de los productos del carrito
+  // con lo que hay hoy en el catálogo (GET /products, solo productos activos), y quita los
+  // que ya no existen. Avisa de lo que cambió. Un fallo de red deja el carrito como estaba.
+  const syncWithCatalog = async () => {
+    const current = itemsRef.current;
+    if (current.length === 0) return;
+    let catalog;
+    try {
+      catalog = await api.get("/products");
+    } catch {
+      return;
+    }
+    if (!Array.isArray(catalog)) return;
+    const byId = new Map(catalog.map((p) => [String(p._id), p]));
+
+    const removed = [];
+    let priceChanged = false;
+    const next = [];
+    for (const item of itemsRef.current) {
+      const product = byId.get(String(item.productId));
+      if (!product) {
+        removed.push(item.name);
+        continue;
+      }
+      if (product.price !== item.price) priceChanged = true;
+      const minOrderQuantity = product.minOrderQuantity || 1;
+      next.push({
+        ...item,
+        slug: product.slug,
+        name: product.name,
+        image: product.images?.[0]?.url,
+        price: product.price,
+        minOrderQuantity,
+        stock: product.stock,
+        quantity: Math.max(minOrderQuantity, item.quantity),
+      });
+    }
+    setItems(next);
+    removed.forEach((name) => toast.error(`"${name}" ya no está disponible y se quitó de tu carrito.`));
+    if (priceChanged) toast("Actualizamos algunos precios de tu carrito.", { icon: "ℹ️" });
+  };
+
+  // Precios nuevos que respondió el checkout (409, [{ id, price }]): se aplican al carrito.
+  const applyPrices = (products) => {
+    if (!Array.isArray(products)) return;
+    const byId = new Map(products.map((p) => [String(p.id), p.price]));
+    setItems((prev) => prev.map((i) => (byId.has(String(i.productId)) ? { ...i, price: byId.get(String(i.productId)) } : i)));
+  };
+
+  // Hay un producto del carrito sin existencias (según el último refresco).
+  const hasSoldOut = items.some((i) => i.stock != null && i.stock <= 0);
+
   const total = useMemo(
     () => items.reduce((sum, i) => sum + i.price * i.quantity, 0),
     [items],
@@ -91,7 +149,7 @@ export function CartProvider({ children }) {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, updateQuantity, removeItem, clearCart, total, count }}
+      value={{ items, addItem, updateQuantity, removeItem, clearCart, syncWithCatalog, applyPrices, hasSoldOut, total, count }}
     >
       {children}
     </CartContext.Provider>

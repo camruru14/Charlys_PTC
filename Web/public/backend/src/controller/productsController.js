@@ -12,12 +12,15 @@ productsController.getProducts = async (req, res) => {
     const { category, search, featured } = req.query;
     const filter = { active: true };
 
-    if (category) filter.category = category;
+    if (typeof category === "string" && category) filter.category = category;
     if (featured === "true") filter.featured = true;
-    if (search) {
+    // El texto buscado se escapa (no es una expresión regular del usuario) y se limita
+    // a 60 caracteres: sin esto, un patrón mal formado daba 500 o podía trabar la búsqueda.
+    if (typeof search === "string" && search.trim()) {
+      const escaped = search.trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
+        { name: { $regex: escaped, $options: "i" } },
+        { description: { $regex: escaped, $options: "i" } },
       ];
     }
 

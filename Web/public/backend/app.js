@@ -15,24 +15,23 @@ const app = express();
 // el limitador de peticiones y las cookies secure vean la IP y el https reales.
 app.set("trust proxy", 1);
 
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
-  : [
-      "http://localhost:5175",
-      "http://localhost:5176",
-      // private/frontend (panel administrativo). Ya no llama a este backend
-      // (el catálogo se administra en private/backend); se puede quitar
-      // cuando ya no se necesite.
-      "http://localhost:5173",
-      "http://localhost:5174",
-    ];
+// Orígenes que pueden llamar a este backend desde el navegador: las URLs exactas
+// de CORS_ORIGINS (o, si no está definida, los localhost de desarrollo) y la URL
+// de producción de la tienda.
+const allowedOrigins = [
+  ...(process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : ["http://localhost:5175", "http://localhost:5176"]),
+  "https://charly-public-frontend.vercel.app",
+];
 
-// Además de las URLs exactas de arriba, aceptamos cualquier URL que Vercel
-// genere para estos 2 proyectos (cada deployment/preview tiene un hash
-// distinto en el dominio, ej. charly-public-frontend-bfhllc7ip-ptc4.vercel.app),
-// para no tener que actualizar CORS_ORIGINS manualmente en cada deploy nuevo.
-const vercelPreviewPattern =
-  /^https:\/\/charly-(public|private)-frontend(-[a-z0-9-]+)?\.vercel\.app$/;
+// Además, las URLs que Vercel genera para cada deployment/preview del frontend
+// de la TIENDA desde el equipo propio (sufijo -ptc4), ej.
+// charly-public-frontend-bfhllc7ip-ptc4.vercel.app, para no tener que
+// actualizar CORS_ORIGINS en cada deploy. El panel privado ya no llama a este
+// backend, y un proyecto con el mismo nombre de otro equipo no coincide con el
+// sufijo, así que no se aceptan.
+const vercelPreviewPattern = /^https:\/\/charly-public-frontend(-[a-z0-9]+)*-ptc4\.vercel\.app$/;
 
 app.use(
   cors({
@@ -42,7 +41,7 @@ app.use(
       if (allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
         return callback(null, true);
       }
-      return callback(new Error("Origen no permitido por CORS: " + origin));
+      return callback(Object.assign(new Error("Origen no permitido por CORS."), { status: 403, expose: true }));
     },
     credentials: true,
   }),
@@ -59,7 +58,7 @@ app.get("/api/health", (_req, res) => {
 // Autenticación de clientes de la tienda (registro / login / logout / me)
 app.use("/api/auth", authRoutes);
 
-// Recuperación de contraseña por código (3 pasos, cookie temporal aparte de la sesión)
+// Recuperación de contraseña por código (3 pasos; el estado vive en la base, ver PasswordReset)
 app.use("/api/auth/recovery", recoveryPasswordRoutes);
 
 // Catálogo de productos (público, solo lectura; se administra en private/backend)
@@ -74,9 +73,15 @@ app.use("/api/orders", ordersRoutes);
 // responde 500 sin cuerpo. Los clientes esperan JSON con "message", así que
 // sin esto el error nunca es legible del lado del cliente.
 app.use((err, _req, res, _next) => {
-  console.log("error " + err);
-  const status = err.status || err.http_code || 500;
-  res.status(status).json({ message: err.message || "Error interno del servidor." });
+  const status = err.status ?? err.statusCode;
+  // Solo los errores del cliente (4xx, o los que se marcan con `expose`: body-parser,
+  // validaciones) devuelven su mensaje. Cualquier otro error responde 500 genérico y
+  // queda en el log: nunca se devuelve err.message crudo de un fallo interno.
+  if (err.expose || (Number.isInteger(status) && status < 500)) {
+    return res.status(Number.isInteger(status) && status >= 400 ? status : 400).json({ message: err.message || "Solicitud inválida." });
+  }
+  console.error("error " + err);
+  res.status(500).json({ message: "Error interno del servidor." });
 });
 
 export default app;

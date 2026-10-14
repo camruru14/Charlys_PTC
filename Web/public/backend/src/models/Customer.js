@@ -20,6 +20,10 @@ const customerSchema = new Schema(
     phone: { type: String },
     addresses: { type: [addressSchema], default: [] },
     isActive: { type: Boolean, default: true },
+    // Versión de las sesiones: el JWT lleva la suya (`tv`) y customerAuthMiddleware solo
+    // lo acepta si coincide. Subirla cierra todas las sesiones abiertas del cliente
+    // (cambio de contraseña, desactivación).
+    tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

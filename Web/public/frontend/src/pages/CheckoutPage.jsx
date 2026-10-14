@@ -15,7 +15,7 @@ const TARJETA_DEMO = { number: "4573 6900 0199 0693", cvv: "835", month: "12", y
 const WOMPI_SANDBOX = import.meta.env.VITE_WOMPI_SANDBOX === "true";
 
 export default function CheckoutPage() {
-  const { items, total, clearCart } = useCart();
+  const { items, total, clearCart, syncWithCatalog, applyPrices, hasSoldOut } = useCart();
   const { customer } = useAuth();
   const navigate = useNavigate();
 
@@ -35,6 +35,12 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length === 0 && !justOrdered) navigate("/carrito");
   }, [items.length, justOrdered, navigate]);
+
+  // Al abrir el checkout se refrescan precios y disponibilidad desde el catálogo.
+  useEffect(() => {
+    syncWithCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (items.length === 0 && !justOrdered) {
     return null;
@@ -58,6 +64,10 @@ export default function CheckoutPage() {
       toast.error("Completa los datos de la tarjeta.");
       return;
     }
+    if (hasSoldOut) {
+      toast.error("Quita del carrito los productos agotados para continuar.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -68,6 +78,9 @@ export default function CheckoutPage() {
           color: i.color,
           size: i.size,
         })),
+        // El total que muestra el botón: si el servidor calcula otro (cambió un precio) responde 409
+        // y no cobra nada.
+        expectedTotal: Number(total.toFixed(2)),
         address,
         phone,
         notes,
@@ -87,7 +100,14 @@ export default function CheckoutPage() {
       clearCart();
       navigate(`/pedido/${order._id}/confirmacion`);
     } catch (error) {
-      toast.error(error.message || "No se pudo procesar el pago.");
+      if (error.status === 409 && Array.isArray(error.payload?.products)) {
+        // Cambiaron precios: se actualiza el carrito, se avisa y NO se navega ni se cobra.
+        applyPrices(error.payload.products);
+        toast.error(`${error.message} El total ahora es distinto: revísalo antes de pagar.`, { duration: 7000 });
+      } else {
+        // 402: el mensaje de la tarjeta (rechazada, inválida o vencida) tal cual.
+        toast.error(error.message || "No se pudo procesar el pago.", { duration: error.status === 500 ? 12000 : 5000 });
+      }
     } finally {
       setSubmitting(false);
     }

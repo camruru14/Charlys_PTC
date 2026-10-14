@@ -7,9 +7,13 @@ import { Schema, model } from "mongoose";
 // registro por pedido, y solo cuando el pago fue aprobado — si Wompi lo
 // rechaza no se crea ni el pedido ni este registro (el cliente reintenta
 // desde el checkout con otra tarjeta).
+//
+// Excepción: si el cobro SE APROBÓ pero no se pudo guardar el pedido, se guarda aquí
+// un registro con needsReconciliation: true (sin `order`, con el pedido que se iba a
+// crear en `payload`) para conciliarlo a mano contra Wompi. No se reembolsa solo.
 const paymentTransactionSchema = new Schema(
   {
-    order: { type: Schema.Types.ObjectId, ref: "Order", required: true, index: true },
+    order: { type: Schema.Types.ObjectId, ref: "Order", required: function requiresOrder() { return !this.needsReconciliation; }, index: true },
     provider: { type: String, default: "wompi" },
 
     // Respuesta del cobro (TransaccionCompra/TokenizadaSin3Ds)
@@ -25,9 +29,16 @@ const paymentTransactionSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["aprobado", "rechazado"],
+      enum: ["aprobado", "rechazado", "pendiente_conciliacion"],
       required: true,
     },
+
+    // Cobro aprobado cuyo pedido no se pudo registrar: hay que conciliarlo a mano.
+    needsReconciliation: { type: Boolean, default: false, index: true },
+    customer: { type: Schema.Types.ObjectId, ref: "Customer" },
+    // El pedido que se iba a crear (número, líneas, dirección…) y el motivo del fallo.
+    payload: { type: Schema.Types.Mixed },
+    failureReason: { type: String },
   },
   { timestamps: true },
 );

@@ -43,6 +43,8 @@ export default function ProductoDetallePage() {
   }
 
   const min = product.minOrderQuantity || 1;
+  // Misma regla de «Agotado» que ProductCard.jsx: sin existencias no se agrega al carrito.
+  const soldOut = (product.stock ?? 0) <= 0;
   const parsed = validateQuantity(quantity, min);
 
   const handleQuantityChange = (text) => {
@@ -51,6 +53,7 @@ export default function ProductoDetallePage() {
   };
 
   const handleAddToCart = () => {
+    if (soldOut) return;
     if (!parsed.ok) {
       setQuantityError(parsed.message);
       return;
@@ -181,9 +184,10 @@ export default function ProductoDetallePage() {
           <button
             type="button"
             onClick={handleAddToCart}
-            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 sm:w-auto"
+            disabled={soldOut}
+            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
-            Agregar al carrito{parsed.ok ? ` — $${(product.price * parsed.value).toFixed(2)}` : ""}
+            {soldOut ? "Agotado" : `Agregar al carrito${parsed.ok ? ` — $${(product.price * parsed.value).toFixed(2)}` : ""}`}
           </button>
         </div>
       </div>

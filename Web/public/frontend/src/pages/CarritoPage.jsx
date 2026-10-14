@@ -41,12 +41,24 @@ function CartQuantity({ item, onCommit }) {
 }
 
 export default function CarritoPage() {
-  const { items, updateQuantity, removeItem, total } = useCart();
+  const { items, updateQuantity, removeItem, total, syncWithCatalog, hasSoldOut } = useCart();
   const navigate = useNavigate();
+
+  // Al abrir el carrito se refrescan precios y disponibilidad desde el catálogo.
+  useEffect(() => {
+    syncWithCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sin sesión, <PrivateRoute> (App.jsx) manda a /cuenta/login con
   // state.from = /checkout, y LoginPage vuelve aquí al iniciar sesión.
-  const goToCheckout = () => navigate("/checkout");
+  const goToCheckout = () => {
+    if (hasSoldOut) {
+      toast.error("Quita del carrito los productos agotados para continuar.");
+      return;
+    }
+    navigate("/checkout");
+  };
 
   if (items.length === 0) {
     return (
@@ -88,6 +100,9 @@ export default function CarritoPage() {
                       <p className="text-xs text-muted-foreground">
                         {[item.color, item.size].filter(Boolean).join(" · ")}
                       </p>
+                      {item.stock != null && item.stock <= 0 && (
+                        <p className="mt-1 text-xs font-medium text-red-600">Agotado</p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -127,7 +142,8 @@ export default function CarritoPage() {
           <button
             type="button"
             onClick={goToCheckout}
-            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+            disabled={hasSoldOut}
+            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
           >
             Continuar al pago
           </button>
