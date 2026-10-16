@@ -1,8 +1,9 @@
 // TEMPORAL — diagnóstico de la conexión con Wompi. SE BORRA después del diagnóstico
 // (junto con la ruta /api/diag/wompi de app.js y scripts/diag-wompi.js).
 //
-// Nunca llama al cobro ni tokeniza una tarjeta: pide un token OAuth2 y manda a tokenización un
-// body VACÍO (Wompi lo rechaza con un 4xx), solo para medir si api.wompi.sv responde y cuánto tarda.
+// Nunca llama al cobro. Pide un token OAuth2, manda a tokenización un body VACÍO (Wompi lo rechaza
+// con un 4xx) para medir si api.wompi.sv responde y cuánto tarda, y tokeniza la tarjeta de PRUEBA de
+// Wompi (TARJETA_DEMO del checkout), nunca otra.
 // No devuelve secretos ni tokens: cada intento es { paso, status, ms, error }.
 import { config } from "../../config.js";
 
@@ -67,6 +68,38 @@ export async function runWompiDiag() {
     }
   } else {
     results.push({ paso: "tokenización con token", status: null, ms: 0, error: "omitido: no hubo token de autenticación" });
+  }
+
+  // 3b) Tokenización con la tarjeta de PRUEBA de Wompi (la misma TARJETA_DEMO del checkout; solo tokeniza,
+  // nunca cobra). Mismo body que arma wompiClient.tokenizeCard; la segunda variante omite
+  // nombreTarjetaHabiente (campo que la documentación no menciona). Nunca se devuelve el token.
+  if (token) {
+    const tarjetaPrueba = { numeroTarjeta: "4573690001990693", cvv: "835", mesVencimiento: 12, anioVencimiento: 2029 };
+    const variantes = [
+      ["tokenización con tarjeta de prueba", { ...tarjetaPrueba, nombreTarjetaHabiente: "Prueba Diagnostico" }],
+      ["tokenización con tarjeta de prueba, sin nombreTarjetaHabiente", tarjetaPrueba],
+    ];
+    for (const [paso, body] of variantes) {
+      const r = await attempt(
+        paso,
+        `${apiUrl}/tokenizacion`,
+        { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) },
+        60000,
+      );
+      const entry = strip(r);
+      if (r.status !== null) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(r.text);
+        } catch {
+          // respuesta que no es JSON
+        }
+        entry.tieneToken = r.status >= 200 && r.status < 300 && Boolean(parsed?.token);
+        // Solo el mensaje de error de Wompi (nunca el cuerpo de un éxito, que trae el token).
+        if (!entry.tieneToken) entry.detalle = r.text ? r.text.slice(0, 300) : undefined;
+      }
+      results.push(entry);
+    }
   }
 
   // 4) IP pública de salida, por si Wompi debe autorizarla.
