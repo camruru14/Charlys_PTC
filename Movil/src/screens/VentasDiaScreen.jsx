@@ -69,7 +69,9 @@ export default function VentasDiaScreen({ navigation, route }) {
             <View key={t._id} style={styles.row}>
               <View style={styles.texts}>
                 <Text style={styles.order}>{t.relatedOrder?.orderNumber || t.orderNumber || t.reference}</Text>
-                <Text style={styles.time}>{t.date ? formatClock(t.date) : ""}</Text>
+                <Text style={styles.time}>
+                  {[t.date ? formatClock(t.date) : "", t.paymentDemo ? "Pago de prueba" : ""].filter(Boolean).join(" · ")}
+                </Text>
               </View>
               <Text style={styles.amount}>+{money(Number(t.amount) || 0)}</Text>
             </View>

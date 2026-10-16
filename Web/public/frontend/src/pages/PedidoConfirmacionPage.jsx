@@ -60,7 +60,15 @@ export default function PedidoConfirmacionPage() {
         </div>
         <div className="mt-2 flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Pago</span>
-          <span className="font-medium">Pagado con tarjeta</span>
+          <span className="font-medium">
+            {order.paymentDemo ? (
+              <>
+                Pago de prueba <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">simulado</span>
+              </>
+            ) : (
+              "Pagado con tarjeta"
+            )}
+          </span>
         </div>
         <div className="mt-2 flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Estado del pedido</span>

@@ -185,6 +185,7 @@ function orderSnapshot(order) {
     status: order.status,
     source: order.source,
     notes: order.notes,
+    paymentDemo: Boolean(order.paymentDemo),
     statusHistory: (order.statusHistory || []).map((h) => ({ status: h.status, at: h.at })),
     createdAt: order.createdAt,
   };

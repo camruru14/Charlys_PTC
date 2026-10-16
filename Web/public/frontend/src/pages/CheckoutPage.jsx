@@ -44,6 +44,9 @@ export default function CheckoutPage() {
   const [notes, setNotes] = useState("");
   const [card, setCard] = useState({ number: "", month: "", year: "", cvv: "", holderName: "" });
   const [submitting, setSubmitting] = useState(false);
+  // Modo de pago del backend (wompi / auto / demo, ver README del backend). Mientras no responde, o si
+  // falla, se trata como "wompi": el cobro real de siempre.
+  const [paymentsMode, setPaymentsMode] = useState("wompi");
   const [unconfirmed, setUnconfirmed] = useState(readUnconfirmed);
   // El pago aprobado vacía el carrito (clearCart) justo antes de navegar a la
   // confirmación: sin esta bandera, ese vaciado dispara el mismo efecto de
@@ -60,6 +63,26 @@ export default function CheckoutPage() {
     syncWithCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get("/config/payments")
+      .then((data) => {
+        if (!cancelled && ["wompi", "auto", "demo"].includes(data?.mode)) setPaymentsMode(data.mode);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isDemo = paymentsMode === "demo";
+
+  // En modo demostración la tarjeta de prueba ya viene cargada (y no es obligatoria).
+  useEffect(() => {
+    if (isDemo) setCard((c) => (c.number ? c : { ...c, ...TARJETA_DEMO }));
+  }, [isDemo]);
 
   if (items.length === 0 && !justOrdered) {
     return null;
@@ -82,7 +105,7 @@ export default function CheckoutPage() {
       toast.error("Agrega una dirección de envío.");
       return;
     }
-    if (!card.number.replace(/\s/g, "") || !card.month || !card.year || !card.cvv) {
+    if (!isDemo && (!card.number.replace(/\s/g, "") || !card.month || !card.year || !card.cvv)) {
       toast.error("Completa los datos de la tarjeta.");
       return;
     }
@@ -106,13 +129,18 @@ export default function CheckoutPage() {
         address,
         phone,
         notes,
-        card: {
-          number: card.number,
-          month: card.month,
-          year: card.year,
-          cvv: card.cvv,
-          holderName: card.holderName,
-        },
+        // En modo demostración el backend ignora la tarjeta: ni se envía.
+        ...(isDemo
+          ? {}
+          : {
+              card: {
+                number: card.number,
+                month: card.month,
+                year: card.year,
+                cvv: card.cvv,
+                holderName: card.holderName,
+              },
+            }),
       };
 
       // Solo si Wompi aprueba el cobro el backend crea el pedido — si no,
@@ -196,6 +224,14 @@ export default function CheckoutPage() {
               Pago procesado por Wompi.
               {WOMPI_SANDBOX && " La cuenta está en modo de prueba: no se cobra dinero real."}
             </p>
+            {isDemo && (
+              <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900" role="status">
+                Modo demostración: este pago es simulado y no se cobrará dinero.
+              </p>
+            )}
+            {paymentsMode === "auto" && (
+              <p className="mt-2 text-xs text-muted-foreground">Si el procesador de pagos no responde, el pago se simulará.</p>
+            )}
 
             <div className="mt-4 space-y-4">
               <Field
@@ -204,7 +240,7 @@ export default function CheckoutPage() {
                 placeholder="4573 6900 0199 0693"
                 value={card.number}
                 onChange={updateCard("number")}
-                required
+                required={!isDemo}
               />
               <Field
                 label="Nombre del titular"
@@ -213,9 +249,9 @@ export default function CheckoutPage() {
                 onChange={updateCard("holderName")}
               />
               <div className="grid grid-cols-3 gap-3">
-                <Field label="Mes" inputMode="numeric" placeholder="12" value={card.month} onChange={updateCard("month")} required />
-                <Field label="Año" inputMode="numeric" placeholder="2029" value={card.year} onChange={updateCard("year")} required />
-                <Field label="CVV" inputMode="numeric" placeholder="835" value={card.cvv} onChange={updateCard("cvv")} required />
+                <Field label="Mes" inputMode="numeric" placeholder="12" value={card.month} onChange={updateCard("month")} required={!isDemo} />
+                <Field label="Año" inputMode="numeric" placeholder="2029" value={card.year} onChange={updateCard("year")} required={!isDemo} />
+                <Field label="CVV" inputMode="numeric" placeholder="835" value={card.cvv} onChange={updateCard("cvv")} required={!isDemo} />
               </div>
             </div>
           </div>
@@ -232,11 +268,17 @@ export default function CheckoutPage() {
             disabled={submitting || paymentBlocked}
             className="inline-flex w-full items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
           >
-            {submitting ? "Procesando pago…" : paymentBlocked ? "Pago en revisión" : `Pagar $${total.toFixed(2)}`}
+            {submitting
+              ? "Procesando pago…"
+              : paymentBlocked
+                ? "Pago en revisión"
+                : isDemo
+                  ? "Confirmar pedido (demostración)"
+                  : `Pagar $${total.toFixed(2)}`}
           </button>
           {submitting && (
             <p className="text-center text-xs text-muted-foreground" role="status">
-              Procesando tu pago, puede tardar hasta un minuto…
+              Procesando tu pago…
             </p>
           )}
         </form>

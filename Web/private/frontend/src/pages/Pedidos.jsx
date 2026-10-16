@@ -92,6 +92,9 @@ function OrderDetail({ order, canDelete, onDelete }) {
                 Pasó solo a Inventario
               </span>
             ) : null}
+            {order.paymentDemo ? (
+              <span className="inline-flex h-[22px] items-center rounded-[7px] bg-surface-2 px-2 text-[11px] font-semibold text-muted">Pago de prueba</span>
+            ) : null}
           </div>
           {canDelete ? (
             // El span lleva el motivo: un botón deshabilitado no muestra su title en todos los navegadores.

@@ -151,6 +151,7 @@ function SubRow({ t, last, day }) {
       <span className="truncate pl-[44px] tabular-nums text-ink-2">
         {t.relatedOrder?.orderNumber || t.orderNumber || t.reference}
         <span className="ml-2 text-muted">{t.date ? fmtTime(t.date) : ""}</span>
+        {t.paymentDemo ? <span className="ml-2 rounded-[6px] bg-surface-2 px-1.5 py-0.5 text-[10.5px] font-semibold text-muted">Pago de prueba</span> : null}
       </span>
       <span />
       <span />

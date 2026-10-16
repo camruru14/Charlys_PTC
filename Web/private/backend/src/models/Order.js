@@ -148,6 +148,9 @@ const orderSchema = new Schema(
       type: [statusHistorySchema],
       default: [],
     },
+    // Pedido de la tienda con pago SIMULADO (modo de pago demo/auto de public/backend). Solo
+    // informativo: sigue el mismo flujo que uno pagado de verdad; el panel lo marca «Pago de prueba».
+    paymentDemo: { type: Boolean, default: false },
   },
   {
     timestamps: true,

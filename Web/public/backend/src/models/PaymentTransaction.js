@@ -41,6 +41,9 @@ const paymentTransactionSchema = new Schema(
 
     // Cobro aprobado cuyo pedido no se pudo registrar: hay que conciliarlo a mano.
     needsReconciliation: { type: Boolean, default: false, index: true },
+    // Pago SIMULADO (modo de pago demo, o auto cuando Wompi no respondió antes de cobrar): no hubo
+    // cobro con Wompi. idTransaccion es «DEMO-<N° de pedido>».
+    simulated: { type: Boolean, default: false },
     customer: { type: Schema.Types.ObjectId, ref: "Customer" },
     // El pedido que se iba a crear (número, líneas, dirección…) y el motivo del fallo.
     payload: { type: Schema.Types.Mixed },

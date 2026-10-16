@@ -123,6 +123,10 @@ const orderSchema = new Schema(
       type: [statusHistorySchema],
       default: [],
     },
+    // Pedido de la tienda con pago SIMULADO (PAYMENTS_MODE "demo", o "auto" cuando Wompi no respondió
+    // antes de cobrar; ver public/backend/src/utils/payments.js). Solo informativo: el pedido sigue
+    // el mismo flujo que uno pagado de verdad y el panel lo marca como «Pago de prueba».
+    paymentDemo: { type: Boolean, default: false },
   },
   {
     timestamps: true,

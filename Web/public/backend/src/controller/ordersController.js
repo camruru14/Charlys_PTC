@@ -6,7 +6,7 @@ import productModel from "../models/Product.js";
 import customerModel from "../models/Customer.js";
 import customerOrderModel from "../models/CustomerOrder.js";
 import paymentTransactionModel from "../models/PaymentTransaction.js";
-import wompiClient from "../utils/wompiClient.js";
+import { getPaymentsMode, processPayment } from "../utils/payments.js";
 import { generateReference, recordSaleTransaction } from "../utils/salesTransaction.js";
 import { recordStoreOrderActivity } from "../utils/activity.js";
 import { nextCode } from "../utils/counters.js";
@@ -229,7 +229,8 @@ ordersController.checkout = async (req, res) => {
     const notes = optionalText(body.notes, MAX_NOTES, "Las notas");
 
     const customerFullName = `${customer.name} ${customer.lastName || ""}`.trim();
-    const card = readCard(body.card, customerFullName);
+    // En modo demo no se usa la tarjeta (no es obligatoria y nunca se guarda): ni se valida.
+    const card = getPaymentsMode() === "demo" ? null : readCard(body.card, customerFullName);
 
     // ---- 2) El total que vio el cliente tiene que ser el que se va a cobrar
     const expectedTotal = Number(body.expectedTotal);
@@ -241,7 +242,8 @@ ordersController.checkout = async (req, res) => {
     }
 
     // El pedido tal como se guardará: se valida contra el esquema ANTES de cobrar.
-    const buildOrder = (orderNumber, at) => ({
+    // `paymentDemo`: el pago fue simulado (ver utils/payments.js); lo único que lo distingue de uno real.
+    const buildOrder = (orderNumber, at, paymentDemo = false) => ({
       orderNumber,
       customer: { name: customerFullName, email: customer.email, phone, address },
       items,
@@ -254,6 +256,7 @@ ordersController.checkout = async (req, res) => {
       // (ver private/backend/src/lib/orderStatus.js para el resto del ciclo).
       statusHistory: [{ status: "Procesando", at }],
       sentToInventoryAt: at,
+      paymentDemo,
     });
     await new orderModel(buildOrder("ORD-VALIDACION", new Date())).validate();
 
@@ -261,27 +264,22 @@ ordersController.checkout = async (req, res) => {
     const orderNumber = await generateOrderNumber();
     reserved = { orderNumber, customer, total, items, address, phone, notes };
 
-    // ---- 4) Cobrar. La tarjeta completa nunca se guarda ni se vuelve a usar.
-    const tokenizada = await wompiClient.tokenizeCard({
-      numeroTarjeta: card.number,
-      cvv: card.cvv,
-      mesVencimiento: card.month,
-      anioVencimiento: card.year,
-      nombreTarjetaHabiente: card.holderName,
+    // ---- 4) Cobrar (utils/payments.js: Wompi, o el pago simulado según PAYMENTS_MODE). La tarjeta
+    // completa nunca se guarda ni se vuelve a usar. Es el ÚNICO paso que cambia con un pago simulado:
+    // de aquí en adelante el pedido sigue exactamente el mismo camino.
+    const cobro = await processPayment({
+      card,
+      total,
+      orderNumber,
+      customerName: customerFullName,
+      customerEmail: customer.email,
+      onTokenized: (last4) => {
+        reserved.cardLast4 = last4;
+      },
     });
-    const cardLast4 = tokenizada.tarjetaEnmascarada?.trim().slice(-4);
-    reserved.cardLast4 = cardLast4;
+    const cardLast4 = cobro.cardLast4;
 
-    // La respuesta de Wompi (no lo que diga el navegador) es la única fuente de
-    // verdad sobre si el pago se aprobó.
-    const cobro = await wompiClient.chargeTokenizedCard({
-      tokenTarjeta: tokenizada.token,
-      monto: total,
-      nombreCliente: customerFullName,
-      emailCliente: customer.email,
-    });
-
-    if (!cobro.esAprobada) {
+    if (!cobro.approved) {
       return res.status(402).json({
         message: cobro.mensaje || "La tarjeta fue rechazada. Intenta con otra.",
       });
@@ -299,7 +297,7 @@ ordersController.checkout = async (req, res) => {
       try {
         await session.withTransaction(async () => {
           // Los documentos se crean de nuevo en cada intento: withTransaction puede reintentar.
-          [order] = await orderModel.create([buildOrder(orderNumber, approvedAt)], { session });
+          [order] = await orderModel.create([buildOrder(orderNumber, approvedAt, cobro.simulated)], { session });
           await customerOrderModel.create([{ customer: customer._id, order: order._id }], { session });
           await paymentTransactionModel.create(
             [
@@ -313,17 +311,24 @@ ordersController.checkout = async (req, res) => {
                 mensaje: cobro.mensaje,
                 cardLast4,
                 status: "aprobado",
+                simulated: cobro.simulated,
               },
             ],
             { session },
           );
           // La venta a Finanzas (Ingreso "Ventas").
-          sale = await recordSaleTransaction(order, { session, reference: saleReference });
+          sale = await recordSaleTransaction(order, { session, reference: saleReference, paymentDemo: cobro.simulated });
         });
       } finally {
         await session.endSession();
       }
     } catch (saveError) {
+      // Pago simulado: no hubo cobro, así que no hay nada que conciliar contra Wompi.
+      if (cobro.simulated) {
+        console.error(`PEDIDO SIMULADO NO GUARDADO (${orderNumber}, ${customer.email}): ${saveError}`);
+        return res.status(500).json({ message: "No pudimos registrar tu pedido. Intenta de nuevo." });
+      }
+
       // ---- 6) El cliente pagó y no hay pedido: se deja todo para conciliar.
       const reference = cobro.idTransaccion || orderNumber;
       console.error(

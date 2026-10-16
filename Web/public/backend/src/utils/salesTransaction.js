@@ -12,7 +12,8 @@ export const generateReference = () => nextCode("TRAN", transactionModel, "refer
 // ese pedido, no crea otro.
 // `session`: la transacción de MongoDB del checkout (el pedido y su venta se guardan
 // juntos). `reference`: una referencia ya reservada con generateReference().
-export async function recordSaleTransaction(order, { session, reference: reserved } = {}) {
+// `paymentDemo`: la venta de un pago simulado lleva la nota «Pago de prueba (modo demostración)».
+export async function recordSaleTransaction(order, { session, reference: reserved, paymentDemo = false } = {}) {
   const alreadyExists = await transactionModel
     .findOne({
       relatedOrder: order._id,
@@ -27,7 +28,7 @@ export async function recordSaleTransaction(order, { session, reference: reserve
     [
       {
         reference,
-        concept: `Venta pedido ${order.orderNumber}`,
+        concept: paymentDemo ? `Venta pedido ${order.orderNumber} · Pago de prueba (modo demostración)` : `Venta pedido ${order.orderNumber}`,
         type: "Ingreso",
         category: "Ventas",
         amount: order.total,
@@ -35,6 +36,7 @@ export async function recordSaleTransaction(order, { session, reference: reserve
         paymentMethod: "Wompi",
         relatedOrder: order._id,
         orderNumber: order.orderNumber,
+        paymentDemo,
       },
     ],
     { session },

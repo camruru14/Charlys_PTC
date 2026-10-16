@@ -64,6 +64,41 @@ hace avanzar y puede eliminar los ya entregados. Al eliminarlos, el
 `CustomerOrder` se conserva con un resumen del pedido (`snapshot`) y
 «Mis pedidos» lo sigue mostrando.
 
+## Modos de pago
+
+La variable `PAYMENTS_MODE` decide cómo se procesa el pago del checkout
+(`src/utils/payments.js`). El único paso que cambia es la llamada a Wompi:
+validaciones, número de pedido, `Order`, `CustomerOrder`, venta en Finanzas y
+novedades del panel se ejecutan con el mismo código en los tres modos.
+
+| Valor | Comportamiento |
+| --- | --- |
+| `wompi` | Cobro real con Wompi (tokenización + cobro). Es el valor por defecto: si la variable no existe o tiene otro valor, se usa este. |
+| `demo` | No se llama a Wompi en ningún paso (tampoco se precalienta el token al arrancar). El cobro se simula como aprobado al instante. La tarjeta no es obligatoria, se ignora y nunca se guarda. |
+| `auto` | Autenticación y tokenización con Wompi con un presupuesto TOTAL de 5 s (`AUTO_MODE_PRECHARGE_BUDGET_MS`) y sin reintentos. Si fallan o no responden en ese tiempo (todavía no se cobró nada) el pago se simula, y el log dice «Pagos: Wompi no respondió antes del cobro (<paso>, <ms> ms); se simula el pago». Si la tokenización sale bien se cobra con Wompi (timeout de 20 s). **Si falla el cobro NO se simula**: queda `pendiente_conciliacion`, igual que en `wompi`, para no arriesgar un cobro doble. Si Wompi responde que los datos de la tarjeta no sirven (402), tampoco se simula: es una respuesta real. |
+
+Al arrancar el log dice el modo activo (por ejemplo «Pagos: modo demo (no se
+cobra con Wompi)»). La tienda lo consulta en `GET /api/config/payments`
+(`{ "mode": "wompi" | "auto" | "demo" }`) para avisar al cliente.
+
+**Cambiar el modo en Render:** servicio `charly-public-backend` › *Environment* ›
+agrega o edita `PAYMENTS_MODE` (`wompi`, `auto` o `demo`) › guarda; Render
+reinicia el servicio solo. No hace falta tocar el frontend.
+
+**Cómo se marcan los pedidos simulados:**
+
+- `Order.paymentDemo: true` (el panel y la app muestran «Pago de prueba»;
+  también la confirmación y «Mis pedidos» de la tienda).
+- `PaymentTransaction` con `status: "aprobado"`, `simulated: true`,
+  `idTransaccion: "DEMO-<N° de pedido>"` y `formaPago: "Demostración"`; no lleva
+  datos de la tarjeta.
+- La venta en Finanzas lleva `paymentDemo: true` y su concepto termina en
+  «Pago de prueba (modo demostración)».
+
+Fuera de esas marcas, el pedido simulado se comporta igual que cualquier otro
+(verificar, fabricar, empacar, rutas, entregar, eliminar…). Nada lo reembolsa
+ni concilia, porque no hubo cobro.
+
 ## Administración del catálogo
 
 Se administra desde `private/frontend` (pantalla **Catálogo**) y la app
@@ -78,6 +113,7 @@ la tienda y para calcular los precios del checkout.
 | --- | --- | --- | --- |
 | POST | `/api/auth/register` | — | Crear cuenta de cliente |
 | POST | `/api/auth/login` | — | Iniciar sesión |
+| GET | `/api/config/payments` | — | Modo de pago activo (`wompi`, `auto` o `demo`) |
 | GET | `/api/products` | — | Catálogo (filtros `category`, `search`, `featured`) |
 | GET | `/api/products/:slug` | — | Detalle de producto |
 | POST | `/api/orders/checkout` | Cliente | Cobra la tarjeta con Wompi y, si aprueba, crea el pedido |

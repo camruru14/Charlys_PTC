@@ -24,6 +24,14 @@ export const config = {
   // tokenización directa para cobrar: la tarjeta se tokeniza y se cobra
   // desde este backend (ver src/utils/wompiClient.js), sin enlaces de pago
   // ni webhooks — por eso no hace falta ninguna URL pública propia.
+  // Modo de pago (PAYMENTS_MODE): "wompi" (cobro real, el valor por defecto), "demo" (el pago se
+  // simula sin llamar a Wompi) o "auto" (Wompi, y si no responde antes de cobrar, se simula).
+  // Cualquier otro valor, o la variable ausente, es "wompi". Ver src/utils/payments.js.
+  payments: {
+    mode: ["wompi", "auto", "demo"].includes(process.env.PAYMENTS_MODE?.trim().toLowerCase())
+      ? process.env.PAYMENTS_MODE.trim().toLowerCase()
+      : "wompi",
+  },
   wompi: {
     authUrl: process.env.WOMPI_AUTH_URL || "https://id.wompi.sv/connect/token",
     apiUrl: process.env.WOMPI_API_URL || "https://api.wompi.sv",

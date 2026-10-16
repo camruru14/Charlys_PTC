@@ -44,6 +44,9 @@ const transactionSchema = new Schema(
     paidAt: { type: Date },
     // Factura adjunta (imagen o PDF en Cloudinary). No aplica a las ventas.
     attachment: { type: attachmentSchema },
+    // Venta de un pedido con pago SIMULADO (modo de pago demo/auto de la tienda): el panel la marca
+    // «Pago de prueba».
+    paymentDemo: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

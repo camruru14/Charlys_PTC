@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -9,7 +8,7 @@ import authRoutes from "./src/routes/auth.js";
 import recoveryPasswordRoutes from "./src/routes/recoveryPassword.js";
 import productsRoutes from "./src/routes/products.js";
 import ordersRoutes from "./src/routes/orders.js";
-import { runWompiDiag } from "./src/utils/wompiDiag.js"; // TEMPORAL (diagnóstico de Wompi)
+import { getPaymentsMode } from "./src/utils/payments.js";
 
 const app = express();
 
@@ -60,22 +59,9 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "industrias-charly-public-backend" });
 });
 
-// TEMPORAL (se borra después del diagnóstico de Wompi, junto con src/utils/wompiDiag.js y
-// scripts/diag-wompi.js): prueba la conexión con Wompi desde este servidor. Solo existe si la variable
-// DIAG_KEY está definida y se pide con ?key=<DIAG_KEY>; en cualquier otro caso responde 404.
-app.get("/api/diag/wompi", async (req, res, next) => {
-  const expected = process.env.DIAG_KEY;
-  const given = typeof req.query.key === "string" ? req.query.key : "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected ?? "");
-  if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) {
-    return res.status(404).json({ message: "Ruta no encontrada." });
-  }
-  try {
-    res.json(await runWompiDiag());
-  } catch (error) {
-    next(error);
-  }
+// Modo de pago activo (wompi / auto / demo): el checkout lo consulta para avisar al cliente. Sin datos sensibles.
+app.get("/api/config/payments", (_req, res) => {
+  res.json({ mode: getPaymentsMode() });
 });
 
 // Autenticación de clientes de la tienda (registro / login / logout / me)
