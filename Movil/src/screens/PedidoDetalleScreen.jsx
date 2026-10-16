@@ -490,7 +490,6 @@ export default function PedidoDetalleScreen({ navigation, route }) {
           {order.sentToInventoryAt ? (
             <ListRow title="Inventario" value={`Pasó solo el ${formatShortDate(order.sentToInventoryAt)}`} />
           ) : null}
-          {order.paymentDemo ? <ListRow title="Pago" value="Pago de prueba" /> : null}
         </ListGroup>
       </ScrollView>
 

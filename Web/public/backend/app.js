@@ -8,7 +8,6 @@ import authRoutes from "./src/routes/auth.js";
 import recoveryPasswordRoutes from "./src/routes/recoveryPassword.js";
 import productsRoutes from "./src/routes/products.js";
 import ordersRoutes from "./src/routes/orders.js";
-import { getPaymentsMode } from "./src/utils/payments.js";
 
 const app = express();
 
@@ -57,11 +56,6 @@ app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "industrias-charly-public-backend" });
-});
-
-// Modo de pago activo (wompi / auto / demo): el checkout lo consulta para avisar al cliente. Sin datos sensibles.
-app.get("/api/config/payments", (_req, res) => {
-  res.json({ mode: getPaymentsMode() });
 });
 
 // Autenticación de clientes de la tienda (registro / login / logout / me)

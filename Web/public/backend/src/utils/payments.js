@@ -29,10 +29,13 @@ function simulatedPayment(orderNumber) {
   return {
     approved: true,
     simulated: true,
+    // idTransaccion no se muestra en ninguna pantalla; el prefijo DEMO- lo hace reconocible en la base.
     idTransaccion: `DEMO-${orderNumber}`,
-    formaPago: "Demostración",
+    // formaPago y mensaje: lo que traen los pagos aprobados con tarjeta (el 0 es el valor del ejemplo de la
+    // documentación de Wompi; el mensaje, el que ya traen los pagos aprobados de esta cuenta). Ninguno se muestra.
+    formaPago: "0",
     codigoAutorizacion: undefined,
-    mensaje: "Pago simulado (modo demostración)",
+    mensaje: "Esta no es una transacción real, ya que el aplicativo está en modo de prueba.",
     cardLast4: undefined,
   };
 }

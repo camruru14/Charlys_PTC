@@ -111,9 +111,6 @@ export default function MisPedidosPage() {
                     <p className="font-display font-semibold">Pedido {order.orderNumber}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    {order.paymentDemo && (
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">Pago de prueba</span>
-                    )}
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-medium ${
                         STATUS_STYLES[order.status] || "bg-slate-100 text-slate-700"
@@ -159,12 +156,6 @@ export default function MisPedidosPage() {
                         <dd className="font-medium">{order.customer?.phone || "—"}</dd>
                       </div>
                       {/* Sin transacción de pago asociada, esta línea no se muestra. */}
-                      {order.paymentDemo && (
-                        <div>
-                          <dt className="text-muted-foreground">Método de pago</dt>
-                          <dd className="font-medium">Pago de prueba (simulado)</dd>
-                        </div>
-                      )}
                       {order.payment?.cardLast4 && (
                         <div>
                           <dt className="text-muted-foreground">Método de pago</dt>
