@@ -2,8 +2,14 @@ import fetch from "node-fetch";
 import { config } from "../../config.js";
 
 // Tiempo máximo de espera de cada llamada a Wompi: sin esto, un Wompi colgado deja
-// la petición del cliente (y su conexión) abierta indefinidamente.
-const WOMPI_TIMEOUT_MS = 20000;
+// la petición del cliente (y su conexión) abierta indefinidamente. Wompi a veces tarda
+// más de 20 s, así que cada paso tiene su margen.
+const WOMPI_AUTH_TIMEOUT_MS = 30000; // autenticación (OAuth2)
+const WOMPI_TOKENIZE_TIMEOUT_MS = 30000; // tokenización de la tarjeta
+const WOMPI_CHARGE_TIMEOUT_MS = 60000; // cobro: el que más puede tardar y el que no se reintenta
+
+// Espera antes del único reintento de la autenticación y la tokenización.
+const WOMPI_RETRY_DELAY_MS = 1000;
 
 // Error con el status y el mensaje que ve el cliente (el checkout lo responde tal cual).
 //   402: Wompi rechazó los datos de la tarjeta o el cobro (el cliente corrige o prueba otra);
@@ -15,12 +21,18 @@ function paymentError(status, message, extra = {}) {
 
 // fetch con tiempo límite. Un timeout o un corte de red no es una respuesta de Wompi:
 // se convierte en un error legible (y se deja en el log).
-async function wompiFetch(step, url, options) {
+// En el log queda el paso, el status y los ms de cada llamada; nunca el cuerpo enviado
+// (tarjeta, CVV, credenciales) ni el token.
+async function wompiFetch(step, url, options, timeoutMs) {
+  const startedAt = Date.now();
   try {
-    return await fetch(url, { ...options, signal: AbortSignal.timeout(WOMPI_TIMEOUT_MS) });
+    const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+    console.log(`Wompi ${step}: ${response.status} en ${Date.now() - startedAt} ms`);
+    return response;
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
-    console.error(`Wompi ${step}: ${timedOut ? `sin respuesta tras ${WOMPI_TIMEOUT_MS / 1000} s` : error}`);
+    const elapsed = Date.now() - startedAt;
+    console.error(`Wompi ${step}: ${timedOut ? `sin respuesta tras ${timeoutMs / 1000} s` : error?.message ?? error} (${elapsed} ms)`);
     throw paymentError(
       timedOut ? 504 : 502,
       timedOut
@@ -29,6 +41,29 @@ async function wompiFetch(step, url, options) {
       { unconfirmed: step === "cobro" },
     );
   }
+}
+
+// wompiFetch con un único reintento (tras 1 s) si falla por timeout, error de red o un 5xx
+// de Wompi. Solo para pasos que NO mueven dinero (autenticación y tokenización): el cobro
+// nunca pasa por aquí, porque reintentarlo podría cobrar dos veces.
+async function wompiFetchWithRetry(step, url, options, timeoutMs) {
+  const wait = () => new Promise((resolve) => setTimeout(resolve, WOMPI_RETRY_DELAY_MS));
+
+  let response;
+  try {
+    response = await wompiFetch(step, url, options, timeoutMs);
+  } catch {
+    console.warn(`Wompi ${step}: reintentando en ${WOMPI_RETRY_DELAY_MS / 1000} s`);
+    await wait();
+    return wompiFetch(step, url, options, timeoutMs);
+  }
+
+  if (response.status < 500) return response;
+
+  await response.arrayBuffer().catch(() => {}); // se libera la conexión antes de reintentar
+  console.warn(`Wompi ${step}: reintentando en ${WOMPI_RETRY_DELAY_MS / 1000} s`);
+  await wait();
+  return wompiFetch(step, url, options, timeoutMs);
 }
 
 // Respuesta no exitosa de Wompi: los 4xx de datos (tarjeta inválida, rechazada,
@@ -48,23 +83,47 @@ async function failure(step, response, clientMessage) {
 // nuevo en cada request (ver https://docs.wompi.sv/auntenticacion/autenticacion).
 let cachedToken = null;
 let cachedTokenExpiresAt = 0;
+// Petición de token en curso: el precalentado del arranque y un primer cliente que llegue
+// mientras tanto comparten la misma llamada en vez de pedir dos tokens.
+let pendingToken = null;
 
 async function getAccessToken() {
   const now = Date.now();
   if (cachedToken && now < cachedTokenExpiresAt) {
     return cachedToken;
   }
-
-  const response = await wompiFetch("autenticación", config.wompi.authUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: config.wompi.grantType,
-      audience: config.wompi.audience,
-      client_id: config.wompi.clientId,
-      client_secret: config.wompi.clientSecret,
-    }),
+  pendingToken ??= requestAccessToken().finally(() => {
+    pendingToken = null;
   });
+  return pendingToken;
+}
+
+// Al arrancar el servidor: pide el token en segundo plano para que el primer cliente no
+// espere esa llamada. No bloquea el arranque y solo deja rastro si falla (el checkout
+// volverá a pedirlo por su cuenta).
+function warmUpAccessToken() {
+  getAccessToken().catch((error) => {
+    console.error(`Wompi: no se pudo precalentar el token: ${error.message}`);
+  });
+}
+
+async function requestAccessToken() {
+  const startedAt = Date.now();
+  const response = await wompiFetchWithRetry(
+    "autenticación",
+    config.wompi.authUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: config.wompi.grantType,
+        audience: config.wompi.audience,
+        client_id: config.wompi.clientId,
+        client_secret: config.wompi.clientSecret,
+      }),
+    },
+    WOMPI_AUTH_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -75,7 +134,7 @@ async function getAccessToken() {
   const data = await response.json();
   cachedToken = data.access_token;
   // Restamos 60s de margen de seguridad antes de la expiración real.
-  cachedTokenExpiresAt = now + (data.expires_in - 60) * 1000;
+  cachedTokenExpiresAt = startedAt + (data.expires_in - 60) * 1000;
 
   return cachedToken;
 }
@@ -87,20 +146,26 @@ async function getAccessToken() {
 async function tokenizeCard({ numeroTarjeta, cvv, mesVencimiento, anioVencimiento, nombreTarjetaHabiente }) {
   const token = await getAccessToken();
 
-  const response = await wompiFetch("tokenización", `${config.wompi.apiUrl}/tokenizacion`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  // Tokenizar no mueve dinero: se puede reintentar una vez si Wompi no responde.
+  const response = await wompiFetchWithRetry(
+    "tokenización",
+    `${config.wompi.apiUrl}/tokenizacion`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        numeroTarjeta,
+        cvv,
+        mesVencimiento: parseInt(mesVencimiento, 10),
+        anioVencimiento: parseInt(anioVencimiento, 10),
+        nombreTarjetaHabiente,
+      }),
     },
-    body: JSON.stringify({
-      numeroTarjeta,
-      cvv,
-      mesVencimiento: parseInt(mesVencimiento, 10),
-      anioVencimiento: parseInt(anioVencimiento, 10),
-      nombreTarjetaHabiente,
-    }),
-  });
+    WOMPI_TOKENIZE_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     throw await failure("tokenización", response, "Revisa los datos de tu tarjeta (número, fecha de vencimiento y código de seguridad) e intenta de nuevo.");
@@ -114,14 +179,20 @@ async function tokenizeCard({ numeroTarjeta, cvv, mesVencimiento, anioVencimient
 async function chargeTokenizedCard({ tokenTarjeta, monto, nombreCliente, emailCliente }) {
   const token = await getAccessToken();
 
-  const response = await wompiFetch("cobro", `${config.wompi.apiUrl}/TransaccionCompra/TokenizadaSin3Ds`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  // El cobro NUNCA se reintenta (wompiFetch directo): un reintento podría cobrar dos veces.
+  const response = await wompiFetch(
+    "cobro",
+    `${config.wompi.apiUrl}/TransaccionCompra/TokenizadaSin3Ds`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ monto, nombreCliente, emailCliente, tokenTarjeta }),
     },
-    body: JSON.stringify({ monto, nombreCliente, emailCliente, tokenTarjeta }),
-  });
+    WOMPI_CHARGE_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     throw await failure("cobro", response, "Tu tarjeta fue rechazada. Intenta con otra.");
@@ -139,6 +210,7 @@ async function chargeTokenizedCard({ tokenTarjeta, monto, nombreCliente, emailCl
 
 export const wompiClient = {
   getAccessToken,
+  warmUpAccessToken,
   tokenizeCard,
   chargeTokenizedCard,
 };

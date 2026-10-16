@@ -234,6 +234,11 @@ export default function CheckoutPage() {
           >
             {submitting ? "Procesando pago…" : paymentBlocked ? "Pago en revisión" : `Pagar $${total.toFixed(2)}`}
           </button>
+          {submitting && (
+            <p className="text-center text-xs text-muted-foreground" role="status">
+              Procesando tu pago, puede tardar hasta un minuto…
+            </p>
+          )}
         </form>
 
         <div className="h-fit rounded-3xl border border-border bg-card p-8">
